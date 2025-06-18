@@ -1,3 +1,4 @@
+"use strict";
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.0';
@@ -14,6 +15,8 @@ const corsHeaders = {
 interface SolarEdgeConfig {
   apiKey: string;
   siteId: string;
+  username?: string;
+  password?: string;
 }
 
 interface SolarEdgeReading {
@@ -63,6 +66,14 @@ async function discoverPlants(config: SolarEdgeConfig) {
       throw new Error('API Key é obrigatória');
     }
 
+    // Log das credenciais (sem expor dados sensíveis)
+    console.log('Configuração recebida:', {
+      hasApiKey: !!config.apiKey,
+      hasSiteId: !!config.siteId,
+      hasUsername: !!config.username,
+      hasPassword: !!config.password
+    });
+
     // Se um siteId específico foi fornecido, buscar apenas esse site
     if (config.siteId) {
       console.log(`Buscando site específico: ${config.siteId}`);
@@ -72,7 +83,10 @@ async function discoverPlants(config: SolarEdgeConfig) {
           method: 'GET',
           headers: {
             'Accept': 'application/json',
-            'User-Agent': 'Monitor.ai/1.0'
+            'User-Agent': 'Monitor.ai/1.0',
+            ...(config.username && config.password ? {
+              'Authorization': `Basic ${btoa(`${config.username}:${config.password}`)}`
+            } : {})
           }
         }
       );
@@ -82,6 +96,13 @@ async function discoverPlants(config: SolarEdgeConfig) {
       if (!response.ok) {
         const errorText = await response.text();
         console.error(`Erro da API SolarEdge: ${response.status} - ${errorText}`);
+        
+        if (response.status === 401) {
+          throw new Error('Credenciais inválidas. Verifique sua API Key, usuário e senha.');
+        } else if (response.status === 403) {
+          throw new Error('Acesso negado. Verifique as permissões da sua API Key.');
+        }
+        
         throw new Error(`API Error: ${response.status} - ${errorText}`);
       }
 
@@ -118,7 +139,10 @@ async function discoverPlants(config: SolarEdgeConfig) {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
-          'User-Agent': 'Monitor.ai/1.0'
+          'User-Agent': 'Monitor.ai/1.0',
+          ...(config.username && config.password ? {
+            'Authorization': `Basic ${btoa(`${config.username}:${config.password}`)}`
+          } : {})
         }
       }
     );
@@ -128,6 +152,13 @@ async function discoverPlants(config: SolarEdgeConfig) {
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`Erro da API SolarEdge: ${response.status} - ${errorText}`);
+      
+      if (response.status === 401) {
+        throw new Error('Credenciais inválidas. Verifique sua API Key, usuário e senha.');
+      } else if (response.status === 403) {
+        throw new Error('Acesso negado. Verifique as permissões da sua API Key.');
+      }
+      
       throw new Error(`API Error: ${response.status} - ${errorText}`);
     }
 
@@ -173,6 +204,14 @@ async function testConnection(config: SolarEdgeConfig) {
       throw new Error('API Key é obrigatória');
     }
 
+    // Log das credenciais (sem expor dados sensíveis)
+    console.log('Configuração de teste:', {
+      hasApiKey: !!config.apiKey,
+      hasSiteId: !!config.siteId,
+      hasUsername: !!config.username,
+      hasPassword: !!config.password
+    });
+
     // Se não tiver siteId, tentar buscar a lista primeiro
     if (!config.siteId) {
       console.log('Site ID não fornecido, buscando lista de sites...');
@@ -182,7 +221,10 @@ async function testConnection(config: SolarEdgeConfig) {
           method: 'GET',
           headers: {
             'Accept': 'application/json',
-            'User-Agent': 'Monitor.ai/1.0'
+            'User-Agent': 'Monitor.ai/1.0',
+            ...(config.username && config.password ? {
+              'Authorization':  `Basic ${btoa(`${config.username}:${config.password}`)}`
+            } : {})
           }
         }
       );
@@ -190,6 +232,13 @@ async function testConnection(config: SolarEdgeConfig) {
       if (!response.ok) {
         const errorText = await response.text();
         console.error(`Erro da API SolarEdge: ${response.status} - ${errorText}`);
+        
+        if (response.status === 401) {
+          throw new Error('Credenciais inválidas. Verifique sua API Key, usuário e senha.');
+        } else if (response.status === 403) {
+          throw new Error('Acesso negado. Verifique as permissões da sua API Key.');
+        }
+        
         throw new Error(`API Key inválida ou sem permissão: ${response.status}`);
       }
 
@@ -212,7 +261,10 @@ async function testConnection(config: SolarEdgeConfig) {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
-          'User-Agent': 'Monitor.ai/1.0'
+          'User-Agent': 'Monitor.ai/1.0',
+          ...(config.username && config.password ? {
+            'Authorization': `Basic ${btoa(`${config.username}:${config.password}`)}`
+          } : {})
         }
       }
     );
@@ -220,6 +272,13 @@ async function testConnection(config: SolarEdgeConfig) {
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`Erro da API SolarEdge: ${response.status} - ${errorText}`);
+      
+      if (response.status === 401) {
+        throw new Error('Credenciais inválidas. Verifique sua API Key, usuário e senha.');
+      } else if (response.status === 403) {
+        throw new Error('Acesso negado. Verifique as permissões da sua API Key.');
+      }
+      
       throw new Error(`Site ID inválido ou sem permissão: ${response.status}`);
     }
 

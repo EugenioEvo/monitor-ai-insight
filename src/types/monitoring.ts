@@ -25,6 +25,8 @@ export interface SyncLog {
 export interface SolarEdgeConfig {
   apiKey: string;
   siteId: string;
+  username?: string;
+  password?: string;
   [key: string]: any; // Index signature para compatibilidade com Json
 }
 

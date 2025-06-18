@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -42,7 +41,9 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
   // Step 2: Configurações
   const [solarEdgeConfig, setSolarEdgeConfig] = useState<SolarEdgeConfig>({
     apiKey: '',
-    siteId: ''
+    siteId: '',
+    username: '',
+    password: ''
   });
   
   const [sungrowConfig, setSungrowConfig] = useState<SungrowConfig>({
@@ -60,7 +61,7 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
   const resetWizard = () => {
     setCurrentStep(1);
     setSystemType('solaredge');
-    setSolarEdgeConfig({ apiKey: '', siteId: '' });
+    setSolarEdgeConfig({ apiKey: '', siteId: '', username: '', password: '' });
     setSungrowConfig({ username: '', password: '', appkey: '', plantId: '', baseUrl: 'https://gateway.isolarcloud.com.hk' });
     setDiscoveredPlants([]);
     setSelectedPlants([]);
@@ -298,25 +299,48 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
               </CardHeader>
               <CardContent className="space-y-4">
                 {systemType === 'solaredge' ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="se-api-key">API Key</Label>
-                      <Input
-                        id="se-api-key"
-                        type="password"
-                        value={solarEdgeConfig.apiKey}
-                        onChange={(e) => setSolarEdgeConfig(prev => ({ ...prev, apiKey: e.target.value }))}
-                        placeholder="Sua chave de API SolarEdge"
-                      />
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="se-username">Usuário</Label>
+                        <Input
+                          id="se-username"
+                          value={solarEdgeConfig.username || ''}
+                          onChange={(e) => setSolarEdgeConfig(prev => ({ ...prev, username: e.target.value }))}
+                          placeholder="Seu usuário SolarEdge"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="se-password">Senha</Label>
+                        <Input
+                          id="se-password"
+                          type="password"
+                          value={solarEdgeConfig.password || ''}
+                          onChange={(e) => setSolarEdgeConfig(prev => ({ ...prev, password: e.target.value }))}
+                          placeholder="Sua senha SolarEdge"
+                        />
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="se-site-id">Site ID (opcional)</Label>
-                      <Input
-                        id="se-site-id"
-                        value={solarEdgeConfig.siteId}
-                        onChange={(e) => setSolarEdgeConfig(prev => ({ ...prev, siteId: e.target.value }))}
-                        placeholder="ID específico do site (deixe vazio para descobrir todos)"
-                      />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="se-api-key">API Key</Label>
+                        <Input
+                          id="se-api-key"
+                          type="password"
+                          value={solarEdgeConfig.apiKey}
+                          onChange={(e) => setSolarEdgeConfig(prev => ({ ...prev, apiKey: e.target.value }))}
+                          placeholder="Sua chave de API SolarEdge"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="se-site-id">Site ID (opcional)</Label>
+                        <Input
+                          id="se-site-id"
+                          value={solarEdgeConfig.siteId}
+                          onChange={(e) => setSolarEdgeConfig(prev => ({ ...prev, siteId: e.target.value }))}
+                          placeholder="ID específico do site (deixe vazio para descobrir todos)"
+                        />
+                      </div>
                     </div>
                   </div>
                 ) : (
