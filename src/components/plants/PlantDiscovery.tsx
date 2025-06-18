@@ -164,7 +164,7 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
           continue;
         }
 
-        // Criar nova planta
+        // Criar nova planta - corrigindo os tipos para serem compatíveis com o banco
         const { error: insertError } = await supabase
           .from('plants')
           .insert({
@@ -174,10 +174,10 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
             lng: -46.6333,
             concessionaria: 'A definir',
             start_date: plant.installationDate || new Date().toISOString().split('T')[0],
-            status: 'active',
+            status: 'active' as const,
             monitoring_system: systemType,
             api_site_id: plant.id,
-            api_credentials: config,
+            api_credentials: config as any, // Cast para Json type
             sync_enabled: true
           });
 

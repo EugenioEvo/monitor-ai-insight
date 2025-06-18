@@ -21,9 +21,11 @@ export interface SyncLog {
   created_at: string;
 }
 
+// Interfaces compatíveis com Json type (index signature added)
 export interface SolarEdgeConfig {
   apiKey: string;
   siteId: string;
+  [key: string]: any; // Index signature para compatibilidade com Json
 }
 
 export interface SungrowConfig {
@@ -32,6 +34,7 @@ export interface SungrowConfig {
   appkey: string;
   plantId: string;
   baseUrl?: string;
+  [key: string]: any; // Index signature para compatibilidade com Json
 }
 
 export interface MonitoringSystemStatus {
