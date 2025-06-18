@@ -15,6 +15,7 @@ interface SungrowConfig {
   username: string;
   password: string;
   appkey: string;
+  accessKey: string;
   baseUrl?: string;
   plantId?: string;
 }
@@ -164,7 +165,7 @@ function setCache(key: string, data: any, ttlMs: number): void {
 }
 
 async function authenticateWithRetry(config: SungrowConfig, reqSerialNum: string): Promise<string> {
-  const cacheKey = `auth_${config.username}_${config.appkey}`;
+  const cacheKey = `auth_${config.username}_${config.accessKey}`;
   
   // Check cache first (TTL 23 hours to avoid expiration issues)
   const cachedToken = getFromCache(cacheKey);
@@ -175,8 +176,8 @@ async function authenticateWithRetry(config: SungrowConfig, reqSerialNum: string
   
   console.log(`[${reqSerialNum}] Authenticating with Sungrow...`);
   
-  if (!config.username || !config.password || !config.appkey) {
-    throw new Error('Username, password e appkey são obrigatórios');
+  if (!config.username || !config.password || !config.appkey || !config.accessKey) {
+    throw new Error('Username, password, appkey e accessKey são obrigatórios');
   }
 
   const baseUrl = config.baseUrl || 'https://gateway.isolarcloud.com.hk';
@@ -189,7 +190,7 @@ async function authenticateWithRetry(config: SungrowConfig, reqSerialNum: string
 
   const response = await fetchWithHeaders(`${baseUrl}/v1/userService/login`, {
     method: 'POST',
-    headers: getStandardHeaders(config.appkey),
+    headers: getStandardHeaders(config.accessKey),
     body: JSON.stringify(authPayload)
   });
 
@@ -211,10 +212,10 @@ async function authenticateWithRetry(config: SungrowConfig, reqSerialNum: string
   return data.result_data.token;
 }
 
-function getStandardHeaders(appkey: string): Record<string, string> {
+function getStandardHeaders(accessKey: string): Record<string, string> {
   return {
     'Content-Type': 'application/json',
-    'x-access-key': appkey,
+    'x-access-key': accessKey,
     'Accept': 'application/json',
     'User-Agent': 'Monitor.ai/1.0'
   };
@@ -257,7 +258,7 @@ async function getDeviceList(config: SungrowConfig, reqSerialNum: string) {
   try {
     console.log(`[${reqSerialNum}] Fetching device list...`);
     
-    const cacheKey = getCacheKey('device_list', { appkey: config.appkey, plantId: config.plantId });
+    const cacheKey = getCacheKey('device_list', { accessKey: config.accessKey, plantId: config.plantId });
     const cached = getFromCache(cacheKey);
     if (cached) {
       console.log(`[${reqSerialNum}] Using cached device list`);
@@ -275,7 +276,7 @@ async function getDeviceList(config: SungrowConfig, reqSerialNum: string) {
     const response = await fetchWithHeaders(`${baseUrl}/v1/stationService/getDeviceList`, {
       method: 'POST',
       headers: {
-        ...getStandardHeaders(config.appkey),
+        ...getStandardHeaders(config.accessKey),
         'token': token
       },
       body: JSON.stringify(payload)
@@ -310,7 +311,7 @@ async function getStationRealKpi(config: SungrowConfig, reqSerialNum: string, ca
   try {
     console.log(`[${reqSerialNum}] Fetching station real-time KPIs...`);
     
-    const key = cacheKey || getCacheKey('station_real_kpi', { appkey: config.appkey, plantId: config.plantId });
+    const key = cacheKey || getCacheKey('station_real_kpi', { accessKey: config.accessKey, plantId: config.plantId });
     const cached = getFromCache(key);
     if (cached) {
       console.log(`[${reqSerialNum}] Using cached KPI data`);
@@ -328,7 +329,7 @@ async function getStationRealKpi(config: SungrowConfig, reqSerialNum: string, ca
     const response = await fetchWithHeaders(`${baseUrl}/v1/reportService/getStationRealKpi`, {
       method: 'POST',
       headers: {
-        ...getStandardHeaders(config.appkey),
+        ...getStandardHeaders(config.accessKey),
         'token': token
       },
       body: JSON.stringify(payload)
@@ -363,7 +364,7 @@ async function getStationEnergy(config: SungrowConfig, period: string, reqSerial
   try {
     console.log(`[${reqSerialNum}] Fetching station energy for period: ${period}`);
     
-    const key = cacheKey || getCacheKey('station_energy', { appkey: config.appkey, plantId: config.plantId, period });
+    const key = cacheKey || getCacheKey('station_energy', { accessKey: config.accessKey, plantId: config.plantId, period });
     const cached = getFromCache(key);
     if (cached) {
       console.log(`[${reqSerialNum}] Using cached energy data`);
@@ -410,7 +411,7 @@ async function getStationEnergy(config: SungrowConfig, period: string, reqSerial
     const response = await fetchWithHeaders(`${baseUrl}/v1/reportService/getStationEnergy`, {
       method: 'POST',
       headers: {
-        ...getStandardHeaders(config.appkey),
+        ...getStandardHeaders(config.accessKey),
         'token': token
       },
       body: JSON.stringify(payload)
@@ -450,7 +451,7 @@ async function getDeviceRealTimeData(config: SungrowConfig, deviceType: string, 
   try {
     console.log(`[${reqSerialNum}] Fetching device real-time data for type: ${deviceType}`);
     
-    const key = cacheKey || getCacheKey('device_realtime', { appkey: config.appkey, plantId: config.plantId, deviceType });
+    const key = cacheKey || getCacheKey('device_realtime', { accessKey: config.accessKey, plantId: config.plantId, deviceType });
     const cached = getFromCache(key);
     if (cached) {
       console.log(`[${reqSerialNum}] Using cached device real-time data`);
@@ -469,7 +470,7 @@ async function getDeviceRealTimeData(config: SungrowConfig, deviceType: string, 
     const response = await fetchWithHeaders(`${baseUrl}/v1/reportService/getDeviceRealTimeData`, {
       method: 'POST',
       headers: {
-        ...getStandardHeaders(config.appkey),
+        ...getStandardHeaders(config.accessKey),
         'token': token
       },
       body: JSON.stringify(payload)
@@ -512,7 +513,7 @@ async function discoverPlants(config: SungrowConfig, reqSerialNum?: string) {
     const response = await fetchWithHeaders(`${baseUrl}/v1/stationService/getStationList`, {
       method: 'POST',
       headers: {
-        ...getStandardHeaders(config.appkey),
+        ...getStandardHeaders(config.accessKey),
         'token': token
       },
       body: JSON.stringify({
@@ -568,7 +569,7 @@ async function syncData(plantId: string, reqSerialNum?: string) {
     }
 
     const config = plant.api_credentials as SungrowConfig & { plantId: string };
-    if (!config?.username || !config?.password || !config?.appkey) {
+    if (!config?.username || !config?.password || !config?.appkey || !config.accessKey) {
       throw new Error('API configuration not found');
     }
 
@@ -662,7 +663,7 @@ async function getPlantList(config: SungrowConfig, reqSerialNum?: string) {
     const response = await fetchWithHeaders(`${baseUrl}/v1/stationService/getStationList`, {
       method: 'POST',
       headers: {
-        ...getStandardHeaders(config.appkey),
+        ...getStandardHeaders(config.accessKey),
         'token': token
       },
       body: JSON.stringify({

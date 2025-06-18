@@ -39,6 +39,7 @@ export const MonitoringSetup = ({ plant, onUpdate }: MonitoringSetupProps) => {
     username: '',
     password: '',
     appkey: '',
+    accessKey: '',
     plantId: '',
     baseUrl: 'https://gateway.isolarcloud.com.hk',
     ...(systemType === 'sungrow' && plant.api_credentials ? plant.api_credentials as SungrowConfig : {})
@@ -260,12 +261,22 @@ export const MonitoringSetup = ({ plant, onUpdate }: MonitoringSetupProps) => {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="sg-appkey">App Key</Label>
+                <Label htmlFor="sg-appkey">App Key (Chave da Aplicação)</Label>
                 <Input
                   id="sg-appkey"
                   value={sungrowConfig.appkey}
                   onChange={(e) => setSungrowConfig(prev => ({ ...prev, appkey: e.target.value }))}
                   placeholder="Chave da aplicação"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="sg-accesskey">Access Key Value (Valor da Chave de Acesso)</Label>
+                <Input
+                  id="sg-accesskey"
+                  type="password"
+                  value={sungrowConfig.accessKey}
+                  onChange={(e) => setSungrowConfig(prev => ({ ...prev, accessKey: e.target.value }))}
+                  placeholder="Valor da chave de acesso"
                 />
               </div>
               <div className="space-y-2">

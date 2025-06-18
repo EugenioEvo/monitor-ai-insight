@@ -34,6 +34,7 @@ export interface SungrowConfig {
   username: string;
   password: string;
   appkey: string;
+  accessKey: string;
   plantId: string;
   baseUrl?: string;
   [key: string]: any;

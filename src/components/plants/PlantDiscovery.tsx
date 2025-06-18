@@ -50,6 +50,7 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
     username: '',
     password: '',
     appkey: '',
+    accessKey: '',
     plantId: '',
     baseUrl: 'https://gateway.isolarcloud.com.hk'
   });
@@ -62,7 +63,7 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
     setCurrentStep(1);
     setSystemType('solaredge');
     setSolarEdgeConfig({ apiKey: '', siteId: '', username: '', password: '' });
-    setSungrowConfig({ username: '', password: '', appkey: '', plantId: '', baseUrl: 'https://gateway.isolarcloud.com.hk' });
+    setSungrowConfig({ username: '', password: '', appkey: '', accessKey: '', plantId: '', baseUrl: 'https://gateway.isolarcloud.com.hk' });
     setDiscoveredPlants([]);
     setSelectedPlants([]);
   };
@@ -365,12 +366,22 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="sg-appkey">App Key</Label>
+                      <Label htmlFor="sg-appkey">App Key (Chave da Aplicação)</Label>
                       <Input
                         id="sg-appkey"
                         value={sungrowConfig.appkey}
                         onChange={(e) => setSungrowConfig(prev => ({ ...prev, appkey: e.target.value }))}
                         placeholder="Chave da aplicação"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="sg-accesskey">Access Key Value (Valor da Chave de Acesso)</Label>
+                      <Input
+                        id="sg-accesskey"
+                        type="password"
+                        value={sungrowConfig.accessKey}
+                        onChange={(e) => setSungrowConfig(prev => ({ ...prev, accessKey: e.target.value }))}
+                        placeholder="Valor da chave de acesso"
                       />
                     </div>
                   </div>
