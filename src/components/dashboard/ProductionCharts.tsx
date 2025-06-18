@@ -20,8 +20,8 @@ export const ProductionCharts = ({ plant }: ProductionChartsProps) => {
   const { data: localReadings } = useLocalReadings(plant);
 
   const chartData = React.useMemo(() => {
-    return processChartData(energyData, localReadings);
-  }, [energyData, localReadings]);
+    return processChartData(energyData, localReadings, period);
+  }, [energyData, localReadings, period]);
 
   if (isLoading) {
     return (
