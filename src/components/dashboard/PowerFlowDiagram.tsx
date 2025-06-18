@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,17 +19,40 @@ export const PowerFlowDiagram = ({ plant }: PowerFlowDiagramProps) => {
         return null;
       }
 
+      console.log('Fetching power flow for plant:', plant.id);
+      console.log('Plant config:', {
+        monitoring_system: plant.monitoring_system,
+        api_site_id: plant.api_site_id,
+        has_credentials: !!plant.api_credentials
+      });
+
+      // Use api_site_id from plant if siteId is empty in credentials
+      const config = {
+        ...plant.api_credentials as SolarEdgeConfig,
+        siteId: plant.api_site_id || (plant.api_credentials as SolarEdgeConfig)?.siteId
+      };
+
+      console.log('Using config for power flow:', {
+        hasApiKey: !!config.apiKey,
+        siteId: config.siteId
+      });
+
       const { data, error } = await supabase.functions.invoke('solaredge-connector', {
         body: {
           action: 'get_power_flow',
-          config: plant.api_credentials as SolarEdgeConfig
+          config: config
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase function error:', error);
+        throw error;
+      }
+
+      console.log('Power flow response from SolarEdge:', data);
       return data.success ? data.data : null;
     },
-    enabled: plant.monitoring_system === 'solaredge' && !!plant.api_credentials,
+    enabled: plant.monitoring_system === 'solaredge' && !!plant.api_credentials && (!!plant.api_site_id || !!(plant.api_credentials as SolarEdgeConfig)?.siteId),
     refetchInterval: 30 * 1000 // Atualizar a cada 30 segundos
   });
 
