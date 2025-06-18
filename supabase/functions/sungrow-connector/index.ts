@@ -58,6 +58,13 @@ serve(async (req) => {
     reqSerialNum = generateRequestId();
     
     console.log(`[${reqSerialNum}] Starting request: ${action}`);
+    console.log(`[${reqSerialNum}] Config provided:`, {
+      username: config?.username ? 'present' : 'missing',
+      password: config?.password ? 'present' : 'missing',
+      appkey: config?.appkey ? 'present' : 'missing',
+      accessKey: config?.accessKey ? 'present' : 'missing',
+      baseUrl: config?.baseUrl || 'default'
+    });
     
     // Rate limiting check
     if (rateLimitDelay > 0) {
@@ -181,6 +188,8 @@ async function authenticateWithRetry(config: SungrowConfig, reqSerialNum: string
   }
 
   const baseUrl = config.baseUrl || 'https://gateway.isolarcloud.com.hk';
+  
+  // Corrigir o payload de autenticação
   const authPayload = {
     appkey: config.appkey,
     user_account: config.username,
@@ -188,21 +197,36 @@ async function authenticateWithRetry(config: SungrowConfig, reqSerialNum: string
     lang: 'en_us'
   };
 
+  console.log(`[${reqSerialNum}] Auth payload:`, {
+    appkey: config.appkey ? 'present' : 'missing',
+    user_account: config.username,
+    user_password: config.password ? 'present' : 'missing',
+    lang: 'en_us'
+  });
+
   const response = await fetchWithHeaders(`${baseUrl}/v1/userService/login`, {
     method: 'POST',
     headers: getStandardHeaders(config.accessKey),
     body: JSON.stringify(authPayload)
   });
 
+  console.log(`[${reqSerialNum}] Auth response status: ${response.status}`);
+
   if (!response.ok) {
     const errorText = await response.text();
+    console.error(`[${reqSerialNum}] Auth failed with status ${response.status}: ${errorText}`);
     throw new Error(`Auth failed: ${response.status} - ${errorText}`);
   }
 
   const data: SungrowAuthResponse = await response.json();
+  console.log(`[${reqSerialNum}] Auth response:`, {
+    result_code: data.result_code,
+    result_msg: data.result_msg,
+    has_token: !!data.result_data?.token
+  });
   
   if (data.result_code !== 1) {
-    throw new Error(`Auth failed: ${data.result_msg}`);
+    throw new Error(`Auth failed: ${data.result_msg} (Code: ${data.result_code})`);
   }
 
   // Cache token for 23 hours (86400000ms - 1 hour buffer)
@@ -222,7 +246,11 @@ function getStandardHeaders(accessKey: string): Record<string, string> {
 }
 
 async function fetchWithHeaders(url: string, options: RequestInit): Promise<Response> {
+  console.log(`Making request to: ${url}`);
+  console.log(`Headers:`, JSON.stringify(options.headers, null, 2));
+  
   const response = await fetch(url, options);
+  console.log(`Response status: ${response.status}`);
   
   // Handle specific Sungrow error codes
   if (!response.ok) {
@@ -231,6 +259,12 @@ async function fetchWithHeaders(url: string, options: RequestInit): Promise<Resp
     }
     if (response.status >= 500) {
       throw new Error(`Server error: ${response.status}`);
+    }
+    if (response.status === 401) {
+      throw new Error('Unauthorized access - check credentials');
+    }
+    if (response.status === 403) {
+      throw new Error('Forbidden - check access key');
     }
   }
   
@@ -250,6 +284,7 @@ async function testConnection(config: SungrowConfig, reqSerialNum: string) {
       reqSerialNum
     };
   } catch (error) {
+    console.error(`[${reqSerialNum}] Connection test failed:`, error.message);
     throw new Error(`Connection test failed: ${error.message}`);
   }
 }
@@ -502,7 +537,6 @@ async function getDeviceRealTimeData(config: SungrowConfig, deviceType: string, 
   }
 }
 
-// ... keep existing code (discoverPlants, syncData, getPlantList functions)
 async function discoverPlants(config: SungrowConfig, reqSerialNum?: string) {
   try {
     console.log(`[${reqSerialNum || 'unknown'}] Discovering Sungrow plants...`);
