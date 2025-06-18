@@ -21,7 +21,7 @@ interface SungrowConfig {
 }
 
 interface SungrowAuthResponse {
-  result_code: number;
+  result_code: number | string;
   result_msg: string;
   result_data: {
     token: string;
@@ -187,53 +187,133 @@ async function authenticateWithRetry(config: SungrowConfig, reqSerialNum: string
     throw new Error('Username, password, appkey e accessKey são obrigatórios');
   }
 
-  const baseUrl = config.baseUrl || 'https://gateway.isolarcloud.com.hk';
-  
-  // Corrigir o payload de autenticação
-  const authPayload = {
-    appkey: config.appkey,
-    user_account: config.username,
-    user_password: config.password,
-    lang: 'en_us'
-  };
-
-  console.log(`[${reqSerialNum}] Auth payload:`, {
-    appkey: config.appkey ? 'present' : 'missing',
-    user_account: config.username,
-    user_password: config.password ? 'present' : 'missing',
-    lang: 'en_us'
+  // Debugging avançado das credenciais
+  console.log(`[${reqSerialNum}] Debug credenciais:`, {
+    username_length: config.username?.length || 0,
+    password_length: config.password?.length || 0,
+    appkey_length: config.appkey?.length || 0,
+    accessKey_length: config.accessKey?.length || 0,
+    username_format: config.username?.includes('@') ? 'email' : 'string',
+    has_special_chars: /[^\w@.-]/.test(config.username + config.appkey + config.accessKey)
   });
 
-  const response = await fetchWithHeaders(`${baseUrl}/v1/userService/login`, {
-    method: 'POST',
-    headers: getStandardHeaders(config.accessKey),
-    body: JSON.stringify(authPayload)
-  });
+  // Testar múltiplas URLs base
+  const baseUrls = [
+    config.baseUrl || 'https://gateway.isolarcloud.com.hk',
+    'https://gateway.isolarcloud.com',
+    'https://api.isolarcloud.com.hk',
+    'https://api.isolarcloud.com'
+  ];
 
-  console.log(`[${reqSerialNum}] Auth response status: ${response.status}`);
+  let lastError = null;
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`[${reqSerialNum}] Auth failed with status ${response.status}: ${errorText}`);
-    throw new Error(`Auth failed: ${response.status} - ${errorText}`);
+  for (const baseUrl of baseUrls) {
+    try {
+      console.log(`[${reqSerialNum}] Tentando URL: ${baseUrl}`);
+      
+      // Testar diferentes formatos de payload
+      const payloadVariations = [
+        {
+          appkey: config.appkey,
+          user_account: config.username,
+          user_password: config.password,
+          lang: 'en_us'
+        },
+        {
+          appkey: config.appkey,
+          username: config.username,
+          password: config.password,
+          lang: 'en_us'
+        },
+        {
+          app_key: config.appkey,
+          user_account: config.username,
+          user_password: config.password,
+          lang: 'en_us'
+        }
+      ];
+
+      for (let i = 0; i < payloadVariations.length; i++) {
+        const authPayload = payloadVariations[i];
+        
+        console.log(`[${reqSerialNum}] Tentando payload variação ${i + 1}:`, {
+          ...Object.keys(authPayload).reduce((acc, key) => {
+            acc[key] = key.includes('password') ? 'present' : authPayload[key];
+            return acc;
+          }, {} as any)
+        });
+
+        // Testar diferentes combinações de headers
+        const headerVariations = [
+          {
+            'Content-Type': 'application/json',
+            'x-access-key': config.accessKey,
+            'Accept': 'application/json',
+            'User-Agent': 'Monitor.ai/1.0'
+          },
+          {
+            'Content-Type': 'application/json',
+            'Access-Key': config.accessKey,
+            'Accept': 'application/json',
+            'User-Agent': 'Monitor.ai/1.0'
+          },
+          {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${config.accessKey}`,
+            'Accept': 'application/json',
+            'User-Agent': 'Monitor.ai/1.0'
+          }
+        ];
+
+        for (let j = 0; j < headerVariations.length; j++) {
+          const headers = headerVariations[j];
+          
+          console.log(`[${reqSerialNum}] Tentando headers variação ${j + 1}:`, Object.keys(headers));
+
+          try {
+            const response = await fetchWithHeaders(`${baseUrl}/v1/userService/login`, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify(authPayload)
+            });
+
+            console.log(`[${reqSerialNum}] Auth response status: ${response.status}`);
+
+            if (!response.ok) {
+              const errorText = await response.text();
+              console.error(`[${reqSerialNum}] Auth failed with status ${response.status}: ${errorText}`);
+              continue;
+            }
+
+            const data: SungrowAuthResponse = await response.json();
+            console.log(`[${reqSerialNum}] Auth response:`, {
+              result_code: data.result_code,
+              result_msg: data.result_msg,
+              has_token: !!data.result_data?.token
+            });
+            
+            if (data.result_code === 1 && data.result_data?.token) {
+              // Cache token for 23 hours (86400000ms - 1 hour buffer)
+              setCache(cacheKey, data.result_data.token, 82800000);
+              
+              console.log(`[${reqSerialNum}] Authentication successful with URL: ${baseUrl}, Payload: ${i + 1}, Headers: ${j + 1}`);
+              return data.result_data.token;
+            } else {
+              console.error(`[${reqSerialNum}] Auth failed: ${data.result_msg} (Code: ${data.result_code})`);
+            }
+          } catch (error) {
+            console.error(`[${reqSerialNum}] Request failed:`, error.message);
+            lastError = error;
+          }
+        }
+      }
+    } catch (error) {
+      console.error(`[${reqSerialNum}] URL ${baseUrl} failed:`, error.message);
+      lastError = error;
+    }
   }
 
-  const data: SungrowAuthResponse = await response.json();
-  console.log(`[${reqSerialNum}] Auth response:`, {
-    result_code: data.result_code,
-    result_msg: data.result_msg,
-    has_token: !!data.result_data?.token
-  });
-  
-  if (data.result_code !== 1) {
-    throw new Error(`Auth failed: ${data.result_msg} (Code: ${data.result_code})`);
-  }
-
-  // Cache token for 23 hours (86400000ms - 1 hour buffer)
-  setCache(cacheKey, data.result_data.token, 82800000);
-  
-  console.log(`[${reqSerialNum}] Authentication successful`);
-  return data.result_data.token;
+  throw new Error(`Authentication failed after trying all variations. Last error: ${lastError?.message || 'Unknown error'}`);
 }
 
 function getStandardHeaders(accessKey: string): Record<string, string> {
