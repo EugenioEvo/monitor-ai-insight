@@ -58,25 +58,41 @@ serve(async (req) => {
 
 async function discoverPlants(config: SungrowConfig) {
   try {
+    console.log('Descobrindo plantas Sungrow...');
+    
+    // Validar configuração
+    if (!config.username || !config.password || !config.appkey) {
+      throw new Error('Username, password e appkey são obrigatórios');
+    }
+
     const token = await authenticate(config);
     const baseUrl = config.baseUrl || 'https://gateway.isolarcloud.com.hk';
 
+    console.log('Buscando lista de plantas...');
     const response = await fetch(`${baseUrl}/v1/stationService/getStationList`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'token': token
+        'token': token,
+        'x-access-key': config.appkey, // Header adicional necessário
+        'Accept': 'application/json',
+        'User-Agent': 'Monitor.ai/1.0'
       },
       body: JSON.stringify({
         lang: 'en_us'
       })
     });
 
+    console.log(`Status da resposta: ${response.status}`);
+
     if (!response.ok) {
-      throw new Error(`Erro na API: ${response.status}`);
+      const errorText = await response.text();
+      console.error(`Erro na API Sungrow: ${response.status} - ${errorText}`);
+      throw new Error(`Erro na API: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
+    console.log('Resposta da API:', data);
     
     if (data.result_code !== 1) {
       throw new Error(`Erro: ${data.result_msg}`);
@@ -86,10 +102,12 @@ async function discoverPlants(config: SungrowConfig) {
       id: station.ps_id.toString(),
       name: station.ps_name,
       capacity: station.nominal_power,
-      location: `${station.ps_location_lat}, ${station.ps_location_lng}`,
+      location: `${station.ps_location_lat || 'N/A'}, ${station.ps_location_lng || 'N/A'}`,
       status: station.ps_status === 1 ? 'Active' : 'Inactive',
       installationDate: station.create_date
     })) || [];
+
+    console.log(`${plants.length} plantas encontradas`);
 
     return new Response(
       JSON.stringify({ 
@@ -99,6 +117,7 @@ async function discoverPlants(config: SungrowConfig) {
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
+    console.error('Erro ao descobrir plantas:', error);
     return new Response(
       JSON.stringify({ 
         success: false, 
@@ -110,6 +129,13 @@ async function discoverPlants(config: SungrowConfig) {
 }
 
 async function authenticate(config: SungrowConfig): Promise<string> {
+  console.log('Autenticando com Sungrow...');
+  
+  // Validar configuração
+  if (!config.username || !config.password || !config.appkey) {
+    throw new Error('Username, password e appkey são obrigatórios');
+  }
+
   const baseUrl = config.baseUrl || 'https://gateway.isolarcloud.com.hk';
   
   const authPayload = {
@@ -119,19 +145,29 @@ async function authenticate(config: SungrowConfig): Promise<string> {
     lang: 'en_us'
   };
 
+  console.log('Payload de autenticação:', { ...authPayload, user_password: '***' });
+
   const response = await fetch(`${baseUrl}/v1/userService/login`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'x-access-key': config.appkey, // Header necessário para autenticação
+      'Accept': 'application/json',
+      'User-Agent': 'Monitor.ai/1.0'
     },
     body: JSON.stringify(authPayload)
   });
 
+  console.log(`Status da autenticação: ${response.status}`);
+
   if (!response.ok) {
-    throw new Error(`Erro de autenticação: ${response.status}`);
+    const errorText = await response.text();
+    console.error(`Erro de autenticação: ${response.status} - ${errorText}`);
+    throw new Error(`Erro de autenticação: ${response.status} - ${errorText}`);
   }
 
   const data: SungrowAuthResponse = await response.json();
+  console.log('Resposta da autenticação:', { ...data, result_data: data.result_data ? { ...data.result_data, token: '***' } : null });
   
   if (data.result_code !== 1) {
     throw new Error(`Falha na autenticação: ${data.result_msg}`);
@@ -142,6 +178,13 @@ async function authenticate(config: SungrowConfig): Promise<string> {
 
 async function testConnection(config: SungrowConfig) {
   try {
+    console.log('Testando conexão Sungrow...');
+    
+    // Validar configuração
+    if (!config.username || !config.password || !config.appkey) {
+      throw new Error('Username, password e appkey são obrigatórios');
+    }
+
     const token = await authenticate(config);
     
     return new Response(
@@ -153,6 +196,7 @@ async function testConnection(config: SungrowConfig) {
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
+    console.error('Erro no teste de conexão:', error);
     return new Response(
       JSON.stringify({ 
         success: false, 
@@ -202,7 +246,8 @@ async function syncData(plantId: string) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'token': token
+        'token': token,
+        'x-access-key': config.appkey
       },
       body: JSON.stringify(energyPayload)
     });
@@ -227,7 +272,8 @@ async function syncData(plantId: string) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'token': token
+        'token': token,
+        'x-access-key': config.appkey
       },
       body: JSON.stringify(powerPayload)
     });
@@ -332,7 +378,8 @@ async function getPlantList(config: SungrowConfig) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'token': token
+        'token': token,
+        'x-access-key': config.appkey
       },
       body: JSON.stringify({
         lang: 'en_us'

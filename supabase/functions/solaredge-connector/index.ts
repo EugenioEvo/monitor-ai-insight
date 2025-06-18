@@ -56,18 +56,42 @@ serve(async (req) => {
 
 async function discoverPlants(config: SolarEdgeConfig) {
   try {
+    console.log('Descobrindo plantas SolarEdge...');
+    
+    // Validar configuração
+    if (!config.apiKey) {
+      throw new Error('API Key é obrigatória');
+    }
+
     // Se um siteId específico foi fornecido, buscar apenas esse site
     if (config.siteId) {
+      console.log(`Buscando site específico: ${config.siteId}`);
       const response = await fetch(
         `https://monitoringapi.solaredge.com/site/${config.siteId}/details?api_key=${config.apiKey}`,
-        { method: 'GET' }
+        { 
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'User-Agent': 'Monitor.ai/1.0'
+          }
+        }
       );
 
+      console.log(`Status da resposta: ${response.status}`);
+      
       if (!response.ok) {
-        throw new Error(`API Error: ${response.status}`);
+        const errorText = await response.text();
+        console.error(`Erro da API SolarEdge: ${response.status} - ${errorText}`);
+        throw new Error(`API Error: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json();
+      console.log('Dados do site:', data);
+      
+      if (!data.details) {
+        throw new Error('Dados do site não encontrados');
+      }
+      
       const site = data.details;
       
       return new Response(
@@ -77,7 +101,7 @@ async function discoverPlants(config: SolarEdgeConfig) {
             id: site.id.toString(),
             name: site.name,
             capacity: site.peakPower,
-            location: `${site.location.city}, ${site.location.country}`,
+            location: `${site.location?.city || 'N/A'}, ${site.location?.country || 'N/A'}`,
             status: site.status,
             installationDate: site.installationDate
           }]
@@ -87,24 +111,39 @@ async function discoverPlants(config: SolarEdgeConfig) {
     }
 
     // Caso contrário, buscar lista de sites da conta
+    console.log('Buscando lista de sites...');
     const response = await fetch(
       `https://monitoringapi.solaredge.com/sites/list?api_key=${config.apiKey}`,
-      { method: 'GET' }
+      { 
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Monitor.ai/1.0'
+        }
+      }
     );
 
+    console.log(`Status da resposta: ${response.status}`);
+
     if (!response.ok) {
-      throw new Error(`API Error: ${response.status}`);
+      const errorText = await response.text();
+      console.error(`Erro da API SolarEdge: ${response.status} - ${errorText}`);
+      throw new Error(`API Error: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
+    console.log('Lista de sites:', data);
+    
     const plants = data.sites?.site?.map((site: any) => ({
       id: site.id.toString(),
       name: site.name,
       capacity: site.peakPower,
-      location: `${site.location.city}, ${site.location.country}`,
+      location: `${site.location?.city || 'N/A'}, ${site.location?.country || 'N/A'}`,
       status: site.status,
       installationDate: site.installationDate
     })) || [];
+    
+    console.log(`${plants.length} plantas encontradas`);
     
     return new Response(
       JSON.stringify({ 
@@ -114,6 +153,7 @@ async function discoverPlants(config: SolarEdgeConfig) {
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
+    console.error('Erro ao descobrir plantas:', error);
     return new Response(
       JSON.stringify({ 
         success: false, 
@@ -126,13 +166,61 @@ async function discoverPlants(config: SolarEdgeConfig) {
 
 async function testConnection(config: SolarEdgeConfig) {
   try {
+    console.log('Testando conexão SolarEdge...');
+    
+    // Validar configuração
+    if (!config.apiKey) {
+      throw new Error('API Key é obrigatória');
+    }
+
+    // Se não tiver siteId, tentar buscar a lista primeiro
+    if (!config.siteId) {
+      console.log('Site ID não fornecido, buscando lista de sites...');
+      const response = await fetch(
+        `https://monitoringapi.solaredge.com/sites/list?api_key=${config.apiKey}`,
+        { 
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'User-Agent': 'Monitor.ai/1.0'
+          }
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Erro da API SolarEdge: ${response.status} - ${errorText}`);
+        throw new Error(`API Key inválida ou sem permissão: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const siteCount = data.sites?.count || 0;
+      
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          message: `Conexão estabelecida com sucesso! Encontrados ${siteCount} sites na conta.`
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Testar com site específico
     const response = await fetch(
       `https://monitoringapi.solaredge.com/site/${config.siteId}/details?api_key=${config.apiKey}`,
-      { method: 'GET' }
+      { 
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Monitor.ai/1.0'
+        }
+      }
     );
 
     if (!response.ok) {
-      throw new Error(`API Error: ${response.status}`);
+      const errorText = await response.text();
+      console.error(`Erro da API SolarEdge: ${response.status} - ${errorText}`);
+      throw new Error(`Site ID inválido ou sem permissão: ${response.status}`);
     }
 
     const data = await response.json();
@@ -140,12 +228,13 @@ async function testConnection(config: SolarEdgeConfig) {
     return new Response(
       JSON.stringify({ 
         success: true, 
-        message: 'Conexão estabelecida com sucesso',
+        message: `Conexão estabelecida com sucesso com o site: ${data.details?.name || config.siteId}`,
         siteDetails: data.details 
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
+    console.error('Erro no teste de conexão:', error);
     return new Response(
       JSON.stringify({ 
         success: false, 
