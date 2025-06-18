@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,8 +13,8 @@ interface EquipmentStatusProps {
 }
 
 export const EquipmentStatus = ({ plant }: EquipmentStatusProps) => {
-  const { data: equipment, isLoading } = useQuery({
-    queryKey: ['equipment', plant.id],
+  const { data: equipment, isLoading, error } = useQuery({
+    queryKey: ['equipment', plant.id, plant.monitoring_system, plant.api_site_id],
     queryFn: async () => {
       if (plant.monitoring_system !== 'solaredge' || !plant.api_credentials) {
         return null;
@@ -52,7 +53,9 @@ export const EquipmentStatus = ({ plant }: EquipmentStatusProps) => {
       console.log('Equipment response from SolarEdge:', data);
       return data.success ? data.data : null;
     },
-    enabled: plant.monitoring_system === 'solaredge' && !!plant.api_credentials && (!!plant.api_site_id || !!(plant.api_credentials as SolarEdgeConfig)?.siteId)
+    enabled: plant.monitoring_system === 'solaredge' && !!plant.api_credentials && (!!plant.api_site_id || !!(plant.api_credentials as SolarEdgeConfig)?.siteId),
+    refetchInterval: 5 * 60 * 1000, // Refetch every 5 minutes
+    staleTime: 2 * 60 * 1000, // Consider data stale after 2 minutes
   });
 
   const getStatusIcon = (status: string) => {
@@ -105,6 +108,32 @@ export const EquipmentStatus = ({ plant }: EquipmentStatusProps) => {
     );
   }
 
+  if (error) {
+    console.error('Equipment query error:', error);
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Settings className="w-5 h-5" />
+            Status dos Equipamentos
+          </CardTitle>
+          <CardDescription>
+            Erro ao carregar informações dos equipamentos
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-center h-32 text-muted-foreground">
+            <div className="text-center">
+              <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-red-500" />
+              <p>Erro ao carregar equipamentos</p>
+              <p className="text-sm mt-2">{error.message}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   if (!equipment) {
     return (
       <Card>
@@ -149,18 +178,18 @@ export const EquipmentStatus = ({ plant }: EquipmentStatusProps) => {
           <CardContent>
             <div className="space-y-4">
               {equipment.inverters.map((inverter: any, index: number) => (
-                <div key={inverter.serialNumber || index} className="border rounded-lg p-4">
+                <div key={inverter.serialNumber || inverter.SN || index} className="border rounded-lg p-4">
                   <div className="flex justify-between items-start mb-3">
                     <div>
                       <h4 className="font-medium flex items-center gap-2">
-                        {getStatusIcon(inverter.status)}
+                        {getStatusIcon('active')}
                         {inverter.name || `Inversor ${index + 1}`}
                       </h4>
                       <p className="text-sm text-muted-foreground">
-                        S/N: {inverter.serialNumber || 'N/A'}
+                        S/N: {inverter.serialNumber || inverter.SN || 'N/A'}
                       </p>
                     </div>
-                    {getStatusBadge(inverter.status)}
+                    {getStatusBadge('active')}
                   </div>
                   
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
@@ -173,16 +202,25 @@ export const EquipmentStatus = ({ plant }: EquipmentStatusProps) => {
                       <div className="font-medium">{inverter.manufacturer || 'N/A'}</div>
                     </div>
                     <div>
-                      <div className="text-muted-foreground">Potência Nominal</div>
-                      <div className="font-medium">{inverter.ratedPower || 'N/A'} W</div>
-                    </div>
-                    <div>
                       <div className="text-muted-foreground">Comunicação</div>
                       <div className="font-medium">
                         {inverter.communicationMethod || 'N/A'}
                       </div>
                     </div>
+                    <div>
+                      <div className="text-muted-foreground">Otimizadores</div>
+                      <div className="font-medium">{inverter.connectedOptimizers || 'N/A'}</div>
+                    </div>
                   </div>
+                  
+                  {inverter.cpuVersion && (
+                    <div className="mt-3 pt-3 border-t">
+                      <div className="text-sm">
+                        <span className="text-muted-foreground">Versão CPU: </span>
+                        <span className="font-medium">{inverter.cpuVersion}</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -205,16 +243,16 @@ export const EquipmentStatus = ({ plant }: EquipmentStatusProps) => {
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {equipment.optimizers.slice(0, 12).map((optimizer: any, index: number) => (
-                <div key={optimizer.serialNumber || index} className="border rounded-lg p-3">
+                <div key={optimizer.serialNumber || optimizer.SN || index} className="border rounded-lg p-3">
                   <div className="flex justify-between items-center mb-2">
                     <div className="font-medium flex items-center gap-2">
-                      {getStatusIcon(optimizer.status)}
+                      {getStatusIcon(optimizer.status || 'active')}
                       Opt. {index + 1}
                     </div>
-                    {getStatusBadge(optimizer.status)}
+                    {getStatusBadge(optimizer.status || 'active')}
                   </div>
                   <div className="text-sm space-y-1">
-                    <div>S/N: {optimizer.serialNumber || 'N/A'}</div>
+                    <div>S/N: {optimizer.serialNumber || optimizer.SN || 'N/A'}</div>
                     <div>Modelo: {optimizer.model || 'N/A'}</div>
                   </div>
                 </div>
@@ -244,18 +282,18 @@ export const EquipmentStatus = ({ plant }: EquipmentStatusProps) => {
           <CardContent>
             <div className="space-y-4">
               {equipment.meters.map((meter: any, index: number) => (
-                <div key={meter.serialNumber || index} className="border rounded-lg p-4">
+                <div key={meter.serialNumber || meter.SN || index} className="border rounded-lg p-4">
                   <div className="flex justify-between items-start mb-3">
                     <div>
                       <h4 className="font-medium flex items-center gap-2">
-                        {getStatusIcon(meter.status)}
+                        {getStatusIcon(meter.status || 'active')}
                         {meter.name || `Medidor ${index + 1}`}
                       </h4>
                       <p className="text-sm text-muted-foreground">
-                        S/N: {meter.serialNumber || 'N/A'}
+                        S/N: {meter.serialNumber || meter.SN || 'N/A'}
                       </p>
                     </div>
-                    {getStatusBadge(meter.status)}
+                    {getStatusBadge(meter.status || 'active')}
                   </div>
                   
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
