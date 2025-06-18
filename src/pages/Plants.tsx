@@ -1,11 +1,12 @@
 
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { MapPin, Zap, Calendar, Settings, Activity, AlertCircle } from 'lucide-react';
+import { MapPin, Zap, Calendar, Settings, Activity, AlertCircle, BarChart3 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { MonitoringSetup } from '@/components/plants/MonitoringSetup';
 import { PlantDiscovery } from '@/components/plants/PlantDiscovery';
@@ -13,6 +14,7 @@ import type { Plant } from '@/types';
 
 export default function Plants() {
   const [selectedPlant, setSelectedPlant] = useState<Plant | null>(null);
+  const navigate = useNavigate();
 
   const { data: plants, isLoading, refetch } = useQuery({
     queryKey: ['plants'],
@@ -47,7 +49,6 @@ export default function Plants() {
 
   const getStatusBadge = (plant: Plant) => {
     const status = plant.status;
-    const monitoringSystem = plant.monitoring_system || 'manual';
     
     if (status === 'active') {
       return <Badge variant="default">Ativa</Badge>;
@@ -111,7 +112,7 @@ export default function Plants() {
                     <CardTitle className="text-lg">{plant.name}</CardTitle>
                     {getStatusBadge(plant)}
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
                     {getMonitoringBadge(plant)}
                     <Badge variant="outline">
                       <Zap className="w-3 h-3 mr-1" />
@@ -127,6 +128,20 @@ export default function Plants() {
                   <div className="flex items-center text-sm text-muted-foreground mt-1">
                     <Calendar className="w-4 h-4 mr-1" />
                     Desde {new Date(plant.start_date).toLocaleDateString('pt-BR')}
+                  </div>
+                  <div className="mt-3 pt-3 border-t">
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      className="w-full"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/plants/${plant.id}/dashboard`);
+                      }}
+                    >
+                      <BarChart3 className="w-4 h-4 mr-2" />
+                      Abrir Dashboard
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
@@ -213,7 +228,7 @@ export default function Plants() {
                   <Settings className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
                   <h3 className="text-lg font-medium mb-2">Selecione uma planta</h3>
                   <p className="text-muted-foreground">
-                    Escolha uma planta na lista ao lado para configurar o monitoramento
+                    Escolha uma planta na lista ao lado para configurar o monitoramento ou abrir o dashboard completo
                   </p>
                 </div>
               </CardContent>
