@@ -1,5 +1,5 @@
 
-import { Calendar, Home, Zap, FileText, Wrench, AlertTriangle, BarChart3, MessageSquare, Settings } from "lucide-react";
+import { Calendar, Home, Zap, FileText, Wrench, AlertTriangle, BarChart3, MessageSquare, Settings, Bot } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import {
   Sidebar,
@@ -53,6 +53,21 @@ const menuItems = [
   }
 ];
 
+const aiMenuItems = [
+  {
+    title: "Chat Solar",
+    url: "/chat",
+    icon: MessageSquare,
+    badge: null
+  },
+  {
+    title: "Agentes IA",
+    url: "/agents",
+    icon: Bot,
+    badge: "4"
+  }
+];
+
 export function AppSidebar() {
   const location = useLocation();
 
@@ -102,19 +117,33 @@ export function AppSidebar() {
 
         <SidebarGroup className="mt-8">
           <SidebarGroupLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-            Assistente IA
+            Inteligência Artificial
           </SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild className="hover:bg-accent hover:text-accent-foreground transition-colors">
-                  <Link to="/chat" className="flex items-center gap-3 px-3 py-2 rounded-lg">
-                    <MessageSquare className="w-4 h-4" />
-                    <span className="font-medium">Chat Solar</span>
-                    <span className="ml-auto w-2 h-2 bg-green-500 rounded-full"></span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
+            <SidebarMenu className="space-y-1">
+              {aiMenuItems.map((item) => (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton 
+                    asChild 
+                    className={`hover:bg-accent hover:text-accent-foreground transition-colors ${
+                      location.pathname === item.url ? 'bg-accent text-accent-foreground' : ''
+                    }`}
+                  >
+                    <Link to={item.url} className="flex items-center gap-3 px-3 py-2 rounded-lg">
+                      <item.icon className="w-4 h-4" />
+                      <span className="font-medium">{item.title}</span>
+                      {item.badge && (
+                        <span className="ml-auto bg-green-100 text-green-800 text-xs font-medium px-2 py-0.5 rounded-full">
+                          {item.badge}
+                        </span>
+                      )}
+                      {item.title === "Chat Solar" && (
+                        <span className="ml-auto w-2 h-2 bg-green-500 rounded-full"></span>
+                      )}
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

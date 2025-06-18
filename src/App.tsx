@@ -9,6 +9,7 @@ import { AppSidebar } from "@/components/layout/AppSidebar";
 import Dashboard from "./pages/Dashboard";
 import Invoices from "./pages/Invoices";
 import Chat from "./pages/Chat";
+import Agents from "./pages/Agents";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -39,6 +40,7 @@ const App = () => (
                   <Route path="/" element={<Dashboard />} />
                   <Route path="/invoices" element={<Invoices />} />
                   <Route path="/chat" element={<Chat />} />
+                  <Route path="/agents" element={<Agents />} />
                   <Route path="*" element={<NotFound />} />
                 </Routes>
               </div>
