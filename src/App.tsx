@@ -8,6 +8,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import Dashboard from "./pages/Dashboard";
 import Invoices from "./pages/Invoices";
+import Plants from "./pages/Plants";
 import Chat from "./pages/Chat";
 import Agents from "./pages/Agents";
 import NotFound from "./pages/NotFound";
@@ -38,6 +39,7 @@ const App = () => (
               <div className="p-6">
                 <Routes>
                   <Route path="/" element={<Dashboard />} />
+                  <Route path="/plants" element={<Plants />} />
                   <Route path="/invoices" element={<Invoices />} />
                   <Route path="/chat" element={<Chat />} />
                   <Route path="/agents" element={<Agents />} />
