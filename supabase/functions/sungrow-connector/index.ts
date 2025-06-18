@@ -16,6 +16,7 @@ interface SungrowConfig {
   password: string;
   appkey: string;
   baseUrl?: string;
+  plantId?: string;
 }
 
 interface SungrowAuthResponse {
@@ -27,75 +28,507 @@ interface SungrowAuthResponse {
   };
 }
 
+interface ApiCache {
+  [key: string]: {
+    data: any;
+    timestamp: number;
+    ttl: number;
+  };
+}
+
+// Cache em memória com TTL configurável
+const apiCache: ApiCache = {};
+
+// Rate limiting com exponential backoff
+let rateLimitDelay = 0;
+const MAX_DELAY = 300000; // 5 minutos
+const BASE_DELAY = 60000; // 1 minuto
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const startTime = Date.now();
+  let reqSerialNum = '';
+
   try {
-    const { action, plantId, config } = await req.json();
+    const { action, plantId, config, period, deviceType, cacheKey } = await req.json();
+    reqSerialNum = generateRequestId();
+    
+    console.log(`[${reqSerialNum}] Starting request: ${action}`);
+    
+    // Rate limiting check
+    if (rateLimitDelay > 0) {
+      console.log(`[${reqSerialNum}] Rate limited, waiting ${rateLimitDelay}ms`);
+      await new Promise(resolve => setTimeout(resolve, rateLimitDelay));
+    }
+    
+    let result;
+    let rowCount = 0;
     
     switch (action) {
       case 'test_connection':
-        return await testConnection(config);
+        result = await testConnection(config, reqSerialNum);
+        break;
       case 'sync_data':
-        return await syncData(plantId);
+        result = await syncData(plantId, reqSerialNum);
+        break;
       case 'get_plant_list':
-        return await getPlantList(config);
+        result = await getPlantList(config, reqSerialNum);
+        break;
       case 'discover_plants':
-        return await discoverPlants(config);
+        result = await discoverPlants(config, reqSerialNum);
+        break;
+      case 'get_device_list':
+        result = await getDeviceList(config, reqSerialNum);
+        break;
+      case 'get_station_real_kpi':
+        result = await getStationRealKpi(config, reqSerialNum, cacheKey);
+        break;
+      case 'get_station_energy':
+        result = await getStationEnergy(config, period || 'day', reqSerialNum, cacheKey);
+        break;
+      case 'get_device_real_time_data':
+        result = await getDeviceRealTimeData(config, deviceType, reqSerialNum, cacheKey);
+        break;
       default:
-        throw new Error('Ação não suportada');
+        throw new Error(`Ação não suportada: ${action}`);
     }
-  } catch (error) {
-    console.error('Erro no Sungrow connector:', error);
+
+    // Reset rate limit on success
+    rateLimitDelay = 0;
+    
+    const duration = Date.now() - startTime;
+    if (result.data && Array.isArray(result.data)) {
+      rowCount = result.data.length;
+    } else if (result.success) {
+      rowCount = 1;
+    }
+
+    console.log(`[${reqSerialNum}] Success: ${action}, duration: ${duration}ms, rows: ${rowCount}`);
+    
     return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify(result),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    
+    // Handle rate limiting with exponential backoff
+    if (error.message.includes('429') || error.message.includes('000110')) {
+      rateLimitDelay = Math.min(rateLimitDelay === 0 ? BASE_DELAY : rateLimitDelay * 2, MAX_DELAY);
+      console.error(`[${reqSerialNum}] Rate limited, next delay: ${rateLimitDelay}ms`);
+    }
+    
+    console.error(`[${reqSerialNum}] Error: ${error.message}, duration: ${duration}ms`);
+    
+    return new Response(
+      JSON.stringify({ 
+        success: false,
+        error: error.message,
+        reqSerialNum 
+      }),
+      { status: error.message.includes('429') ? 429 : 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
 
-async function discoverPlants(config: SungrowConfig) {
-  try {
-    console.log('Descobrindo plantas Sungrow...');
-    
-    // Validar configuração
-    if (!config.username || !config.password || !config.appkey) {
-      throw new Error('Username, password e appkey são obrigatórios');
-    }
+function generateRequestId(): string {
+  return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
 
-    const token = await authenticate(config);
+function getCacheKey(endpoint: string, params: any): string {
+  return `${endpoint}_${JSON.stringify(params)}`;
+}
+
+function getFromCache(key: string): any | null {
+  const cached = apiCache[key];
+  if (!cached) return null;
+  
+  if (Date.now() - cached.timestamp > cached.ttl) {
+    delete apiCache[key];
+    return null;
+  }
+  
+  return cached.data;
+}
+
+function setCache(key: string, data: any, ttlMs: number): void {
+  apiCache[key] = {
+    data,
+    timestamp: Date.now(),
+    ttl: ttlMs
+  };
+}
+
+async function authenticateWithRetry(config: SungrowConfig, reqSerialNum: string): Promise<string> {
+  const cacheKey = `auth_${config.username}_${config.appkey}`;
+  
+  // Check cache first (TTL 23 hours to avoid expiration issues)
+  const cachedToken = getFromCache(cacheKey);
+  if (cachedToken) {
+    console.log(`[${reqSerialNum}] Using cached token`);
+    return cachedToken;
+  }
+  
+  console.log(`[${reqSerialNum}] Authenticating with Sungrow...`);
+  
+  if (!config.username || !config.password || !config.appkey) {
+    throw new Error('Username, password e appkey são obrigatórios');
+  }
+
+  const baseUrl = config.baseUrl || 'https://gateway.isolarcloud.com.hk';
+  const authPayload = {
+    appkey: config.appkey,
+    user_account: config.username,
+    user_password: config.password,
+    lang: 'en_us'
+  };
+
+  const response = await fetchWithHeaders(`${baseUrl}/v1/userService/login`, {
+    method: 'POST',
+    headers: getStandardHeaders(config.appkey),
+    body: JSON.stringify(authPayload)
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Auth failed: ${response.status} - ${errorText}`);
+  }
+
+  const data: SungrowAuthResponse = await response.json();
+  
+  if (data.result_code !== 1) {
+    throw new Error(`Auth failed: ${data.result_msg}`);
+  }
+
+  // Cache token for 23 hours (86400000ms - 1 hour buffer)
+  setCache(cacheKey, data.result_data.token, 82800000);
+  
+  console.log(`[${reqSerialNum}] Authentication successful`);
+  return data.result_data.token;
+}
+
+function getStandardHeaders(appkey: string): Record<string, string> {
+  return {
+    'Content-Type': 'application/json',
+    'x-access-key': appkey,
+    'Accept': 'application/json',
+    'User-Agent': 'Monitor.ai/1.0'
+  };
+}
+
+async function fetchWithHeaders(url: string, options: RequestInit): Promise<Response> {
+  const response = await fetch(url, options);
+  
+  // Handle specific Sungrow error codes
+  if (!response.ok) {
+    if (response.status === 429) {
+      throw new Error('Rate limit exceeded (429)');
+    }
+    if (response.status >= 500) {
+      throw new Error(`Server error: ${response.status}`);
+    }
+  }
+  
+  return response;
+}
+
+async function testConnection(config: SungrowConfig, reqSerialNum: string) {
+  try {
+    console.log(`[${reqSerialNum}] Testing Sungrow connection...`);
+    
+    const token = await authenticateWithRetry(config, reqSerialNum);
+    
+    return {
+      success: true,
+      message: 'Conexão estabelecida com sucesso',
+      token: token.substring(0, 10) + '...',
+      reqSerialNum
+    };
+  } catch (error) {
+    throw new Error(`Connection test failed: ${error.message}`);
+  }
+}
+
+async function getDeviceList(config: SungrowConfig, reqSerialNum: string) {
+  try {
+    console.log(`[${reqSerialNum}] Fetching device list...`);
+    
+    const cacheKey = getCacheKey('device_list', { appkey: config.appkey, plantId: config.plantId });
+    const cached = getFromCache(cacheKey);
+    if (cached) {
+      console.log(`[${reqSerialNum}] Using cached device list`);
+      return { success: true, data: cached, cached: true };
+    }
+    
+    const token = await authenticateWithRetry(config, reqSerialNum);
     const baseUrl = config.baseUrl || 'https://gateway.isolarcloud.com.hk';
 
-    console.log('Buscando lista de plantas...');
-    const response = await fetch(`${baseUrl}/v1/stationService/getStationList`, {
+    const payload = {
+      ps_id: config.plantId,
+      lang: 'en_us'
+    };
+
+    const response = await fetchWithHeaders(`${baseUrl}/v1/stationService/getDeviceList`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'token': token,
-        'x-access-key': config.appkey, // Header adicional necessário
-        'Accept': 'application/json',
-        'User-Agent': 'Monitor.ai/1.0'
+        ...getStandardHeaders(config.appkey),
+        'token': token
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      throw new Error(`API Error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    if (data.result_code !== 1) {
+      throw new Error(`API Error: ${data.result_msg}`);
+    }
+
+    // Cache for 10 minutes (devices don't change frequently)
+    setCache(cacheKey, data.result_data, 600000);
+
+    console.log(`[${reqSerialNum}] Device list fetched: ${data.result_data?.length || 0} devices`);
+
+    return {
+      success: true,
+      data: data.result_data,
+      reqSerialNum
+    };
+  } catch (error) {
+    throw new Error(`Failed to fetch device list: ${error.message}`);
+  }
+}
+
+async function getStationRealKpi(config: SungrowConfig, reqSerialNum: string, cacheKey?: string) {
+  try {
+    console.log(`[${reqSerialNum}] Fetching station real-time KPIs...`);
+    
+    const key = cacheKey || getCacheKey('station_real_kpi', { appkey: config.appkey, plantId: config.plantId });
+    const cached = getFromCache(key);
+    if (cached) {
+      console.log(`[${reqSerialNum}] Using cached KPI data`);
+      return { success: true, data: cached, cached: true };
+    }
+    
+    const token = await authenticateWithRetry(config, reqSerialNum);
+    const baseUrl = config.baseUrl || 'https://gateway.isolarcloud.com.hk';
+
+    const payload = {
+      ps_id: config.plantId,
+      lang: 'en_us'
+    };
+
+    const response = await fetchWithHeaders(`${baseUrl}/v1/reportService/getStationRealKpi`, {
+      method: 'POST',
+      headers: {
+        ...getStandardHeaders(config.appkey),
+        'token': token
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      throw new Error(`API Error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    if (data.result_code !== 1) {
+      throw new Error(`API Error: ${data.result_msg}`);
+    }
+
+    // Cache for 5 minutes (real-time data)
+    setCache(key, data.result_data, 300000);
+
+    console.log(`[${reqSerialNum}] Real-time KPIs fetched successfully`);
+
+    return {
+      success: true,
+      data: data.result_data,
+      reqSerialNum
+    };
+  } catch (error) {
+    throw new Error(`Failed to fetch station KPIs: ${error.message}`);
+  }
+}
+
+async function getStationEnergy(config: SungrowConfig, period: string, reqSerialNum: string, cacheKey?: string) {
+  try {
+    console.log(`[${reqSerialNum}] Fetching station energy for period: ${period}`);
+    
+    const key = cacheKey || getCacheKey('station_energy', { appkey: config.appkey, plantId: config.plantId, period });
+    const cached = getFromCache(key);
+    if (cached) {
+      console.log(`[${reqSerialNum}] Using cached energy data`);
+      return { success: true, data: cached, cached: true };
+    }
+    
+    const token = await authenticateWithRetry(config, reqSerialNum);
+    const baseUrl = config.baseUrl || 'https://gateway.isolarcloud.com.hk';
+
+    // Calculate date range based on period
+    const today = new Date();
+    let startDate: string;
+    let endDate: string;
+    let dateType: number;
+
+    switch (period) {
+      case 'day':
+        startDate = today.toISOString().split('T')[0].replace(/-/g, '');
+        endDate = startDate;
+        dateType = 1; // Daily
+        break;
+      case 'month':
+        startDate = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}01`;
+        endDate = today.toISOString().split('T')[0].replace(/-/g, '');
+        dateType = 2; // Monthly
+        break;
+      case 'year':
+        startDate = `${today.getFullYear()}0101`;
+        endDate = today.toISOString().split('T')[0].replace(/-/g, '');
+        dateType = 3; // Yearly
+        break;
+      default:
+        throw new Error(`Unsupported period: ${period}`);
+    }
+
+    const payload = {
+      ps_id: config.plantId,
+      start_time: startDate,
+      end_time: endDate,
+      date_type: dateType,
+      lang: 'en_us'
+    };
+
+    const response = await fetchWithHeaders(`${baseUrl}/v1/reportService/getStationEnergy`, {
+      method: 'POST',
+      headers: {
+        ...getStandardHeaders(config.appkey),
+        'token': token
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      throw new Error(`API Error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    if (data.result_code !== 1) {
+      throw new Error(`API Error: ${data.result_msg}`);
+    }
+
+    // Cache for different TTLs based on period
+    const cacheTtl = period === 'day' ? 300000 : // 5 minutes for daily
+                     period === 'month' ? 1800000 : // 30 minutes for monthly
+                     3600000; // 1 hour for yearly
+    
+    setCache(key, data.result_data, cacheTtl);
+
+    console.log(`[${reqSerialNum}] Station energy fetched: ${data.result_data?.length || 0} records`);
+
+    return {
+      success: true,
+      data: data.result_data,
+      period,
+      reqSerialNum
+    };
+  } catch (error) {
+    throw new Error(`Failed to fetch station energy: ${error.message}`);
+  }
+}
+
+async function getDeviceRealTimeData(config: SungrowConfig, deviceType: string, reqSerialNum: string, cacheKey?: string) {
+  try {
+    console.log(`[${reqSerialNum}] Fetching device real-time data for type: ${deviceType}`);
+    
+    const key = cacheKey || getCacheKey('device_realtime', { appkey: config.appkey, plantId: config.plantId, deviceType });
+    const cached = getFromCache(key);
+    if (cached) {
+      console.log(`[${reqSerialNum}] Using cached device real-time data`);
+      return { success: true, data: cached, cached: true };
+    }
+    
+    const token = await authenticateWithRetry(config, reqSerialNum);
+    const baseUrl = config.baseUrl || 'https://gateway.isolarcloud.com.hk';
+
+    const payload = {
+      ps_id: config.plantId,
+      device_type: deviceType || 1, // 1 for inverter, 7 for optimizer, etc.
+      lang: 'en_us'
+    };
+
+    const response = await fetchWithHeaders(`${baseUrl}/v1/reportService/getDeviceRealTimeData`, {
+      method: 'POST',
+      headers: {
+        ...getStandardHeaders(config.appkey),
+        'token': token
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      throw new Error(`API Error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    if (data.result_code !== 1) {
+      throw new Error(`API Error: ${data.result_msg}`);
+    }
+
+    // Cache for 2 minutes (very fresh real-time data)
+    setCache(key, data.result_data, 120000);
+
+    console.log(`[${reqSerialNum}] Device real-time data fetched: ${data.result_data?.length || 0} devices`);
+
+    return {
+      success: true,
+      data: data.result_data,
+      deviceType,
+      reqSerialNum
+    };
+  } catch (error) {
+    throw new Error(`Failed to fetch device real-time data: ${error.message}`);
+  }
+}
+
+// ... keep existing code (discoverPlants, syncData, getPlantList functions)
+async function discoverPlants(config: SungrowConfig, reqSerialNum?: string) {
+  try {
+    console.log(`[${reqSerialNum || 'unknown'}] Discovering Sungrow plants...`);
+    
+    const token = await authenticateWithRetry(config, reqSerialNum || 'discovery');
+    const baseUrl = config.baseUrl || 'https://gateway.isolarcloud.com.hk';
+
+    const response = await fetchWithHeaders(`${baseUrl}/v1/stationService/getStationList`, {
+      method: 'POST',
+      headers: {
+        ...getStandardHeaders(config.appkey),
+        'token': token
       },
       body: JSON.stringify({
         lang: 'en_us'
       })
     });
 
-    console.log(`Status da resposta: ${response.status}`);
-
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`Erro na API Sungrow: ${response.status} - ${errorText}`);
-      throw new Error(`Erro na API: ${response.status} - ${errorText}`);
+      throw new Error(`API Error: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
-    console.log('Resposta da API:', data);
     
     if (data.result_code !== 1) {
-      throw new Error(`Erro: ${data.result_msg}`);
+      throw new Error(`Error: ${data.result_msg}`);
     }
 
     const plants = data.result_data?.map((station: any) => ({
@@ -107,112 +540,23 @@ async function discoverPlants(config: SungrowConfig) {
       installationDate: station.create_date
     })) || [];
 
-    console.log(`${plants.length} plantas encontradas`);
+    console.log(`[${reqSerialNum || 'unknown'}] ${plants.length} plants discovered`);
 
-    return new Response(
-      JSON.stringify({ 
-        success: true,
-        plants
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return {
+      success: true,
+      plants,
+      reqSerialNum
+    };
   } catch (error) {
-    console.error('Erro ao descobrir plantas:', error);
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        message: `Erro ao descobrir plantas: ${error.message}` 
-      }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    throw new Error(`Plant discovery failed: ${error.message}`);
   }
 }
 
-async function authenticate(config: SungrowConfig): Promise<string> {
-  console.log('Autenticando com Sungrow...');
-  
-  // Validar configuração
-  if (!config.username || !config.password || !config.appkey) {
-    throw new Error('Username, password e appkey são obrigatórios');
-  }
-
-  const baseUrl = config.baseUrl || 'https://gateway.isolarcloud.com.hk';
-  
-  const authPayload = {
-    appkey: config.appkey,
-    user_account: config.username,
-    user_password: config.password,
-    lang: 'en_us'
-  };
-
-  console.log('Payload de autenticação:', { ...authPayload, user_password: '***' });
-
-  const response = await fetch(`${baseUrl}/v1/userService/login`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-access-key': config.appkey, // Header necessário para autenticação
-      'Accept': 'application/json',
-      'User-Agent': 'Monitor.ai/1.0'
-    },
-    body: JSON.stringify(authPayload)
-  });
-
-  console.log(`Status da autenticação: ${response.status}`);
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`Erro de autenticação: ${response.status} - ${errorText}`);
-    throw new Error(`Erro de autenticação: ${response.status} - ${errorText}`);
-  }
-
-  const data: SungrowAuthResponse = await response.json();
-  console.log('Resposta da autenticação:', { ...data, result_data: data.result_data ? { ...data.result_data, token: '***' } : null });
-  
-  if (data.result_code !== 1) {
-    throw new Error(`Falha na autenticação: ${data.result_msg}`);
-  }
-
-  return data.result_data.token;
-}
-
-async function testConnection(config: SungrowConfig) {
-  try {
-    console.log('Testando conexão Sungrow...');
-    
-    // Validar configuração
-    if (!config.username || !config.password || !config.appkey) {
-      throw new Error('Username, password e appkey são obrigatórios');
-    }
-
-    const token = await authenticate(config);
-    
-    return new Response(
-      JSON.stringify({ 
-        success: true, 
-        message: 'Conexão estabelecida com sucesso',
-        token: token.substring(0, 10) + '...' // Mostrar apenas parte do token por segurança
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  } catch (error) {
-    console.error('Erro no teste de conexão:', error);
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        message: `Falha na conexão: ${error.message}` 
-      }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-}
-
-async function syncData(plantId: string) {
+async function syncData(plantId: string, reqSerialNum?: string) {
   const startTime = Date.now();
   let dataPointsSynced = 0;
 
   try {
-    // Buscar configuração da planta
     const { data: plant, error: plantError } = await supabase
       .from('plants')
       .select('*')
@@ -220,94 +564,35 @@ async function syncData(plantId: string) {
       .single();
 
     if (plantError || !plant) {
-      throw new Error('Planta não encontrada');
+      throw new Error('Plant not found');
     }
 
     const config = plant.api_credentials as SungrowConfig & { plantId: string };
     if (!config?.username || !config?.password || !config?.appkey) {
-      throw new Error('Configuração de API não encontrada');
+      throw new Error('API configuration not found');
     }
 
-    const token = await authenticate(config);
+    const token = await authenticateWithRetry(config, reqSerialNum || 'sync');
     const baseUrl = config.baseUrl || 'https://gateway.isolarcloud.com.hk';
 
-    // Buscar dados de energia do último dia
-    const today = new Date();
-    const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+    // Fetch real-time KPIs
+    const kpiData = await getStationRealKpi(config, reqSerialNum || 'sync');
     
-    const energyPayload = {
-      ps_id: config.plantId,
-      date_id: yesterday.toISOString().split('T')[0].replace(/-/g, ''),
-      date_type: 3, // Dados por hora
-      lang: 'en_us'
-    };
+    // Fetch energy data for today
+    const energyData = await getStationEnergy(config, 'day', reqSerialNum || 'sync');
 
-    const energyResponse = await fetch(`${baseUrl}/v1/reportService/queryMutiplePointDataList`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'token': token,
-        'x-access-key': config.appkey
-      },
-      body: JSON.stringify(energyPayload)
-    });
-
-    if (!energyResponse.ok) {
-      throw new Error(`Erro na API Sungrow: ${energyResponse.status}`);
-    }
-
-    const energyData = await energyResponse.json();
-    
-    if (energyData.result_code !== 1) {
-      throw new Error(`Erro nos dados: ${energyData.result_msg}`);
-    }
-
-    // Buscar dados de potência em tempo real
-    const powerPayload = {
-      ps_id: config.plantId,
-      lang: 'en_us'
-    };
-
-    const powerResponse = await fetch(`${baseUrl}/v1/reportService/queryPlantPowerGeneration`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'token': token,
-        'x-access-key': config.appkey
-      },
-      body: JSON.stringify(powerPayload)
-    });
-
-    let currentPower = 0;
-    if (powerResponse.ok) {
-      const powerData = await powerResponse.json();
-      if (powerData.result_code === 1 && powerData.result_data) {
-        currentPower = powerData.result_data.p83022 || 0; // Potência atual
-      }
-    }
-
-    // Converter e inserir dados
+    // Process and store data
     const readings = [];
-    if (energyData.result_data && energyData.result_data.length > 0) {
-      for (const dataPoint of energyData.result_data) {
-        if (dataPoint.target_val && dataPoint.target_val > 0) {
-          const timestamp = new Date(
-            parseInt(dataPoint.data_time.substring(0, 4)),
-            parseInt(dataPoint.data_time.substring(4, 6)) - 1,
-            parseInt(dataPoint.data_time.substring(6, 8)),
-            parseInt(dataPoint.data_time.substring(8, 10)),
-            parseInt(dataPoint.data_time.substring(10, 12))
-          ).toISOString();
+    const now = new Date().toISOString();
 
-          readings.push({
-            plant_id: plantId,
-            timestamp,
-            energy_kwh: dataPoint.target_val, // Já em kWh
-            power_w: Math.round(currentPower * 1000), // Converter kW para W
-            created_at: new Date().toISOString()
-          });
-        }
-      }
+    if (kpiData.success && kpiData.data) {
+      readings.push({
+        plant_id: plantId,
+        timestamp: now,
+        power_w: Math.round((kpiData.data.p83022 || 0) * 1000), // Convert kW to W
+        energy_kwh: kpiData.data.p83043 || 0, // Daily energy
+        created_at: now
+      });
     }
 
     if (readings.length > 0) {
@@ -319,41 +604,41 @@ async function syncData(plantId: string) {
         });
 
       if (insertError) {
-        throw new Error(`Erro ao inserir dados: ${insertError.message}`);
+        throw new Error(`Insert error: ${insertError.message}`);
       }
 
       dataPointsSynced = readings.length;
     }
 
-    // Atualizar timestamp de sincronização
+    // Update last sync timestamp
     await supabase
       .from('plants')
-      .update({ last_sync: new Date().toISOString() })
+      .update({ last_sync: now })
       .eq('id', plantId);
 
-    // Log de sucesso
+    // Log success
     await supabase
       .from('sync_logs')
       .insert({
         plant_id: plantId,
         system_type: 'sungrow',
         status: 'success',
-        message: `Sincronizados ${dataPointsSynced} pontos de dados`,
+        message: `Synced ${dataPointsSynced} data points`,
         data_points_synced: dataPointsSynced,
         sync_duration_ms: Date.now() - startTime
       });
 
-    return new Response(
-      JSON.stringify({ 
-        success: true, 
-        message: `Sincronizados ${dataPointsSynced} pontos de dados`,
-        dataPointsSynced 
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    console.log(`[${reqSerialNum || 'sync'}] Sync completed: ${dataPointsSynced} points`);
+
+    return {
+      success: true,
+      message: `Synced ${dataPointsSynced} data points`,
+      dataPointsSynced,
+      reqSerialNum: reqSerialNum || 'sync'
+    };
 
   } catch (error) {
-    // Log de erro
+    // Log error
     await supabase
       .from('sync_logs')
       .insert({
@@ -369,17 +654,16 @@ async function syncData(plantId: string) {
   }
 }
 
-async function getPlantList(config: SungrowConfig) {
+async function getPlantList(config: SungrowConfig, reqSerialNum?: string) {
   try {
-    const token = await authenticate(config);
+    const token = await authenticateWithRetry(config, reqSerialNum || 'list');
     const baseUrl = config.baseUrl || 'https://gateway.isolarcloud.com.hk';
 
-    const response = await fetch(`${baseUrl}/v1/stationService/getStationList`, {
+    const response = await fetchWithHeaders(`${baseUrl}/v1/stationService/getStationList`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'token': token,
-        'x-access-key': config.appkey
+        ...getStandardHeaders(config.appkey),
+        'token': token
       },
       body: JSON.stringify({
         lang: 'en_us'
@@ -387,20 +671,21 @@ async function getPlantList(config: SungrowConfig) {
     });
 
     if (!response.ok) {
-      throw new Error(`Erro na API: ${response.status}`);
+      throw new Error(`API Error: ${response.status}`);
     }
 
     const data = await response.json();
     
     if (data.result_code !== 1) {
-      throw new Error(`Erro: ${data.result_msg}`);
+      throw new Error(`Error: ${data.result_msg}`);
     }
 
-    return new Response(
-      JSON.stringify(data.result_data),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return {
+      success: true,
+      data: data.result_data,
+      reqSerialNum: reqSerialNum || 'list'
+    };
   } catch (error) {
-    throw new Error(`Erro ao buscar lista de plantas: ${error.message}`);
+    throw new Error(`Failed to fetch plant list: ${error.message}`);
   }
 }
