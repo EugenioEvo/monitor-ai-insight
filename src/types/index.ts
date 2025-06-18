@@ -1,4 +1,3 @@
-
 export interface Plant {
   id: string;
   name: string;
@@ -8,6 +7,11 @@ export interface Plant {
   concessionaria: string;
   start_date: string;
   status: 'active' | 'pending_fix' | 'maintenance';
+  monitoring_system?: 'manual' | 'solaredge' | 'sungrow';
+  api_site_id?: string;
+  api_credentials?: any;
+  sync_enabled?: boolean;
+  last_sync?: string;
 }
 
 export interface Beneficiary {

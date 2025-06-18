@@ -1,0 +1,331 @@
+
+import React, { useState } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
+import { AlertCircle, CheckCircle, Loader2, Zap } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+import type { Plant } from '@/types';
+import type { SolarEdgeConfig, SungrowConfig } from '@/types/monitoring';
+
+interface MonitoringSetupProps {
+  plant: Plant;
+  onUpdate: () => void;
+}
+
+export const MonitoringSetup = ({ plant, onUpdate }: MonitoringSetupProps) => {
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [systemType, setSystemType] = useState<'manual' | 'solaredge' | 'sungrow'>(
+    (plant as any).monitoring_system || 'manual'
+  );
+  const [syncEnabled, setSyncEnabled] = useState((plant as any).sync_enabled || false);
+  
+  // SolarEdge config
+  const [solarEdgeConfig, setSolarEdgeConfig] = useState<SolarEdgeConfig>({
+    apiKey: '',
+    siteId: '',
+    ...(systemType === 'solaredge' ? (plant as any).api_credentials || {} : {})
+  });
+
+  // Sungrow config
+  const [sungrowConfig, setSungrowConfig] = useState<SungrowConfig>({
+    username: '',
+    password: '',
+    appkey: '',
+    plantId: '',
+    baseUrl: 'https://gateway.isolarcloud.com.hk',
+    ...(systemType === 'sungrow' ? (plant as any).api_credentials || {} : {})
+  });
+
+  const testConnection = async () => {
+    setTesting(true);
+    try {
+      const config = systemType === 'solaredge' ? solarEdgeConfig : sungrowConfig;
+      const functionName = systemType === 'solaredge' ? 'solaredge-connector' : 'sungrow-connector';
+      
+      const { data, error } = await supabase.functions.invoke(functionName, {
+        body: {
+          action: 'test_connection',
+          config
+        }
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        toast({
+          title: "Conexão bem-sucedida!",
+          description: data.message,
+        });
+      } else {
+        throw new Error(data.message);
+      }
+    } catch (error: any) {
+      toast({
+        title: "Erro na conexão",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const saveConfiguration = async () => {
+    setLoading(true);
+    try {
+      const config = systemType === 'solaredge' ? solarEdgeConfig : sungrowConfig;
+      
+      const { error } = await supabase
+        .from('plants')
+        .update({
+          monitoring_system: systemType,
+          api_credentials: systemType === 'manual' ? null : config,
+          sync_enabled: syncEnabled,
+          api_site_id: systemType === 'solaredge' ? solarEdgeConfig.siteId : 
+                      systemType === 'sungrow' ? sungrowConfig.plantId : null
+        })
+        .eq('id', plant.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Configuração salva!",
+        description: "Sistema de monitoramento configurado com sucesso.",
+      });
+      
+      onUpdate();
+    } catch (error: any) {
+      toast({
+        title: "Erro ao salvar",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const syncNow = async () => {
+    if (systemType === 'manual') return;
+    
+    setLoading(true);
+    try {
+      const functionName = systemType === 'solaredge' ? 'solaredge-connector' : 'sungrow-connector';
+      
+      const { data, error } = await supabase.functions.invoke(functionName, {
+        body: {
+          action: 'sync_data',
+          plantId: plant.id
+        }
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        toast({
+          title: "Sincronização concluída!",
+          description: data.message,
+        });
+        onUpdate();
+      } else {
+        throw new Error(data.message);
+      }
+    } catch (error: any) {
+      toast({
+        title: "Erro na sincronização",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getStatusBadge = () => {
+    const lastSync = (plant as any).last_sync;
+    const isConnected = systemType !== 'manual' && (plant as any).api_credentials;
+    
+    if (systemType === 'manual') {
+      return <Badge variant="secondary">Manual</Badge>;
+    }
+    
+    if (!isConnected) {
+      return <Badge variant="destructive"><AlertCircle className="w-3 h-3 mr-1" />Não configurado</Badge>;
+    }
+    
+    if (syncEnabled && lastSync) {
+      const lastSyncDate = new Date(lastSync);
+      const hoursSinceSync = (Date.now() - lastSyncDate.getTime()) / (1000 * 60 * 60);
+      
+      if (hoursSinceSync < 2) {
+        return <Badge variant="default"><CheckCircle className="w-3 h-3 mr-1" />Sincronizado</Badge>;
+      } else {
+        return <Badge variant="outline"><AlertCircle className="w-3 h-3 mr-1" />Atrasado</Badge>;
+      }
+    }
+    
+    return <Badge variant="outline">Configurado</Badge>;
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex justify-between items-start">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Zap className="w-5 h-5" />
+              Sistema de Monitoramento
+            </CardTitle>
+            <CardDescription>
+              Configure a integração com portais de monitoramento
+            </CardDescription>
+          </div>
+          {getStatusBadge()}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {/* Sistema de monitoramento */}
+        <div className="space-y-2">
+          <Label htmlFor="monitoring-system">Sistema de Monitoramento</Label>
+          <Select value={systemType} onValueChange={(value: any) => setSystemType(value)}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="manual">Manual</SelectItem>
+              <SelectItem value="solaredge">SolarEdge</SelectItem>
+              <SelectItem value="sungrow">Sungrow</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Configuração SolarEdge */}
+        {systemType === 'solaredge' && (
+          <div className="space-y-4 p-4 border rounded-lg">
+            <h4 className="font-medium">Configuração SolarEdge</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="se-api-key">API Key</Label>
+                <Input
+                  id="se-api-key"
+                  type="password"
+                  value={solarEdgeConfig.apiKey}
+                  onChange={(e) => setSolarEdgeConfig(prev => ({ ...prev, apiKey: e.target.value }))}
+                  placeholder="Sua chave de API SolarEdge"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="se-site-id">Site ID</Label>
+                <Input
+                  id="se-site-id"
+                  value={solarEdgeConfig.siteId}
+                  onChange={(e) => setSolarEdgeConfig(prev => ({ ...prev, siteId: e.target.value }))}
+                  placeholder="ID do site no SolarEdge"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Configuração Sungrow */}
+        {systemType === 'sungrow' && (
+          <div className="space-y-4 p-4 border rounded-lg">
+            <h4 className="font-medium">Configuração Sungrow</h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="sg-username">Usuário</Label>
+                <Input
+                  id="sg-username"
+                  value={sungrowConfig.username}
+                  onChange={(e) => setSungrowConfig(prev => ({ ...prev, username: e.target.value }))}
+                  placeholder="Seu usuário Sungrow"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="sg-password">Senha</Label>
+                <Input
+                  id="sg-password"
+                  type="password"
+                  value={sungrowConfig.password}
+                  onChange={(e) => setSungrowConfig(prev => ({ ...prev, password: e.target.value }))}
+                  placeholder="Sua senha Sungrow"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="sg-appkey">App Key</Label>
+                <Input
+                  id="sg-appkey"
+                  value={sungrowConfig.appkey}
+                  onChange={(e) => setSungrowConfig(prev => ({ ...prev, appkey: e.target.value }))}
+                  placeholder="Chave da aplicação"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="sg-plant-id">Plant ID</Label>
+                <Input
+                  id="sg-plant-id"
+                  value={sungrowConfig.plantId}
+                  onChange={(e) => setSungrowConfig(prev => ({ ...prev, plantId: e.target.value }))}
+                  placeholder="ID da planta"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Sincronização automática */}
+        {systemType !== 'manual' && (
+          <div className="flex items-center space-x-2">
+            <Switch
+              id="sync-enabled"
+              checked={syncEnabled}
+              onCheckedChange={setSyncEnabled}
+            />
+            <Label htmlFor="sync-enabled">Habilitar sincronização automática</Label>
+          </div>
+        )}
+
+        {/* Informações de sincronização */}
+        {systemType !== 'manual' && (plant as any).last_sync && (
+          <div className="text-sm text-muted-foreground">
+            Última sincronização: {new Date((plant as any).last_sync).toLocaleString('pt-BR')}
+          </div>
+        )}
+
+        {/* Botões */}
+        <div className="flex gap-2 pt-4">
+          {systemType !== 'manual' && (
+            <Button
+              variant="outline"
+              onClick={testConnection}
+              disabled={testing || loading}
+            >
+              {testing && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Testar Conexão
+            </Button>
+          )}
+          
+          <Button onClick={saveConfiguration} disabled={loading}>
+            {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+            Salvar Configuração
+          </Button>
+
+          {systemType !== 'manual' && syncEnabled && (
+            <Button variant="outline" onClick={syncNow} disabled={loading}>
+              {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Sincronizar Agora
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+};

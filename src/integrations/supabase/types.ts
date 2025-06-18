@@ -136,41 +136,97 @@ export type Database = {
         }
         Relationships: []
       }
+      monitoring_configs: {
+        Row: {
+          config_data: Json
+          created_at: string
+          enabled: boolean | null
+          id: string
+          plant_id: string
+          sync_interval_minutes: number | null
+          system_type: string
+          updated_at: string
+        }
+        Insert: {
+          config_data: Json
+          created_at?: string
+          enabled?: boolean | null
+          id?: string
+          plant_id: string
+          sync_interval_minutes?: number | null
+          system_type: string
+          updated_at?: string
+        }
+        Update: {
+          config_data?: Json
+          created_at?: string
+          enabled?: boolean | null
+          id?: string
+          plant_id?: string
+          sync_interval_minutes?: number | null
+          system_type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "monitoring_configs_plant_id_fkey"
+            columns: ["plant_id"]
+            isOneToOne: false
+            referencedRelation: "plants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       plants: {
         Row: {
+          api_credentials: Json | null
+          api_site_id: string | null
           capacity_kwp: number
           concessionaria: string
           created_at: string
           id: string
+          last_sync: string | null
           lat: number
           lng: number
+          monitoring_system: string | null
           name: string
           start_date: string
           status: string
+          sync_enabled: boolean | null
           updated_at: string
         }
         Insert: {
+          api_credentials?: Json | null
+          api_site_id?: string | null
           capacity_kwp: number
           concessionaria: string
           created_at?: string
           id?: string
+          last_sync?: string | null
           lat: number
           lng: number
+          monitoring_system?: string | null
           name: string
           start_date: string
           status?: string
+          sync_enabled?: boolean | null
           updated_at?: string
         }
         Update: {
+          api_credentials?: Json | null
+          api_site_id?: string | null
           capacity_kwp?: number
           concessionaria?: string
           created_at?: string
           id?: string
+          last_sync?: string | null
           lat?: number
           lng?: number
+          monitoring_system?: string | null
           name?: string
           start_date?: string
           status?: string
+          sync_enabled?: boolean | null
           updated_at?: string
         }
         Relationships: []
@@ -244,6 +300,47 @@ export type Database = {
             columns: ["beneficiary_id"]
             isOneToOne: false
             referencedRelation: "beneficiaries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sync_logs: {
+        Row: {
+          created_at: string
+          data_points_synced: number | null
+          id: string
+          message: string | null
+          plant_id: string
+          status: string
+          sync_duration_ms: number | null
+          system_type: string
+        }
+        Insert: {
+          created_at?: string
+          data_points_synced?: number | null
+          id?: string
+          message?: string | null
+          plant_id: string
+          status: string
+          sync_duration_ms?: number | null
+          system_type: string
+        }
+        Update: {
+          created_at?: string
+          data_points_synced?: number | null
+          id?: string
+          message?: string | null
+          plant_id?: string
+          status?: string
+          sync_duration_ms?: number | null
+          system_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sync_logs_plant_id_fkey"
+            columns: ["plant_id"]
+            isOneToOne: false
+            referencedRelation: "plants"
             referencedColumns: ["id"]
           },
         ]
