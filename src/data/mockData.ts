@@ -7,7 +7,7 @@ export const mockPlants: Plant[] = [
     name: 'Usina Solar Nordeste',
     lat: -8.047,
     lng: -34.877,
-    capacity_kWp: 150.5,
+    capacity_kwp: 150.5,
     concessionaria: 'Neoenergia Pernambuco',
     start_date: '2023-06-15',
     status: 'active'
@@ -17,7 +17,7 @@ export const mockPlants: Plant[] = [
     name: 'Planta Solar Sul',
     lat: -25.428,
     lng: -49.273,
-    capacity_kWp: 89.2,
+    capacity_kwp: 89.2,
     concessionaria: 'Copel',
     start_date: '2023-08-20',
     status: 'active'
