@@ -23,7 +23,7 @@ export const EnergyProductionChart = ({ chartData, period, plant }: EnergyProduc
   const getChartTitle = () => {
     switch (period) {
       case 'DAY':
-        return 'Produção de Energia Diária';
+        return 'Produção de Energia - Curva Diária';
       case 'MONTH':
         return 'Produção de Energia - Dias do Mês';
       case 'YEAR':
@@ -42,7 +42,7 @@ export const EnergyProductionChart = ({ chartData, period, plant }: EnergyProduc
       case 'YEAR':
         return 'Produção de energia mês a mês';
       default:
-        return `Histórico de produção de energia da planta (${period.toLowerCase()})`;
+        return 'Histórico de produção de energia da planta';
     }
   };
 
