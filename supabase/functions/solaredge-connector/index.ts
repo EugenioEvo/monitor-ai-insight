@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.0';
@@ -41,6 +40,8 @@ serve(async (req) => {
         return await syncData(plantId);
       case 'get_site_details':
         return await getSiteDetails(config);
+      case 'discover_plants':
+        return await discoverPlants(config);
       default:
         throw new Error('Ação não suportada');
     }
@@ -52,6 +53,76 @@ serve(async (req) => {
     );
   }
 });
+
+async function discoverPlants(config: SolarEdgeConfig) {
+  try {
+    // Se um siteId específico foi fornecido, buscar apenas esse site
+    if (config.siteId) {
+      const response = await fetch(
+        `https://monitoringapi.solaredge.com/site/${config.siteId}/details?api_key=${config.apiKey}`,
+        { method: 'GET' }
+      );
+
+      if (!response.ok) {
+        throw new Error(`API Error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const site = data.details;
+      
+      return new Response(
+        JSON.stringify({ 
+          success: true,
+          plants: [{
+            id: site.id.toString(),
+            name: site.name,
+            capacity: site.peakPower,
+            location: `${site.location.city}, ${site.location.country}`,
+            status: site.status,
+            installationDate: site.installationDate
+          }]
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Caso contrário, buscar lista de sites da conta
+    const response = await fetch(
+      `https://monitoringapi.solaredge.com/sites/list?api_key=${config.apiKey}`,
+      { method: 'GET' }
+    );
+
+    if (!response.ok) {
+      throw new Error(`API Error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const plants = data.sites?.site?.map((site: any) => ({
+      id: site.id.toString(),
+      name: site.name,
+      capacity: site.peakPower,
+      location: `${site.location.city}, ${site.location.country}`,
+      status: site.status,
+      installationDate: site.installationDate
+    })) || [];
+    
+    return new Response(
+      JSON.stringify({ 
+        success: true,
+        plants
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        message: `Erro ao descobrir plantas: ${error.message}` 
+      }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+}
 
 async function testConnection(config: SolarEdgeConfig) {
   try {

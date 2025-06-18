@@ -1,0 +1,478 @@
+
+import React, { useState } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { AlertCircle, CheckCircle, Loader2, Plus, MapPin, Zap, Download } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+import type { SolarEdgeConfig, SungrowConfig } from '@/types/monitoring';
+
+interface DiscoveredPlant {
+  id: string;
+  name: string;
+  capacity?: number;
+  location?: string;
+  status?: string;
+  installationDate?: string;
+}
+
+interface PlantDiscoveryProps {
+  onPlantImported: () => void;
+}
+
+export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
+  const { toast } = useToast();
+  const [isOpen, setIsOpen] = useState(false);
+  const [currentStep, setCurrentStep] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [discovering, setDiscovering] = useState(false);
+  const [importing, setImporting] = useState(false);
+  
+  // Step 1: Sistema de monitoramento
+  const [systemType, setSystemType] = useState<'solaredge' | 'sungrow'>('solaredge');
+  
+  // Step 2: Configurações
+  const [solarEdgeConfig, setSolarEdgeConfig] = useState<SolarEdgeConfig>({
+    apiKey: '',
+    siteId: ''
+  });
+  
+  const [sungrowConfig, setSungrowConfig] = useState<SungrowConfig>({
+    username: '',
+    password: '',
+    appkey: '',
+    plantId: '',
+    baseUrl: 'https://gateway.isolarcloud.com.hk'
+  });
+  
+  // Step 3: Plantas descobertas
+  const [discoveredPlants, setDiscoveredPlants] = useState<DiscoveredPlant[]>([]);
+  const [selectedPlants, setSelectedPlants] = useState<string[]>([]);
+
+  const resetWizard = () => {
+    setCurrentStep(1);
+    setSystemType('solaredge');
+    setSolarEdgeConfig({ apiKey: '', siteId: '' });
+    setSungrowConfig({ username: '', password: '', appkey: '', plantId: '', baseUrl: 'https://gateway.isolarcloud.com.hk' });
+    setDiscoveredPlants([]);
+    setSelectedPlants([]);
+  };
+
+  const testConnection = async () => {
+    setTesting(true);
+    try {
+      const config = systemType === 'solaredge' ? solarEdgeConfig : sungrowConfig;
+      const functionName = systemType === 'solaredge' ? 'solaredge-connector' : 'sungrow-connector';
+      
+      const { data, error } = await supabase.functions.invoke(functionName, {
+        body: {
+          action: 'test_connection',
+          config
+        }
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        toast({
+          title: "Conexão bem-sucedida!",
+          description: "Credenciais válidas. Você pode prosseguir para descobrir plantas.",
+        });
+        setCurrentStep(3);
+      } else {
+        throw new Error(data.message);
+      }
+    } catch (error: any) {
+      toast({
+        title: "Erro na conexão",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const discoverPlants = async () => {
+    setDiscovering(true);
+    try {
+      const config = systemType === 'solaredge' ? solarEdgeConfig : sungrowConfig;
+      const functionName = systemType === 'solaredge' ? 'solaredge-connector' : 'sungrow-connector';
+      
+      const { data, error } = await supabase.functions.invoke(functionName, {
+        body: {
+          action: 'discover_plants',
+          config
+        }
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        setDiscoveredPlants(data.plants || []);
+        toast({
+          title: "Plantas descobertas!",
+          description: `Encontradas ${data.plants?.length || 0} plantas disponíveis.`,
+        });
+      } else {
+        throw new Error(data.message);
+      }
+    } catch (error: any) {
+      toast({
+        title: "Erro ao descobrir plantas",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setDiscovering(false);
+    }
+  };
+
+  const importSelectedPlants = async () => {
+    if (selectedPlants.length === 0) {
+      toast({
+        title: "Nenhuma planta selecionada",
+        description: "Selecione pelo menos uma planta para importar.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setImporting(true);
+    try {
+      const config = systemType === 'solaredge' ? solarEdgeConfig : sungrowConfig;
+      const plantsToImport = discoveredPlants.filter(plant => selectedPlants.includes(plant.id));
+      
+      for (const plant of plantsToImport) {
+        // Verificar se a planta já existe
+        const { data: existing } = await supabase
+          .from('plants')
+          .select('id')
+          .eq('api_site_id', plant.id)
+          .single();
+
+        if (existing) {
+          console.log(`Planta ${plant.name} já existe, pulando...`);
+          continue;
+        }
+
+        // Criar nova planta
+        const { error: insertError } = await supabase
+          .from('plants')
+          .insert({
+            name: plant.name,
+            capacity_kwp: plant.capacity || 0,
+            lat: -23.5505, // Coordenadas padrão (São Paulo)
+            lng: -46.6333,
+            concessionaria: 'A definir',
+            start_date: plant.installationDate || new Date().toISOString().split('T')[0],
+            status: 'active',
+            monitoring_system: systemType,
+            api_site_id: plant.id,
+            api_credentials: config,
+            sync_enabled: true
+          });
+
+        if (insertError) {
+          console.error(`Erro ao importar ${plant.name}:`, insertError);
+          continue;
+        }
+      }
+
+      toast({
+        title: "Importação concluída!",
+        description: `${selectedPlants.length} plantas foram importadas com sucesso.`,
+      });
+      
+      onPlantImported();
+      setIsOpen(false);
+      resetWizard();
+    } catch (error: any) {
+      toast({
+        title: "Erro na importação",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const togglePlantSelection = (plantId: string) => {
+    setSelectedPlants(prev => 
+      prev.includes(plantId) 
+        ? prev.filter(id => id !== plantId)
+        : [...prev, plantId]
+    );
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <DialogTrigger asChild>
+        <Button onClick={() => setIsOpen(true)}>
+          <Plus className="w-4 h-4 mr-2" />
+          Adicionar Plantas
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Importar Plantas do Portal</DialogTitle>
+          <DialogDescription>
+            Conecte-se ao seu portal de monitoramento para descobrir e importar suas plantas solares
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-6">
+          {/* Progress indicator */}
+          <div className="flex items-center space-x-4">
+            <div className={`flex items-center space-x-2 ${currentStep >= 1 ? 'text-primary' : 'text-muted-foreground'}`}>
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${currentStep >= 1 ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground'}`}>
+                1
+              </div>
+              <span className="text-sm font-medium">Portal</span>
+            </div>
+            <div className="flex-1 h-px bg-border" />
+            <div className={`flex items-center space-x-2 ${currentStep >= 2 ? 'text-primary' : 'text-muted-foreground'}`}>
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${currentStep >= 2 ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground'}`}>
+                2
+              </div>
+              <span className="text-sm font-medium">Credenciais</span>
+            </div>
+            <div className="flex-1 h-px bg-border" />
+            <div className={`flex items-center space-x-2 ${currentStep >= 3 ? 'text-primary' : 'text-muted-foreground'}`}>
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${currentStep >= 3 ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground'}`}>
+                3
+              </div>
+              <span className="text-sm font-medium">Importar</span>
+            </div>
+          </div>
+
+          {/* Step 1: Escolher portal */}
+          {currentStep === 1 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Escolha o Portal de Monitoramento</CardTitle>
+                <CardDescription>
+                  Selecione o sistema de monitoramento da sua planta solar
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Sistema de Monitoramento</Label>
+                  <Select value={systemType} onValueChange={(value: any) => setSystemType(value)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="solaredge">SolarEdge</SelectItem>
+                      <SelectItem value="sungrow">Sungrow</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="flex justify-end pt-4">
+                  <Button onClick={() => setCurrentStep(2)}>
+                    Próximo
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Step 2: Inserir credenciais */}
+          {currentStep === 2 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Configurar Credenciais</CardTitle>
+                <CardDescription>
+                  Insira suas credenciais do {systemType === 'solaredge' ? 'SolarEdge' : 'Sungrow'}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {systemType === 'solaredge' ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="se-api-key">API Key</Label>
+                      <Input
+                        id="se-api-key"
+                        type="password"
+                        value={solarEdgeConfig.apiKey}
+                        onChange={(e) => setSolarEdgeConfig(prev => ({ ...prev, apiKey: e.target.value }))}
+                        placeholder="Sua chave de API SolarEdge"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="se-site-id">Site ID (opcional)</Label>
+                      <Input
+                        id="se-site-id"
+                        value={solarEdgeConfig.siteId}
+                        onChange={(e) => setSolarEdgeConfig(prev => ({ ...prev, siteId: e.target.value }))}
+                        placeholder="ID específico do site (deixe vazio para descobrir todos)"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="sg-username">Usuário</Label>
+                      <Input
+                        id="sg-username"
+                        value={sungrowConfig.username}
+                        onChange={(e) => setSungrowConfig(prev => ({ ...prev, username: e.target.value }))}
+                        placeholder="Seu usuário Sungrow"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="sg-password">Senha</Label>
+                      <Input
+                        id="sg-password"
+                        type="password"
+                        value={sungrowConfig.password}
+                        onChange={(e) => setSungrowConfig(prev => ({ ...prev, password: e.target.value }))}
+                        placeholder="Sua senha Sungrow"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="sg-appkey">App Key</Label>
+                      <Input
+                        id="sg-appkey"
+                        value={sungrowConfig.appkey}
+                        onChange={(e) => setSungrowConfig(prev => ({ ...prev, appkey: e.target.value }))}
+                        placeholder="Chave da aplicação"
+                      />
+                    </div>
+                  </div>
+                )}
+                
+                <div className="flex justify-between pt-4">
+                  <Button variant="outline" onClick={() => setCurrentStep(1)}>
+                    Voltar
+                  </Button>
+                  <Button onClick={testConnection} disabled={testing}>
+                    {testing && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                    Testar e Continuar
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Step 3: Descobrir e importar plantas */}
+          {currentStep === 3 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Download className="w-5 h-5" />
+                  Descobrir e Importar Plantas
+                </CardTitle>
+                <CardDescription>
+                  Conecte-se ao portal para descobrir suas plantas disponíveis
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {discoveredPlants.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Button onClick={discoverPlants} disabled={discovering} size="lg">
+                      {discovering && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                      <Download className="w-4 h-4 mr-2" />
+                      Descobrir Plantas
+                    </Button>
+                    <p className="text-sm text-muted-foreground mt-2">
+                      Clique para buscar plantas disponíveis no seu portal
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center">
+                      <h4 className="font-medium">
+                        {discoveredPlants.length} plantas encontradas
+                      </h4>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSelectedPlants(discoveredPlants.map(p => p.id))}
+                        >
+                          Selecionar Todas
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSelectedPlants([])}
+                        >
+                          Limpar Seleção
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 max-h-96 overflow-y-auto">
+                      {discoveredPlants.map((plant) => (
+                        <div
+                          key={plant.id}
+                          className={`flex items-center space-x-3 p-3 border rounded-lg cursor-pointer transition-colors ${
+                            selectedPlants.includes(plant.id) ? 'bg-accent border-primary' : 'hover:bg-accent/50'
+                          }`}
+                          onClick={() => togglePlantSelection(plant.id)}
+                        >
+                          <Checkbox
+                            checked={selectedPlants.includes(plant.id)}
+                            onChange={() => togglePlantSelection(plant.id)}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <h5 className="font-medium truncate">{plant.name}</h5>
+                              {plant.status && (
+                                <Badge variant={plant.status === 'Active' ? 'default' : 'secondary'}>
+                                  {plant.status}
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
+                              {plant.capacity && (
+                                <span className="flex items-center gap-1">
+                                  <Zap className="w-3 h-3" />
+                                  {plant.capacity} kWp
+                                </span>
+                              )}
+                              {plant.location && (
+                                <span className="flex items-center gap-1">
+                                  <MapPin className="w-3 h-3" />
+                                  {plant.location}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex justify-between pt-4">
+                      <Button variant="outline" onClick={() => setCurrentStep(2)}>
+                        Voltar
+                      </Button>
+                      <Button 
+                        onClick={importSelectedPlants} 
+                        disabled={importing || selectedPlants.length === 0}
+                      >
+                        {importing && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                        Importar {selectedPlants.length} Plantas
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};

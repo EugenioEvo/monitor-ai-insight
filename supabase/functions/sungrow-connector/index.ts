@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.0';
@@ -43,6 +42,8 @@ serve(async (req) => {
         return await syncData(plantId);
       case 'get_plant_list':
         return await getPlantList(config);
+      case 'discover_plants':
+        return await discoverPlants(config);
       default:
         throw new Error('Ação não suportada');
     }
@@ -54,6 +55,59 @@ serve(async (req) => {
     );
   }
 });
+
+async function discoverPlants(config: SungrowConfig) {
+  try {
+    const token = await authenticate(config);
+    const baseUrl = config.baseUrl || 'https://gateway.isolarcloud.com.hk';
+
+    const response = await fetch(`${baseUrl}/v1/stationService/getStationList`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'token': token
+      },
+      body: JSON.stringify({
+        lang: 'en_us'
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Erro na API: ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    if (data.result_code !== 1) {
+      throw new Error(`Erro: ${data.result_msg}`);
+    }
+
+    const plants = data.result_data?.map((station: any) => ({
+      id: station.ps_id.toString(),
+      name: station.ps_name,
+      capacity: station.nominal_power,
+      location: `${station.ps_location_lat}, ${station.ps_location_lng}`,
+      status: station.ps_status === 1 ? 'Active' : 'Inactive',
+      installationDate: station.create_date
+    })) || [];
+
+    return new Response(
+      JSON.stringify({ 
+        success: true,
+        plants
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        message: `Erro ao descobrir plantas: ${error.message}` 
+      }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+}
 
 async function authenticate(config: SungrowConfig): Promise<string> {
   const baseUrl = config.baseUrl || 'https://gateway.isolarcloud.com.hk';

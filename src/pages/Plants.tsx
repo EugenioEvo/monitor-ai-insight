@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { MapPin, Zap, Calendar, Settings, Activity, AlertCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { MonitoringSetup } from '@/components/plants/MonitoringSetup';
+import { PlantDiscovery } from '@/components/plants/PlantDiscovery';
 import type { Plant } from '@/types';
 
 export default function Plants() {
@@ -88,6 +90,7 @@ export default function Plants() {
             Gerencie suas plantas e configurações de monitoramento
           </p>
         </div>
+        <PlantDiscovery onPlantImported={refetch} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
