@@ -23,15 +23,15 @@ export const MonitoringSetup = ({ plant, onUpdate }: MonitoringSetupProps) => {
   const [loading, setLoading] = useState(false);
   const [testing, setTesting] = useState(false);
   const [systemType, setSystemType] = useState<'manual' | 'solaredge' | 'sungrow'>(
-    (plant as any).monitoring_system || 'manual'
+    plant.monitoring_system || 'manual'
   );
-  const [syncEnabled, setSyncEnabled] = useState((plant as any).sync_enabled || false);
+  const [syncEnabled, setSyncEnabled] = useState(plant.sync_enabled || false);
   
   // SolarEdge config
   const [solarEdgeConfig, setSolarEdgeConfig] = useState<SolarEdgeConfig>({
     apiKey: '',
     siteId: '',
-    ...(systemType === 'solaredge' ? (plant as any).api_credentials || {} : {})
+    ...(systemType === 'solaredge' && plant.api_credentials ? plant.api_credentials as SolarEdgeConfig : {})
   });
 
   // Sungrow config
@@ -41,7 +41,7 @@ export const MonitoringSetup = ({ plant, onUpdate }: MonitoringSetupProps) => {
     appkey: '',
     plantId: '',
     baseUrl: 'https://gateway.isolarcloud.com.hk',
-    ...(systemType === 'sungrow' ? (plant as any).api_credentials || {} : {})
+    ...(systemType === 'sungrow' && plant.api_credentials ? plant.api_credentials as SungrowConfig : {})
   });
 
   const testConnection = async () => {
@@ -87,7 +87,7 @@ export const MonitoringSetup = ({ plant, onUpdate }: MonitoringSetupProps) => {
         .from('plants')
         .update({
           monitoring_system: systemType,
-          api_credentials: systemType === 'manual' ? null : config,
+          api_credentials: systemType === 'manual' ? null : config as any, // Cast para any para compatibilidade com Json
           sync_enabled: syncEnabled,
           api_site_id: systemType === 'solaredge' ? solarEdgeConfig.siteId : 
                       systemType === 'sungrow' ? sungrowConfig.plantId : null
@@ -150,8 +150,8 @@ export const MonitoringSetup = ({ plant, onUpdate }: MonitoringSetupProps) => {
   };
 
   const getStatusBadge = () => {
-    const lastSync = (plant as any).last_sync;
-    const isConnected = systemType !== 'manual' && (plant as any).api_credentials;
+    const lastSync = plant.last_sync;
+    const isConnected = systemType !== 'manual' && plant.api_credentials;
     
     if (systemType === 'manual') {
       return <Badge variant="secondary">Manual</Badge>;
@@ -294,9 +294,9 @@ export const MonitoringSetup = ({ plant, onUpdate }: MonitoringSetupProps) => {
         )}
 
         {/* Informações de sincronização */}
-        {systemType !== 'manual' && (plant as any).last_sync && (
+        {systemType !== 'manual' && plant.last_sync && (
           <div className="text-sm text-muted-foreground">
-            Última sincronização: {new Date((plant as any).last_sync).toLocaleString('pt-BR')}
+            Última sincronização: {new Date(plant.last_sync).toLocaleString('pt-BR')}
           </div>
         )}
 

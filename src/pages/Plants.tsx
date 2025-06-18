@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -44,7 +43,7 @@ export default function Plants() {
     enabled: !!selectedPlant
   });
 
-  const getStatusBadge = (plant: any) => {
+  const getStatusBadge = (plant: Plant) => {
     const status = plant.status;
     const monitoringSystem = plant.monitoring_system || 'manual';
     
@@ -57,7 +56,7 @@ export default function Plants() {
     }
   };
 
-  const getMonitoringBadge = (plant: any) => {
+  const getMonitoringBadge = (plant: Plant) => {
     const system = plant.monitoring_system || 'manual';
     const isConnected = system !== 'manual' && plant.api_credentials;
     
@@ -113,7 +112,7 @@ export default function Plants() {
                     {getMonitoringBadge(plant)}
                     <Badge variant="outline">
                       <Zap className="w-3 h-3 mr-1" />
-                      {plant.capacity_kWp} kWp
+                      {plant.capacity_kwp} kWp
                     </Badge>
                   </div>
                 </CardHeader>

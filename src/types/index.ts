@@ -1,9 +1,10 @@
+
 export interface Plant {
   id: string;
   name: string;
   lat: number;
   lng: number;
-  capacity_kWp: number;
+  capacity_kwp: number; // Mudança: usar capacity_kwp para ser compatível com o banco
   concessionaria: string;
   start_date: string;
   status: 'active' | 'pending_fix' | 'maintenance';
