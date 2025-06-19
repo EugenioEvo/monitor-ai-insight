@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/AppSidebar";
+import { ThemeManager } from "@/components/settings/ThemeManager";
 import Index from "./pages/Index";
 import Dashboard from "./pages/Dashboard";
 import Plants from "./pages/Plants";
@@ -24,6 +25,7 @@ const queryClient = new QueryClient();
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
+      <ThemeManager />
       <Toaster />
       <Sonner />
       <BrowserRouter>

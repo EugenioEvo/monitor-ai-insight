@@ -1,26 +1,33 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Upload, FileText, Loader2, CheckCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { useSettings } from "@/hooks/useSettings";
 
 export function InvoiceUpload() {
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const { toast } = useToast();
+  const { settings } = useSettings();
 
   const handleFileUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
 
     setUploading(true);
     
-    // Simular processamento com IA
+    // Simular processamento com IA usando as configurações atuais
+    const ocrEngine = settings.invoices.ocrEngine;
+    const autoValidation = settings.invoices.autoValidation;
+    
+    console.log(`Processando com engine: ${ocrEngine}, validação automática: ${autoValidation}`);
+    
     setTimeout(() => {
       setUploading(false);
       toast({
         title: "Fatura processada com sucesso!",
-        description: `${files.length} arquivo(s) analisado(s) pela IA. Dados extraídos e salvos.`,
+        description: `${files.length} arquivo(s) analisado(s) com ${ocrEngine.toUpperCase()}. ${autoValidation ? 'Dados validados automaticamente.' : 'Validação manual necessária.'}`,
       });
     }, 3000);
   };
@@ -56,8 +63,15 @@ export function InvoiceUpload() {
             <>
               <Loader2 className="w-12 h-12 text-blue-500 mx-auto animate-spin" />
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">Processando com IA...</h3>
-                <p className="text-gray-600">Extraindo dados da fatura automaticamente</p>
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Processando com {settings.invoices.ocrEngine.toUpperCase()}...
+                </h3>
+                <p className="text-gray-600">
+                  {settings.invoices.autoValidation 
+                    ? 'Extraindo e validando dados automaticamente' 
+                    : 'Extraindo dados - validação manual necessária'
+                  }
+                </p>
               </div>
             </>
           ) : (
@@ -65,7 +79,12 @@ export function InvoiceUpload() {
               <Upload className="w-12 h-12 text-gray-400 mx-auto" />
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">Carregar Faturas</h3>
-                <p className="text-gray-600">Arraste arquivos PDF/ZIP ou clique para selecionar</p>
+                <p className="text-gray-600">
+                  Engine configurado: {settings.invoices.ocrEngine.toUpperCase()}
+                </p>
+                <p className="text-sm text-gray-500">
+                  Arraste arquivos PDF/ZIP ou clique para selecionar
+                </p>
               </div>
               <div className="flex gap-2 justify-center">
                 <Button

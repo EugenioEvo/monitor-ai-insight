@@ -1,12 +1,11 @@
 
-import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
-import { Checkbox } from '@/components/ui/checkbox';
-import { useToast } from '@/hooks/use-toast';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useSettings } from '@/hooks/useSettings';
 import { 
   Settings as SettingsIcon, 
   Zap, 
@@ -15,94 +14,46 @@ import {
   Wrench, 
   AlertTriangle, 
   BarChart3, 
-  MessageSquare, 
   Bot,
   Save,
-  Bell,
-  Database,
-  Shield,
-  Palette
+  Loader2
 } from 'lucide-react';
 
 const Settings = () => {
-  const { toast } = useToast();
-  const [settings, setSettings] = useState({
-    // Configurações de Plantas
-    plants: {
-      autoDiscovery: true,
-      monitoringInterval: 5,
-      alertThreshold: 80,
-      enableNotifications: true
-    },
-    // Configurações de Clientes
-    customers: {
-      autoGenerateReports: true,
-      emailNotifications: true,
-      invoiceReminders: true,
-      defaultCurrency: 'BRL'
-    },
-    // Configurações de Faturas
-    invoices: {
-      ocrEngine: 'openai',
-      autoValidation: true,
-      duplicateDetection: true,
-      storageRetention: 365
-    },
-    // Configurações de O&M
-    maintenance: {
-      preventiveMaintenance: true,
-      maintenanceInterval: 30,
-      alertsEnabled: true,
-      autoScheduling: false
-    },
-    // Configurações de Alertas
-    alerts: {
-      emailAlerts: true,
-      smsAlerts: false,
-      pushNotifications: true,
-      alertSeverity: 'medium'
-    },
-    // Configurações de Relatórios
-    reports: {
-      autoGeneration: true,
-      reportFrequency: 'weekly',
-      includeCharts: true,
-      emailDelivery: true
-    },
-    // Configurações de IA
-    ai: {
-      chatEnabled: true,
-      autoResponses: true,
-      learningMode: true,
-      dataCollection: true
-    },
-    // Configurações Gerais
-    general: {
-      theme: 'light',
-      language: 'pt-BR',
-      timezone: 'America/Sao_Paulo',
-      companyName: 'Monitor.ai'
-    }
-  });
+  const { settings, loading, saving, updateSetting, saveSettings } = useSettings();
 
   const handleSave = () => {
-    // Aqui você salvaria as configurações no backend
-    console.log('Saving settings:', settings);
-    toast({
-      title: "Configurações salvas",
-      description: "Todas as configurações foram atualizadas com sucesso.",
-    });
+    saveSettings(settings);
   };
 
-  const updateSetting = (section: string, key: string, value: any) => {
-    setSettings(prev => ({
-      ...prev,
-      [section]: {
-        ...prev[section as keyof typeof prev],
-        [key]: value
-      }
-    }));
-  };
+  if (loading) {
+    return (
+      <div className="container mx-auto py-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <Skeleton className="h-9 w-48 mb-2" />
+            <Skeleton className="h-5 w-96" />
+          </div>
+          <Skeleton className="h-10 w-48" />
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Card key={i}>
+              <CardHeader>
+                <Skeleton className="h-6 w-32" />
+                <Skeleton className="h-4 w-48" />
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Skeleton className="h-6 w-full" />
+                <Skeleton className="h-6 w-full" />
+                <Skeleton className="h-6 w-full" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto py-6 space-y-6">
@@ -113,9 +64,13 @@ const Settings = () => {
             Gerencie as configurações gerais do sistema Monitor.ai
           </p>
         </div>
-        <Button onClick={handleSave} className="gap-2">
-          <Save className="w-4 h-4" />
-          Salvar Configurações
+        <Button onClick={handleSave} disabled={saving} className="gap-2">
+          {saving ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Save className="w-4 h-4" />
+          )}
+          {saving ? 'Salvando...' : 'Salvar Configurações'}
         </Button>
       </div>
 
@@ -158,6 +113,14 @@ const Settings = () => {
                 onChange={(e) => updateSetting('plants', 'alertThreshold', parseInt(e.target.value))}
               />
             </div>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="enable-notifications">Notificações</Label>
+              <Switch
+                id="enable-notifications"
+                checked={settings.plants.enableNotifications}
+                onCheckedChange={(checked) => updateSetting('plants', 'enableNotifications', checked)}
+              />
+            </div>
           </CardContent>
         </Card>
 
@@ -189,13 +152,26 @@ const Settings = () => {
                 onCheckedChange={(checked) => updateSetting('customers', 'emailNotifications', checked)}
               />
             </div>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="invoice-reminders">Lembretes de Fatura</Label>
+              <Switch
+                id="invoice-reminders"
+                checked={settings.customers.invoiceReminders}
+                onCheckedChange={(checked) => updateSetting('customers', 'invoiceReminders', checked)}
+              />
+            </div>
             <div className="space-y-2">
               <Label htmlFor="default-currency">Moeda Padrão</Label>
-              <Input
+              <select 
                 id="default-currency"
+                className="w-full p-2 border rounded-md"
                 value={settings.customers.defaultCurrency}
                 onChange={(e) => updateSetting('customers', 'defaultCurrency', e.target.value)}
-              />
+              >
+                <option value="BRL">Real (BRL)</option>
+                <option value="USD">Dólar (USD)</option>
+                <option value="EUR">Euro (EUR)</option>
+              </select>
             </div>
           </CardContent>
         </Card>
@@ -231,6 +207,14 @@ const Settings = () => {
                 id="auto-validation"
                 checked={settings.invoices.autoValidation}
                 onCheckedChange={(checked) => updateSetting('invoices', 'autoValidation', checked)}
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="duplicate-detection">Detecção de Duplicatas</Label>
+              <Switch
+                id="duplicate-detection"
+                checked={settings.invoices.duplicateDetection}
+                onCheckedChange={(checked) => updateSetting('invoices', 'duplicateDetection', checked)}
               />
             </div>
             <div className="space-y-2">
@@ -275,6 +259,14 @@ const Settings = () => {
               />
             </div>
             <div className="flex items-center justify-between">
+              <Label htmlFor="maintenance-alerts">Alertas de Manutenção</Label>
+              <Switch
+                id="maintenance-alerts"
+                checked={settings.maintenance.alertsEnabled}
+                onCheckedChange={(checked) => updateSetting('maintenance', 'alertsEnabled', checked)}
+              />
+            </div>
+            <div className="flex items-center justify-between">
               <Label htmlFor="auto-scheduling">Agendamento Automático</Label>
               <Switch
                 id="auto-scheduling"
@@ -303,6 +295,14 @@ const Settings = () => {
                 id="email-alerts"
                 checked={settings.alerts.emailAlerts}
                 onCheckedChange={(checked) => updateSetting('alerts', 'emailAlerts', checked)}
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="sms-alerts">Alertas por SMS</Label>
+              <Switch
+                id="sms-alerts"
+                checked={settings.alerts.smsAlerts}
+                onCheckedChange={(checked) => updateSetting('alerts', 'smsAlerts', checked)}
               />
             </div>
             <div className="flex items-center justify-between">
@@ -372,6 +372,14 @@ const Settings = () => {
                 onCheckedChange={(checked) => updateSetting('reports', 'includeCharts', checked)}
               />
             </div>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="email-delivery">Entrega por Email</Label>
+              <Switch
+                id="email-delivery"
+                checked={settings.reports.emailDelivery}
+                onCheckedChange={(checked) => updateSetting('reports', 'emailDelivery', checked)}
+              />
+            </div>
           </CardContent>
         </Card>
 
@@ -409,6 +417,14 @@ const Settings = () => {
                 id="learning-mode"
                 checked={settings.ai.learningMode}
                 onCheckedChange={(checked) => updateSetting('ai', 'learningMode', checked)}
+              />
+            </div>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="data-collection">Coleta de Dados</Label>
+              <Switch
+                id="data-collection"
+                checked={settings.ai.dataCollection}
+                onCheckedChange={(checked) => updateSetting('ai', 'dataCollection', checked)}
               />
             </div>
           </CardContent>
@@ -453,6 +469,19 @@ const Settings = () => {
               </select>
             </div>
             <div className="space-y-2">
+              <Label htmlFor="timezone">Fuso Horário</Label>
+              <select 
+                id="timezone"
+                className="w-full p-2 border rounded-md"
+                value={settings.general.timezone}
+                onChange={(e) => updateSetting('general', 'timezone', e.target.value)}
+              >
+                <option value="America/Sao_Paulo">São Paulo (GMT-3)</option>
+                <option value="America/New_York">New York (GMT-5)</option>
+                <option value="Europe/London">London (GMT+0)</option>
+              </select>
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="company-name">Nome da Empresa</Label>
               <Input
                 id="company-name"
@@ -466,9 +495,13 @@ const Settings = () => {
 
       {/* Botão de Salvar Fixo */}
       <div className="flex justify-end pt-6 border-t">
-        <Button onClick={handleSave} size="lg" className="gap-2">
-          <Save className="w-4 h-4" />
-          Salvar Todas as Configurações
+        <Button onClick={handleSave} disabled={saving} size="lg" className="gap-2">
+          {saving ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Save className="w-4 h-4" />
+          )}
+          {saving ? 'Salvando...' : 'Salvar Todas as Configurações'}
         </Button>
       </div>
     </div>
