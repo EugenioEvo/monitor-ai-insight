@@ -354,14 +354,28 @@ export type Database = {
           api_site_id: string | null
           capacity_kwp: number
           concessionaria: string
+          consumer_unit_code: string | null
           created_at: string
           customer_id: string | null
+          generator_address_city: string | null
+          generator_address_complement: string | null
+          generator_address_neighborhood: string | null
+          generator_address_number: string | null
+          generator_address_state: string | null
+          generator_address_street: string | null
+          generator_address_zip_code: string | null
           id: string
+          initial_investment: number | null
           last_sync: string | null
           lat: number
           lng: number
           monitoring_system: string | null
           name: string
+          owner_document: string | null
+          owner_email: string | null
+          owner_name: string | null
+          owner_phone: string | null
+          project_assumptions: Json | null
           start_date: string
           status: string
           sync_enabled: boolean | null
@@ -372,14 +386,28 @@ export type Database = {
           api_site_id?: string | null
           capacity_kwp: number
           concessionaria: string
+          consumer_unit_code?: string | null
           created_at?: string
           customer_id?: string | null
+          generator_address_city?: string | null
+          generator_address_complement?: string | null
+          generator_address_neighborhood?: string | null
+          generator_address_number?: string | null
+          generator_address_state?: string | null
+          generator_address_street?: string | null
+          generator_address_zip_code?: string | null
           id?: string
+          initial_investment?: number | null
           last_sync?: string | null
           lat: number
           lng: number
           monitoring_system?: string | null
           name: string
+          owner_document?: string | null
+          owner_email?: string | null
+          owner_name?: string | null
+          owner_phone?: string | null
+          project_assumptions?: Json | null
           start_date: string
           status?: string
           sync_enabled?: boolean | null
@@ -390,14 +418,28 @@ export type Database = {
           api_site_id?: string | null
           capacity_kwp?: number
           concessionaria?: string
+          consumer_unit_code?: string | null
           created_at?: string
           customer_id?: string | null
+          generator_address_city?: string | null
+          generator_address_complement?: string | null
+          generator_address_neighborhood?: string | null
+          generator_address_number?: string | null
+          generator_address_state?: string | null
+          generator_address_street?: string | null
+          generator_address_zip_code?: string | null
           id?: string
+          initial_investment?: number | null
           last_sync?: string | null
           lat?: number
           lng?: number
           monitoring_system?: string | null
           name?: string
+          owner_document?: string | null
+          owner_email?: string | null
+          owner_name?: string | null
+          owner_phone?: string | null
+          project_assumptions?: Json | null
           start_date?: string
           status?: string
           sync_enabled?: boolean | null

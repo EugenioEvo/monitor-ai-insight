@@ -5,21 +5,21 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Zap, Activity, TrendingUp, Leaf, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Activity, TrendingUp, Leaf, AlertTriangle, Settings } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { PlantOverview } from '@/components/dashboard/PlantOverview';
 import { ProductionCharts } from '@/components/dashboard/ProductionCharts';
-import { PowerFlowDiagram } from '@/components/dashboard/PowerFlowDiagram';
 import { EquipmentStatus } from '@/components/dashboard/EquipmentStatus';
 import { EnvironmentalBenefits } from '@/components/dashboard/EnvironmentalBenefits';
 import { BeneficiaryManagement } from '@/components/beneficiaries/BeneficiaryManagement';
+import { PlantConfiguration } from '@/components/plants/PlantConfiguration';
 import type { Plant } from '@/types';
 
 export default function PlantDashboard() {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  const { data: plant, isLoading } = useQuery({
+  const { data: plant, isLoading, refetch } = useQuery({
     queryKey: ['plant', id],
     queryFn: async () => {
       if (!id) throw new Error('Plant ID não fornecido');
@@ -89,10 +89,6 @@ export default function PlantDashboard() {
             <TrendingUp className="w-4 h-4 mr-2" />
             Produção
           </TabsTrigger>
-          <TabsTrigger value="powerflow">
-            <Zap className="w-4 h-4 mr-2" />
-            Fluxo de Energia
-          </TabsTrigger>
           <TabsTrigger value="equipment">
             <AlertTriangle className="w-4 h-4 mr-2" />
             Equipamentos
@@ -104,6 +100,10 @@ export default function PlantDashboard() {
           <TabsTrigger value="beneficiaries">
             Beneficiários
           </TabsTrigger>
+          <TabsTrigger value="configuration">
+            <Settings className="w-4 h-4 mr-2" />
+            Configurações
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview">
@@ -112,10 +112,6 @@ export default function PlantDashboard() {
 
         <TabsContent value="production">
           <ProductionCharts plant={plant} />
-        </TabsContent>
-
-        <TabsContent value="powerflow">
-          <PowerFlowDiagram plant={plant} />
         </TabsContent>
 
         <TabsContent value="equipment">
@@ -128,6 +124,10 @@ export default function PlantDashboard() {
 
         <TabsContent value="beneficiaries">
           <BeneficiaryManagement plant={plant} />
+        </TabsContent>
+
+        <TabsContent value="configuration">
+          <PlantConfiguration plant={plant} onUpdate={refetch} />
         </TabsContent>
       </Tabs>
     </div>

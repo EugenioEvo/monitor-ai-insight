@@ -1,4 +1,3 @@
-
 export interface Plant {
   id: string;
   name: string;
@@ -14,6 +13,21 @@ export interface Plant {
   sync_enabled?: boolean;
   last_sync?: string;
   customer_id?: string; // Nova propriedade
+  // Novos campos de configuração
+  owner_name?: string;
+  owner_document?: string;
+  owner_email?: string;
+  owner_phone?: string;
+  initial_investment?: number;
+  project_assumptions?: any;
+  generator_address_street?: string;
+  generator_address_number?: string;
+  generator_address_complement?: string;
+  generator_address_neighborhood?: string;
+  generator_address_city?: string;
+  generator_address_state?: string;
+  generator_address_zip_code?: string;
+  consumer_unit_code?: string;
 }
 
 export interface Beneficiary {
