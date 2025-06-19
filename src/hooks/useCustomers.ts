@@ -2,6 +2,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Customer } from "@/types";
+import logger from "@/lib/logger";
 
 // Hook para buscar todos os clientes
 export const useCustomers = () => {
@@ -14,7 +15,7 @@ export const useCustomers = () => {
         .order("created_at", { ascending: false });
 
       if (error) {
-        console.error("Error fetching customers:", error);
+        logger.error("Error fetching customers:", error);
         throw error;
       }
 
@@ -35,7 +36,7 @@ export const useCustomer = (id: string) => {
         .single();
 
       if (error) {
-        console.error("Error fetching customer:", error);
+        logger.error("Error fetching customer:", error);
         throw error;
       }
 
@@ -58,7 +59,7 @@ export const useCreateCustomer = () => {
         .single();
 
       if (error) {
-        console.error("Error creating customer:", error);
+        logger.error("Error creating customer:", error);
         throw error;
       }
 
@@ -84,7 +85,7 @@ export const useUpdateCustomer = () => {
         .single();
 
       if (error) {
-        console.error("Error updating customer:", error);
+        logger.error("Error updating customer:", error);
         throw error;
       }
 
@@ -109,7 +110,7 @@ export const useDeleteCustomer = () => {
         .eq("id", id);
 
       if (error) {
-        console.error("Error deleting customer:", error);
+        logger.error("Error deleting customer:", error);
         throw error;
       }
 

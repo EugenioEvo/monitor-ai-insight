@@ -2,6 +2,7 @@
 import { MLModelConfig, MLTrainingData, MLPrediction, ContinuousLearningConfig, FeatureExtractor, FEATURE_EXTRACTORS, DEFAULT_ML_CONFIG } from '@/types/ml-pipeline';
 import { InvoiceExtractedData } from '@/types/invoice';
 import { ValidationResult } from '@/types/validation';
+import logger from '@/lib/logger';
 
 export class MLPipeline {
   private config: ContinuousLearningConfig;
@@ -16,7 +17,7 @@ export class MLPipeline {
   }
 
   private initializeModels() {
-    console.log('🤖 Initializing ML Pipeline with models...');
+    logger.log('🤖 Initializing ML Pipeline with models...');
     
     // Initialize anomaly detection model
     this.models.set('anomaly_detector', {
@@ -143,7 +144,7 @@ export class MLPipeline {
   }
 
   async predictValidationResults(invoice: InvoiceExtractedData): Promise<MLPrediction> {
-    console.log('🔮 ML Pipeline: Predicting validation results...');
+    logger.log('🔮 ML Pipeline: Predicting validation results...');
     
     const features = await this.extractFeatures(invoice);
     const model = this.models.get('validation_predictor');
@@ -231,7 +232,7 @@ export class MLPipeline {
   }
 
   async detectAnomalies(invoice: InvoiceExtractedData, historicalData: any[]): Promise<MLPrediction> {
-    console.log('🚨 ML Pipeline: Detecting anomalies...');
+    logger.log('🚨 ML Pipeline: Detecting anomalies...');
     
     const features = await this.extractFeatures(invoice);
     const model = this.models.get('anomaly_detector');
@@ -337,7 +338,7 @@ export class MLPipeline {
     };
 
     this.trainingData.push(trainingEntry);
-    console.log(`📚 Added training data entry. Total: ${this.trainingData.length}`);
+    logger.log(`📚 Added training data entry. Total: ${this.trainingData.length}`);
 
     // Check if we should trigger retraining
     if (this.shouldTriggerRetraining()) {
@@ -360,7 +361,7 @@ export class MLPipeline {
   }
 
   private async scheduleRetraining(): Promise<void> {
-    console.log('🔄 Scheduling model retraining...');
+    logger.log('🔄 Scheduling model retraining...');
     
     // In production, this would trigger an actual training pipeline
     setTimeout(() => {
@@ -369,7 +370,7 @@ export class MLPipeline {
   }
 
   private async performRetraining(): Promise<void> {
-    console.log('🎯 Performing model retraining...');
+    logger.log('🎯 Performing model retraining...');
     
     const newData = this.trainingData.filter(d => !d.used_for_training);
     
@@ -385,7 +386,7 @@ export class MLPipeline {
       model.version = versionParts.join('.');
     });
 
-    console.log(`✅ Retraining completed. Used ${newData.length} new samples.`);
+    logger.log(`✅ Retraining completed. Used ${newData.length} new samples.`);
   }
 
   getModelStatus(): Record<string, any> {

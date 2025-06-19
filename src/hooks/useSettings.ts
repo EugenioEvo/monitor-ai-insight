@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import logger from '@/lib/logger';
 
 export interface AppSettings {
   plants: {
@@ -118,7 +119,7 @@ export const useSettings = () => {
         .select('key, value');
 
       if (error) {
-        console.error('Error loading settings:', error);
+        logger.error('Error loading settings:', error);
         return;
       }
 
@@ -143,7 +144,7 @@ export const useSettings = () => {
         setSettings(loadedSettings);
       }
     } catch (error) {
-      console.error('Error loading settings:', error);
+      logger.error('Error loading settings:', error);
       toast({
         title: "Erro ao carregar configurações",
         description: "Usando configurações padrão.",
@@ -157,7 +158,7 @@ export const useSettings = () => {
   const saveSettings = async (newSettings: AppSettings) => {
     setSaving(true);
     try {
-      console.log('Saving settings:', newSettings);
+      logger.log('Saving settings:', newSettings);
       
       const configEntries: { key: string; value: string }[] = [];
       
@@ -188,7 +189,7 @@ export const useSettings = () => {
         description: "Todas as configurações foram atualizadas com sucesso.",
       });
     } catch (error) {
-      console.error('Error saving settings:', error);
+      logger.error('Error saving settings:', error);
       toast({
         title: "Erro ao salvar",
         description: "Ocorreu um erro ao salvar as configurações.",

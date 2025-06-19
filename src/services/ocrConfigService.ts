@@ -1,5 +1,6 @@
 
 import { supabase } from '@/integrations/supabase/client';
+import logger from '@/lib/logger';
 
 export interface OCRConfig {
   engine: 'openai' | 'google' | 'tesseract';
@@ -16,7 +17,7 @@ export const ocrConfigService = {
       .like('key', 'invoices.%');
 
     if (error) {
-      console.error('Error loading OCR config:', error);
+      logger.error('Error loading OCR config:', error);
       return {
         engine: 'openai',
         confidence_threshold: 0.8,

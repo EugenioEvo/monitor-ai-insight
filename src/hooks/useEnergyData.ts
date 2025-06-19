@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { Plant } from '@/types';
 import type { SolarEdgeConfig } from '@/types/monitoring';
+import logger from '@/lib/logger';
 
 export const useEnergyData = (plant: Plant, period: 'DAY' | 'MONTH' | 'YEAR') => {
   return useQuery({
@@ -12,8 +13,8 @@ export const useEnergyData = (plant: Plant, period: 'DAY' | 'MONTH' | 'YEAR') =>
         return null;
       }
 
-      console.log('Fetching energy details for plant:', plant.id);
-      console.log('Plant config:', {
+      logger.log('Fetching energy details for plant:', plant.id);
+      logger.log('Plant config:', {
         monitoring_system: plant.monitoring_system,
         api_site_id: plant.api_site_id,
         has_credentials: !!plant.api_credentials
@@ -25,7 +26,7 @@ export const useEnergyData = (plant: Plant, period: 'DAY' | 'MONTH' | 'YEAR') =>
         siteId: plant.api_site_id || (plant.api_credentials as SolarEdgeConfig)?.siteId
       };
 
-      console.log('Using config for energy details:', {
+      logger.log('Using config for energy details:', {
         hasApiKey: !!config.apiKey,
         siteId: config.siteId
       });
@@ -39,11 +40,11 @@ export const useEnergyData = (plant: Plant, period: 'DAY' | 'MONTH' | 'YEAR') =>
       });
 
       if (error) {
-        console.error('Supabase function error:', error);
+        logger.error('Supabase function error:', error);
         throw error;
       }
 
-      console.log('Energy details response from SolarEdge:', data);
+      logger.log('Energy details response from SolarEdge:', data);
       return data.success ? data.data : null;
     },
     enabled: plant.monitoring_system === 'solaredge' && !!plant.api_credentials && (!!plant.api_site_id || !!(plant.api_credentials as SolarEdgeConfig)?.siteId)

@@ -1,6 +1,7 @@
 
 import { ValidationRule, ValidationResult, ValidationEngineConfig, BusinessRuleContext, VALIDATION_RULES } from '@/types/validation';
 import { InvoiceExtractedData } from '@/types/invoice';
+import logger from '@/lib/logger';
 
 export class ValidationEngine {
   private config: ValidationEngineConfig;
@@ -19,7 +20,7 @@ export class ValidationEngine {
   ): Promise<ValidationResult[]> {
     const results: ValidationResult[] = [];
 
-    console.log(`🔍 Validation Engine: Validating invoice with ${this.rules.length} rules`);
+    logger.log(`🔍 Validation Engine: Validating invoice with ${this.rules.length} rules`);
 
     for (const rule of this.rules) {
       try {
@@ -28,7 +29,7 @@ export class ValidationEngine {
           results.push(result);
         }
       } catch (error) {
-        console.error(`Error executing rule ${rule.id}:`, error);
+        logger.error(`Error executing rule ${rule.id}:`, error);
         results.push({
           rule_id: rule.id,
           passed: false,
@@ -42,7 +43,7 @@ export class ValidationEngine {
 
     // Calculate overall validation score
     const overallScore = this.calculateOverallScore(results);
-    console.log(`📊 Validation completed. Overall score: ${(overallScore * 100).toFixed(1)}%`);
+    logger.log(`📊 Validation completed. Overall score: ${(overallScore * 100).toFixed(1)}%`);
 
     return results;
   }
