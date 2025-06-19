@@ -215,7 +215,7 @@ export const useCustomerConsumptionData = (customerId: string) => {
       // Processar dados para agrupar por mês
       const monthlyData: { [key: string]: { consumption: number, cost: number } } = {};
       
-      data?.forEach((invoice: DatabaseInvoice) => {
+      (data as DatabaseInvoice[])?.forEach((invoice) => {
         const month = invoice.reference_month;
         if (!monthlyData[month]) {
           monthlyData[month] = { consumption: 0, cost: 0 };
