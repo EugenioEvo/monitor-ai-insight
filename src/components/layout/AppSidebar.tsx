@@ -1,5 +1,5 @@
 
-import { Calendar, Home, Zap, FileText, Wrench, AlertTriangle, BarChart3, MessageSquare, Settings, Bot } from "lucide-react";
+import { Calendar, Home, Zap, FileText, Wrench, AlertTriangle, BarChart3, MessageSquare, Settings, Bot, Users } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import {
   Sidebar,
@@ -25,6 +25,12 @@ const menuItems = [
     title: "Plantas",
     url: "/plants",
     icon: Zap,
+    badge: null
+  },
+  {
+    title: "Clientes",
+    url: "/customers",
+    icon: Users,
     badge: null
   },
   {

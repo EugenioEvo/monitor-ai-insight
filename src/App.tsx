@@ -10,6 +10,7 @@ import Index from "./pages/Index";
 import Dashboard from "./pages/Dashboard";
 import Plants from "./pages/Plants";
 import PlantDashboard from "./pages/PlantDashboard";
+import Customers from "./pages/Customers";
 import Invoices from "./pages/Invoices";
 import Chat from "./pages/Chat";
 import Agents from "./pages/Agents";
@@ -33,6 +34,7 @@ const App = () => (
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/plants" element={<Plants />} />
                 <Route path="/plants/:id/dashboard" element={<PlantDashboard />} />
+                <Route path="/customers" element={<Customers />} />
                 <Route path="/invoices" element={<Invoices />} />
                 <Route path="/chat" element={<Chat />} />
                 <Route path="/agents" element={<Agents />} />

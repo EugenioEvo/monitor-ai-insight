@@ -80,3 +80,21 @@ export interface User {
   name: string;
   role: 'super_admin' | 'plant_admin' | 'analyst' | 'technician' | 'viewer';
 }
+
+export interface Customer {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  document: string;
+  birth_date: string;
+  address_street?: string;
+  address_number?: string;
+  address_complement?: string;
+  address_neighborhood?: string;
+  address_city?: string;
+  address_state?: string;
+  address_zip_code?: string;
+  created_at: string;
+  updated_at: string;
+}
