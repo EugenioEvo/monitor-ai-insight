@@ -253,49 +253,187 @@ export type Database = {
       }
       invoices: {
         Row: {
+          bandeira_tipo: string | null
+          bandeira_valor: number | null
+          classe_subclasse: string | null
+          codigo_barras: string | null
+          cofins_aliquota: number | null
+          cofins_valor: number | null
+          confidence_score: number | null
+          consumo_fp_te_kwh: number | null
+          consumo_p_te_kwh: number | null
+          contrib_ilum_publica: number | null
           created_at: string
           customer_unit_id: string | null
+          data_emissao: string | null
+          data_leitura: string | null
+          data_vencimento: string | null
           demand_kw: number
+          demanda_te_kw: number | null
+          demanda_tusd_kw: number | null
+          dias_faturamento: number | null
+          energia_compensada_kwh: number | null
+          energia_injetada_kwh: number | null
           energy_kwh: number
           extracted_data: Json | null
+          extraction_method: string | null
+          fator_potencia: number | null
           file_url: string
+          historico_consumo: Json | null
+          icms_aliquota: number | null
+          icms_valor: number | null
           id: string
+          issqn_valor: number | null
+          leitura_anterior: number | null
+          leitura_atual: number | null
+          linha_digitavel: string | null
+          modalidade_tarifaria: string | null
+          multiplicador: number | null
+          observacoes: string | null
+          outras_taxas: number | null
+          pis_aliquota: number | null
+          pis_valor: number | null
+          processing_time_ms: number | null
           reference_month: string
+          requires_review: boolean | null
+          saldo_creditos_kwh: number | null
           status: string
+          subgrupo_tensao: string | null
+          tarifa_demanda_te: number | null
+          tarifa_demanda_tusd: number | null
+          tarifa_te_te: number | null
+          tarifa_te_tusd: number | null
           taxes_r$: number
           total_r$: number
           uc_code: string
           updated_at: string
+          validation_errors: Json | null
+          valor_demanda_te: number | null
+          valor_demanda_tusd: number | null
+          valor_te: number | null
+          valor_tusd: number | null
         }
         Insert: {
+          bandeira_tipo?: string | null
+          bandeira_valor?: number | null
+          classe_subclasse?: string | null
+          codigo_barras?: string | null
+          cofins_aliquota?: number | null
+          cofins_valor?: number | null
+          confidence_score?: number | null
+          consumo_fp_te_kwh?: number | null
+          consumo_p_te_kwh?: number | null
+          contrib_ilum_publica?: number | null
           created_at?: string
           customer_unit_id?: string | null
+          data_emissao?: string | null
+          data_leitura?: string | null
+          data_vencimento?: string | null
           demand_kw?: number
+          demanda_te_kw?: number | null
+          demanda_tusd_kw?: number | null
+          dias_faturamento?: number | null
+          energia_compensada_kwh?: number | null
+          energia_injetada_kwh?: number | null
           energy_kwh?: number
           extracted_data?: Json | null
+          extraction_method?: string | null
+          fator_potencia?: number | null
           file_url: string
+          historico_consumo?: Json | null
+          icms_aliquota?: number | null
+          icms_valor?: number | null
           id?: string
+          issqn_valor?: number | null
+          leitura_anterior?: number | null
+          leitura_atual?: number | null
+          linha_digitavel?: string | null
+          modalidade_tarifaria?: string | null
+          multiplicador?: number | null
+          observacoes?: string | null
+          outras_taxas?: number | null
+          pis_aliquota?: number | null
+          pis_valor?: number | null
+          processing_time_ms?: number | null
           reference_month: string
+          requires_review?: boolean | null
+          saldo_creditos_kwh?: number | null
           status?: string
+          subgrupo_tensao?: string | null
+          tarifa_demanda_te?: number | null
+          tarifa_demanda_tusd?: number | null
+          tarifa_te_te?: number | null
+          tarifa_te_tusd?: number | null
           taxes_r$?: number
           total_r$?: number
           uc_code: string
           updated_at?: string
+          validation_errors?: Json | null
+          valor_demanda_te?: number | null
+          valor_demanda_tusd?: number | null
+          valor_te?: number | null
+          valor_tusd?: number | null
         }
         Update: {
+          bandeira_tipo?: string | null
+          bandeira_valor?: number | null
+          classe_subclasse?: string | null
+          codigo_barras?: string | null
+          cofins_aliquota?: number | null
+          cofins_valor?: number | null
+          confidence_score?: number | null
+          consumo_fp_te_kwh?: number | null
+          consumo_p_te_kwh?: number | null
+          contrib_ilum_publica?: number | null
           created_at?: string
           customer_unit_id?: string | null
+          data_emissao?: string | null
+          data_leitura?: string | null
+          data_vencimento?: string | null
           demand_kw?: number
+          demanda_te_kw?: number | null
+          demanda_tusd_kw?: number | null
+          dias_faturamento?: number | null
+          energia_compensada_kwh?: number | null
+          energia_injetada_kwh?: number | null
           energy_kwh?: number
           extracted_data?: Json | null
+          extraction_method?: string | null
+          fator_potencia?: number | null
           file_url?: string
+          historico_consumo?: Json | null
+          icms_aliquota?: number | null
+          icms_valor?: number | null
           id?: string
+          issqn_valor?: number | null
+          leitura_anterior?: number | null
+          leitura_atual?: number | null
+          linha_digitavel?: string | null
+          modalidade_tarifaria?: string | null
+          multiplicador?: number | null
+          observacoes?: string | null
+          outras_taxas?: number | null
+          pis_aliquota?: number | null
+          pis_valor?: number | null
+          processing_time_ms?: number | null
           reference_month?: string
+          requires_review?: boolean | null
+          saldo_creditos_kwh?: number | null
           status?: string
+          subgrupo_tensao?: string | null
+          tarifa_demanda_te?: number | null
+          tarifa_demanda_tusd?: number | null
+          tarifa_te_te?: number | null
+          tarifa_te_tusd?: number | null
           taxes_r$?: number
           total_r$?: number
           uc_code?: string
           updated_at?: string
+          validation_errors?: Json | null
+          valor_demanda_te?: number | null
+          valor_demanda_tusd?: number | null
+          valor_te?: number | null
+          valor_tusd?: number | null
         }
         Relationships: [
           {

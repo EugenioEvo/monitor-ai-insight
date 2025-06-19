@@ -1,4 +1,3 @@
-
 import { useState, useCallback } from "react";
 import { Upload, FileText, Loader2, CheckCircle, AlertCircle, Eye } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -35,13 +34,15 @@ export function EnhancedInvoiceUpload() {
     for (let i = 0; i < newStatuses.length; i++) {
       const status = newStatuses[i];
       
-      // Simulação de etapas de processamento
+      // Simulação de etapas de processamento expandidas
       const steps = [
-        { progress: 10, step: 'Detectando layout do documento...', status: 'processing' as const },
-        { progress: 25, step: 'Executando OCR com Google Vision...', status: 'processing' as const },
-        { progress: 40, step: 'Processando com IA (GPT-4)...', status: 'processing' as const },
-        { progress: 60, step: 'Extraindo campos estruturados...', status: 'extracted' as const },
-        { progress: 80, step: 'Validando dados extraídos...', status: 'validated' as const },
+        { progress: 5, step: 'Analisando formato do arquivo...', status: 'processing' as const },
+        { progress: 15, step: 'Detectando layout da fatura...', status: 'processing' as const },
+        { progress: 25, step: 'Executando OCR primário (OpenAI Vision)...', status: 'processing' as const },
+        { progress: 40, step: 'Processando com IA (GPT-4o)...', status: 'processing' as const },
+        { progress: 55, step: 'Extraindo 50+ campos estruturados...', status: 'extracted' as const },
+        { progress: 70, step: 'Aplicando validações de negócio...', status: 'validated' as const },
+        { progress: 85, step: 'Verificando consistência dos dados...', status: 'validated' as const },
         { progress: 100, step: 'Processamento concluído', status: 'completed' as const }
       ];
 
@@ -53,41 +54,101 @@ export function EnhancedInvoiceUpload() {
         status.status = stepData.status;
         
         if (stepData.progress === 40) {
-          status.confidence_score = 0.85 + Math.random() * 0.1;
+          status.confidence_score = 0.85 + Math.random() * 0.12;
         }
         
-        if (stepData.progress === 60) {
-          status.processing_time_ms = 2500 + Math.random() * 1500;
+        if (stepData.progress === 70) {
+          status.processing_time_ms = 2500 + Math.random() * 2000;
         }
 
         setProcessingStatus([...newStatuses]);
       }
 
-      // Simular dados extraídos para o primeiro arquivo
+      // Simular dados extraídos expandidos para o primeiro arquivo
       if (i === 0) {
         const mockExtractedData: InvoiceExtractedData = {
+          // Dados básicos
           uc_code: '1234567890',
           reference_month: '2024-12',
           energy_kwh: 1250.5,
           demand_kw: 25.8,
           total_r$: 890.45,
           taxes_r$: 178.09,
+          
+          // Dados expandidos do glossário
           subgrupo_tensao: 'A4',
           consumo_fp_te_kwh: 950.3,
           consumo_p_te_kwh: 300.2,
+          demanda_tusd_kw: 22.5,
+          demanda_te_kw: 25.8,
+          
+          // Tributos detalhados
           icms_valor: 125.67,
           icms_aliquota: 18,
+          pis_valor: 12.45,
+          pis_aliquota: 1.65,
+          cofins_valor: 39.97,
+          cofins_aliquota: 7.6,
+          
+          // Bandeira tarifária
           bandeira_tipo: 'Verde',
           bandeira_valor: 0,
+          
+          // Datas
+          data_leitura: '2024-11-28',
+          data_emissao: '2024-12-05',
+          data_vencimento: '2024-12-20',
+          
+          // Leituras
+          leitura_atual: 145678.5,
+          leitura_anterior: 144428.0,
+          multiplicador: 1.0,
+          
+          // Tarifas
+          tarifa_te_tusd: 0.15847,
+          tarifa_te_te: 0.31205,
+          tarifa_demanda_tusd: 12.85,
+          tarifa_demanda_te: 25.47,
+          
+          // Valores calculados
+          valor_tusd: 198.75,
+          valor_te: 390.32,
+          valor_demanda_tusd: 289.13,
+          valor_demanda_te: 657.12,
+          
+          // Compensação
+          energia_injetada_kwh: 856.2,
+          energia_compensada_kwh: 856.2,
+          saldo_creditos_kwh: 125.5,
+          
+          // Taxas adicionais
+          contrib_ilum_publica: 15.45,
+          issqn_valor: 0,
+          outras_taxas: 8.75,
+          
+          // Classificação
+          classe_subclasse: 'Comercial - Outros Serviços',
+          modalidade_tarifaria: 'Convencional B3',
+          fator_potencia: 0.92,
+          dias_faturamento: 30,
+          
+          // Metadados
           confidence_score: status.confidence_score,
           extraction_method: 'openai',
-          requires_review: status.confidence_score < 0.9
+          requires_review: status.confidence_score < 0.9,
+          processing_time_ms: status.processing_time_ms,
+          
+          // Informações complementares
+          observacoes: 'Fatura com compensação de energia elétrica aplicada',
+          codigo_barras: '84890000001234567890123456789012345678901234',
+          linha_digitavel: '84890.00000 01234.567890 12345.678901 2 34567890123456'
         };
 
         setExtractedData(mockExtractedData);
 
-        // Simular validações
+        // Simular validações expandidas
         const mockValidationErrors: ValidationError[] = [];
+        
         if (mockExtractedData.confidence_score < 0.9) {
           mockValidationErrors.push({
             rule_id: 'confidence-check',
@@ -99,6 +160,26 @@ export function EnhancedInvoiceUpload() {
           });
         }
 
+        // Validação de cross-field arithmetic
+        const calculatedTotal = (mockExtractedData.valor_tusd || 0) + 
+                               (mockExtractedData.valor_te || 0) + 
+                               (mockExtractedData.valor_demanda_tusd || 0) + 
+                               (mockExtractedData.valor_demanda_te || 0) +
+                               (mockExtractedData.icms_valor || 0) +
+                               (mockExtractedData.pis_valor || 0) +
+                               (mockExtractedData.cofins_valor || 0);
+        
+        if (Math.abs(calculatedTotal - mockExtractedData.total_r$) > 10) {
+          mockValidationErrors.push({
+            rule_id: 'total-calculation',
+            field_name: 'Valor Total',
+            error_type: 'arithmetic_inconsistency',
+            message: `Valor total informado (R$ ${mockExtractedData.total_r$.toFixed(2)}) difere do calculado (R$ ${calculatedTotal.toFixed(2)})`,
+            severity: 'error',
+            suggested_fix: 'Verificar cálculo dos componentes da fatura'
+          });
+        }
+
         setValidationErrors(mockValidationErrors);
         setCurrentStep('review');
       }
@@ -106,7 +187,7 @@ export function EnhancedInvoiceUpload() {
 
     toast({
       title: "Processamento concluído!",
-      description: `${files.length} arquivo(s) processado(s) com IA avançada.`,
+      description: `${files.length} arquivo(s) processado(s) com IA avançada e 50+ campos extraídos.`,
     });
   };
 
@@ -175,7 +256,7 @@ export function EnhancedInvoiceUpload() {
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-bold">Revisão de Dados Extraídos</h2>
+          <h2 className="text-2xl font-bold">Revisão de Dados Extraídos - 50+ Campos</h2>
           <Button variant="outline" onClick={() => setCurrentStep('upload')}>
             Voltar ao Upload
           </Button>
@@ -218,7 +299,7 @@ export function EnhancedInvoiceUpload() {
                 <Loader2 className="w-12 h-12 text-blue-500 mx-auto animate-spin" />
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900">Processando com IA Avançada...</h3>
-                  <p className="text-gray-600">OCR multi-engine + validação automática</p>
+                  <p className="text-gray-600">OCR multi-engine + extração de 50+ campos + validação automática</p>
                 </div>
               </>
             ) : (
@@ -226,7 +307,7 @@ export function EnhancedInvoiceUpload() {
                 <Upload className="w-12 h-12 text-gray-400 mx-auto" />
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900">Upload Inteligente de Faturas</h3>
-                  <p className="text-gray-600">OCR + IA + Validação automática - Suporte a PDF, JPG, PNG</p>
+                  <p className="text-gray-600">Sistema expandido - 50+ campos do glossário + validação completa</p>
                 </div>
                 <div className="flex gap-2 justify-center">
                   <Button
