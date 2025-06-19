@@ -12,6 +12,7 @@ import { User, Building, DollarSign, MapPin, FileText, Edit3, Save, X } from 'lu
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { concessionarias } from '@/utils/concessionarias';
+import { useCustomers } from '@/hooks/useCustomers';
 import type { Plant } from '@/types';
 
 interface PlantConfigurationProps {
@@ -23,13 +24,11 @@ export const PlantConfiguration = ({ plant, onUpdate }: PlantConfigurationProps)
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  const { data: customers } = useCustomers();
 
   const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm({
     defaultValues: {
-      owner_name: plant.owner_name || '',
-      owner_document: plant.owner_document || '',
-      owner_email: plant.owner_email || '',
-      owner_phone: plant.owner_phone || '',
+      customer_id: plant.customer_id || '',
       initial_investment: plant.initial_investment || '',
       generator_address_street: plant.generator_address_street || '',
       generator_address_number: plant.generator_address_number || '',
@@ -43,6 +42,9 @@ export const PlantConfiguration = ({ plant, onUpdate }: PlantConfigurationProps)
       project_assumptions: plant.project_assumptions ? JSON.stringify(plant.project_assumptions, null, 2) : ''
     }
   });
+
+  const selectedCustomerId = watch('customer_id');
+  const selectedCustomer = customers?.find(c => c.id === selectedCustomerId);
 
   const onSubmit = async (data: any) => {
     setIsLoading(true);
@@ -82,10 +84,7 @@ export const PlantConfiguration = ({ plant, onUpdate }: PlantConfigurationProps)
   const handleCancel = () => {
     setIsEditing(false);
     // Reset form to original values
-    setValue('owner_name', plant.owner_name || '');
-    setValue('owner_document', plant.owner_document || '');
-    setValue('owner_email', plant.owner_email || '');
-    setValue('owner_phone', plant.owner_phone || '');
+    setValue('customer_id', plant.customer_id || '');
     setValue('initial_investment', plant.initial_investment || '');
     setValue('generator_address_street', plant.generator_address_street || '');
     setValue('generator_address_number', plant.generator_address_number || '');
@@ -131,55 +130,58 @@ export const PlantConfiguration = ({ plant, onUpdate }: PlantConfigurationProps)
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-        {/* Dados do Proprietário */}
+        {/* Proprietário */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <User className="w-5 h-5" />
-              Dados do Proprietário
+              Proprietário
             </CardTitle>
             <CardDescription>
-              Informações sobre o proprietário da instalação solar
+              Selecione o cliente proprietário desta instalação solar
             </CardDescription>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <CardContent className="space-y-4">
             <div>
-              <Label htmlFor="owner_name">Nome Completo</Label>
-              <Input
-                id="owner_name"
-                {...register('owner_name')}
-                disabled={!isEditing}
-                placeholder="Nome do proprietário"
-              />
+              <Label htmlFor="customer_id">Cliente Proprietário</Label>
+              {isEditing ? (
+                <Select value={watch('customer_id')} onValueChange={(value) => setValue('customer_id', value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o cliente proprietário" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {customers?.map((customer) => (
+                      <SelectItem key={customer.id} value={customer.id}>
+                        {customer.name} - {customer.document}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  value={selectedCustomer ? `${selectedCustomer.name} - ${selectedCustomer.document}` : 'Nenhum cliente selecionado'}
+                  disabled={true}
+                  placeholder="Nenhum cliente selecionado"
+                />
+              )}
             </div>
-            <div>
-              <Label htmlFor="owner_document">CPF/CNPJ</Label>
-              <Input
-                id="owner_document"
-                {...register('owner_document')}
-                disabled={!isEditing}
-                placeholder="000.000.000-00"
-              />
-            </div>
-            <div>
-              <Label htmlFor="owner_email">Email</Label>
-              <Input
-                id="owner_email"
-                type="email"
-                {...register('owner_email')}
-                disabled={!isEditing}
-                placeholder="email@exemplo.com"
-              />
-            </div>
-            <div>
-              <Label htmlFor="owner_phone">Telefone</Label>
-              <Input
-                id="owner_phone"
-                {...register('owner_phone')}
-                disabled={!isEditing}
-                placeholder="(11) 99999-9999"
-              />
-            </div>
+
+            {/* Exibir dados do cliente selecionado */}
+            {selectedCustomer && (
+              <div className="mt-4 p-4 bg-muted rounded-lg">
+                <h4 className="font-medium mb-2">Dados do Cliente</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                  <div><strong>Email:</strong> {selectedCustomer.email}</div>
+                  <div><strong>Telefone:</strong> {selectedCustomer.phone}</div>
+                  <div><strong>Data de Nascimento:</strong> {new Date(selectedCustomer.birth_date).toLocaleDateString('pt-BR')}</div>
+                  {selectedCustomer.address_street && (
+                    <div className="md:col-span-2">
+                      <strong>Endereço:</strong> {selectedCustomer.address_street}, {selectedCustomer.address_number} - {selectedCustomer.address_neighborhood}, {selectedCustomer.address_city}/{selectedCustomer.address_state}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 

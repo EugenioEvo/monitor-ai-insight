@@ -14,6 +14,7 @@ ALTER TABLE public.plants ADD COLUMN IF NOT EXISTS generator_address_city TEXT;
 ALTER TABLE public.plants ADD COLUMN IF NOT EXISTS generator_address_state TEXT;
 ALTER TABLE public.plants ADD COLUMN IF NOT EXISTS generator_address_zip_code TEXT;
 ALTER TABLE public.plants ADD COLUMN IF NOT EXISTS consumer_unit_code TEXT;
+ALTER TABLE public.plants ADD COLUMN IF NOT EXISTS customer_id UUID REFERENCES public.customers(id);
 
 -- Adicionar trigger para atualizar updated_at quando houver mudanças
 DROP TRIGGER IF EXISTS update_plants_updated_at ON public.plants;
