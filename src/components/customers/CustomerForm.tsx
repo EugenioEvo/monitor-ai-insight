@@ -64,14 +64,30 @@ export const CustomerForm = ({ customer, onClose }: CustomerFormProps) => {
 
   const onSubmit = async (data: CustomerFormData) => {
     try {
+      // Garantir que todos os campos obrigatórios estão presentes
+      const customerData = {
+        name: data.name,
+        email: data.email,
+        phone: data.phone,
+        document: data.document,
+        birth_date: data.birth_date,
+        address_street: data.address_street || null,
+        address_number: data.address_number || null,
+        address_complement: data.address_complement || null,
+        address_neighborhood: data.address_neighborhood || null,
+        address_city: data.address_city || null,
+        address_state: data.address_state || null,
+        address_zip_code: data.address_zip_code || null,
+      };
+
       if (customer) {
-        await updateCustomer.mutateAsync({ id: customer.id, ...data });
+        await updateCustomer.mutateAsync({ id: customer.id, ...customerData });
         toast({
           title: "Cliente atualizado",
           description: "Os dados do cliente foram atualizados com sucesso.",
         });
       } else {
-        await createCustomer.mutateAsync(data);
+        await createCustomer.mutateAsync(customerData);
         toast({
           title: "Cliente criado",
           description: "Novo cliente foi cadastrado com sucesso.",
