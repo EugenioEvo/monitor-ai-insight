@@ -1,193 +1,110 @@
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { useDebounce } from '@/hooks/useDebounce';
-import { AppSettings, validateSettings } from '@/types/settings';
+import type { AppSettings } from '@/types/settings';
 
-const DEFAULT_SETTINGS: AppSettings = {
+const defaultSettings: AppSettings = {
   plants: {
-    autoDiscovery: true,
-    monitoringInterval: 5,
+    autoSync: true,
+    syncInterval: 15,
     alertThreshold: 80,
-    enableNotifications: true
+    maintenanceReminder: true
   },
   customers: {
-    autoGenerateReports: true,
-    emailNotifications: true,
-    invoiceReminders: true,
+    autoCreateUnits: true,
+    requireDocument: true,
     defaultCurrency: 'BRL'
   },
   invoices: {
     ocrEngine: 'openai',
     autoValidation: true,
-    duplicateDetection: true,
-    storageRetention: 365
+    confidenceThreshold: 0.8,
+    fallbackEnabled: true
   },
   maintenance: {
-    preventiveMaintenance: true,
-    maintenanceInterval: 30,
-    alertsEnabled: true,
-    autoScheduling: false
+    scheduleEnabled: true,
+    reminderDays: 7,
+    criticalAlerts: true
   },
   alerts: {
-    emailAlerts: true,
-    smsAlerts: false,
-    pushNotifications: true,
-    alertSeverity: 'medium'
+    emailEnabled: true,
+    smsEnabled: false,
+    alertSeverity: 'medium',
+    retention: 90
   },
   reports: {
-    autoGeneration: true,
-    reportFrequency: 'weekly',
-    includeCharts: true,
-    emailDelivery: true
+    autoGenerate: true,
+    reportFrequency: 'monthly',
+    includeCharts: true
   },
   ai: {
     chatEnabled: true,
-    autoResponses: true,
-    learningMode: true,
-    dataCollection: true
+    autoRespond: false,
+    learningMode: true
   },
   general: {
-    theme: 'light',
+    theme: 'auto',
     language: 'pt-BR',
-    timezone: 'America/Sao_Paulo',
-    companyName: 'Monitor.ai'
+    timezone: 'America/Sao_Paulo'
   }
 };
 
 export const useSettings = () => {
-  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
-  // Debounce settings para evitar saves excessivos
-  const debouncedSettings = useDebounce(settings, 1000);
-
-  const loadSettings = useCallback(async (retryCount = 0) => {
+  const fetchSettings = async () => {
     try {
-      setLoading(true);
-      setError(null);
-      
       const { data, error } = await supabase
         .from('app_config')
         .select('key, value');
 
       if (error) {
-        throw error;
+        console.error('Error fetching settings:', error);
+        // Use default settings if fetch fails
+        setSettings(defaultSettings);
+        return;
       }
 
-      if (data && data.length > 0) {
-        const loadedSettings = { ...DEFAULT_SETTINGS };
-        
-        data.forEach(({ key, value }) => {
-          const keys = key.split('.');
-          if (keys.length === 2) {
-            const [section, setting] = keys;
-            if (loadedSettings[section as keyof AppSettings]) {
-              try {
-                const parsedValue = JSON.parse(value);
-                (loadedSettings[section as keyof AppSettings] as any)[setting] = parsedValue;
-              } catch {
-                (loadedSettings[section as keyof AppSettings] as any)[setting] = value;
-              }
-            }
+      const configMap: Record<string, any> = {};
+      data?.forEach(({ key, value }) => {
+        try {
+          configMap[key] = JSON.parse(value);
+        } catch {
+          configMap[key] = value;
+        }
+      });
+
+      const loadedSettings = { ...defaultSettings };
+      
+      // Map config to settings structure
+      Object.keys(loadedSettings).forEach(section => {
+        Object.keys(loadedSettings[section as keyof AppSettings]).forEach(key => {
+          const configKey = `${section}.${key}`;
+          if (configMap[configKey] !== undefined) {
+            (loadedSettings[section as keyof AppSettings] as any)[key] = configMap[configKey];
           }
         });
+      });
 
-        setSettings(loadedSettings);
-      }
+      setSettings(loadedSettings);
     } catch (error) {
-      console.error('Error loading settings:', error);
-      setError(error.message || 'Erro ao carregar configurações');
-      
-      // Retry logic para falhas de rede
-      if (retryCount < 2) {
-        setTimeout(() => loadSettings(retryCount + 1), 1000 * (retryCount + 1));
-      } else {
-        toast({
-          title: "Erro ao carregar configurações",
-          description: "Usando configurações padrão. Tente novamente em alguns minutos.",
-          variant: "destructive"
-        });
-      }
+      console.error('Error in fetchSettings:', error);
+      setSettings(defaultSettings);
+      toast({
+        title: 'Erro ao carregar configurações',
+        description: 'Usando configurações padrão.',
+        variant: 'destructive'
+      });
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  };
 
-  const saveSettings = useCallback(async (newSettings: AppSettings, retryCount = 0) => {
-    const validation = validateSettings(newSettings);
-    
-    if (!validation.isValid) {
-      toast({
-        title: "Configurações inválidas",
-        description: validation.errors.join(', '),
-        variant: "destructive"
-      });
-      return false;
-    }
-
-    setSaving(true);
-    setError(null);
-    
-    try {
-      console.log('Saving settings:', newSettings);
-      
-      const configEntries: { key: string; value: string }[] = [];
-      
-      Object.entries(newSettings).forEach(([section, sectionSettings]) => {
-        Object.entries(sectionSettings).forEach(([setting, value]) => {
-          configEntries.push({
-            key: `${section}.${setting}`,
-            value: typeof value === 'string' ? value : JSON.stringify(value)
-          });
-        });
-      });
-
-      // Usar upsert para cada entrada de configuração com melhor tratamento de erro
-      for (const entry of configEntries) {
-        const { error } = await supabase
-          .from('app_config')
-          .upsert(entry, { onConflict: 'key' });
-
-        if (error) {
-          throw error;
-        }
-      }
-
-      setSettings(newSettings);
-      
-      toast({
-        title: "Configurações salvas",
-        description: "Todas as configurações foram atualizadas com sucesso.",
-      });
-
-      return true;
-    } catch (error) {
-      console.error('Error saving settings:', error);
-      setError(error.message || 'Erro ao salvar configurações');
-      
-      // Retry logic para falhas de salvamento
-      if (retryCount < 2) {
-        setTimeout(() => saveSettings(newSettings, retryCount + 1), 1000 * (retryCount + 1));
-      } else {
-        toast({
-          title: "Erro ao salvar",
-          description: "Ocorreu um erro ao salvar as configurações. Tente novamente.",
-          variant: "destructive"
-        });
-      }
-      
-      return false;
-    } finally {
-      setSaving(false);
-    }
-  }, [toast]);
-
-  const updateSetting = useCallback((section: keyof AppSettings, key: string, value: any) => {
+  const updateSetting = (section: keyof AppSettings, key: string, value: any) => {
     setSettings(prev => ({
       ...prev,
       [section]: {
@@ -195,30 +112,58 @@ export const useSettings = () => {
         [key]: value
       }
     }));
+  };
+
+  const saveSettings = async (settingsToSave: AppSettings) => {
+    setSaving(true);
+    try {
+      // Convert settings to flat config structure
+      const configUpdates = [];
+      
+      Object.entries(settingsToSave).forEach(([section, sectionSettings]) => {
+        Object.entries(sectionSettings).forEach(([key, value]) => {
+          configUpdates.push({
+            key: `${section}.${key}`,
+            value: typeof value === 'object' ? JSON.stringify(value) : String(value)
+          });
+        });
+      });
+
+      // Batch upsert all settings
+      const { error } = await supabase
+        .from('app_config')
+        .upsert(configUpdates, { onConflict: 'key' });
+
+      if (error) {
+        throw error;
+      }
+
+      toast({
+        title: 'Configurações salvas',
+        description: 'Todas as configurações foram salvas com sucesso.'
+      });
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      toast({
+        title: 'Erro ao salvar',
+        description: 'Ocorreu um erro ao salvar as configurações.',
+        variant: 'destructive'
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSettings();
   }, []);
 
-  // Auto-save com debounce
-  useEffect(() => {
-    if (!loading && debouncedSettings !== DEFAULT_SETTINGS) {
-      const isEqual = JSON.stringify(settings) === JSON.stringify(debouncedSettings);
-      if (!isEqual) {
-        saveSettings(debouncedSettings);
-      }
-    }
-  }, [debouncedSettings, loading, saveSettings, settings]);
-
-  useEffect(() => {
-    loadSettings();
-  }, [loadSettings]);
-
-  // Memoizar o retorno para evitar re-renders desnecessários
-  return useMemo(() => ({
+  return {
     settings,
     loading,
     saving,
-    error,
     updateSetting,
     saveSettings,
-    loadSettings
-  }), [settings, loading, saving, error, updateSetting, saveSettings, loadSettings]);
+    refetch: fetchSettings
+  };
 };

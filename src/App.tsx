@@ -7,7 +7,10 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { ThemeManager } from "@/components/settings/ThemeManager";
+import { AuthProvider } from "@/hooks/useAuth";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import Index from "./pages/Index";
+import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import Plants from "./pages/Plants";
 import PlantDashboard from "./pages/PlantDashboard";
@@ -24,34 +27,47 @@ const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <ThemeManager />
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <SidebarProvider defaultOpen>
-          <div className="min-h-screen flex w-full">
-            <AppSidebar />
-            <main className="flex-1 p-6">
-              <Routes>
-                <Route path="/" element={<Index />} />
-                <Route path="/dashboard" element={<Dashboard />} />
-                <Route path="/plants" element={<Plants />} />
-                <Route path="/plants/:id/dashboard" element={<PlantDashboard />} />
-                <Route path="/customers" element={<Customers />} />
-                <Route path="/customers/:id/dashboard" element={<CustomerDashboard />} />
-                <Route path="/invoices" element={<Invoices />} />
-                <Route path="/chat" element={<Chat />} />
-                <Route path="/agents" element={<Agents />} />
-                <Route path="/alerts" element={<Alerts />} />
-                <Route path="/settings" element={<Settings />} />
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-            </main>
-          </div>
-        </SidebarProvider>
-      </BrowserRouter>
-    </TooltipProvider>
+    <AuthProvider>
+      <TooltipProvider>
+        <ThemeManager />
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <Routes>
+            <Route path="/auth" element={<Auth />} />
+            <Route path="/" element={<Index />} />
+            <Route path="/*" element={
+              <ProtectedRoute>
+                <SidebarProvider defaultOpen>
+                  <div className="min-h-screen flex w-full">
+                    <AppSidebar />
+                    <main className="flex-1 p-6">
+                      <Routes>
+                        <Route path="/dashboard" element={<Dashboard />} />
+                        <Route path="/plants" element={<Plants />} />
+                        <Route path="/plants/:id/dashboard" element={<PlantDashboard />} />
+                        <Route path="/customers" element={<Customers />} />
+                        <Route path="/customers/:id/dashboard" element={<CustomerDashboard />} />
+                        <Route path="/invoices" element={<Invoices />} />
+                        <Route path="/chat" element={<Chat />} />
+                        <Route path="/agents" element={<Agents />} />
+                        <Route path="/alerts" element={<Alerts />} />
+                        <Route path="/settings" element={
+                          <ProtectedRoute requireAdmin={true}>
+                            <Settings />
+                          </ProtectedRoute>
+                        } />
+                        <Route path="*" element={<NotFound />} />
+                      </Routes>
+                    </main>
+                  </div>
+                </SidebarProvider>
+              </ProtectedRoute>
+            } />
+          </Routes>
+        </BrowserRouter>
+      </TooltipProvider>
+    </AuthProvider>
   </QueryClientProvider>
 );
 
