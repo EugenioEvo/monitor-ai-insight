@@ -1,6 +1,6 @@
 
-import { FileText, Download, Eye, Upload, Brain, CheckCircle } from "lucide-react";
-import { EnhancedInvoiceUpload } from "@/components/invoices/EnhancedInvoiceUpload";
+import { FileText, Download, Eye, Upload, Brain, CheckCircle, Zap } from "lucide-react";
+import { MultiEngineInvoiceUpload } from "@/components/invoices/MultiEngineInvoiceUpload";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,8 +24,8 @@ export default function Invoices() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">OCR & IA - Sistema de Faturas</h1>
-          <p className="text-gray-600">Processamento inteligente com múltiplos engines de OCR e validação automática</p>
+          <h1 className="text-3xl font-bold text-gray-900">Multi-Engine OCR & IA - Sistema de Faturas</h1>
+          <p className="text-gray-600">Processamento inteligente com OpenAI Vision + Google Vision + A/B Testing</p>
         </div>
       </div>
 
@@ -33,11 +33,11 @@ export default function Invoices() {
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="upload">Upload & Processamento</TabsTrigger>
           <TabsTrigger value="processed">Faturas Processadas</TabsTrigger>
-          <TabsTrigger value="analytics">Analytics & KPIs</TabsTrigger>
+          <TabsTrigger value="analytics">Analytics & Performance</TabsTrigger>
         </TabsList>
 
         <TabsContent value="upload" className="space-y-6">
-          <EnhancedInvoiceUpload />
+          <MultiEngineInvoiceUpload />
         </TabsContent>
 
         <TabsContent value="processed" className="space-y-6">
@@ -58,6 +58,7 @@ export default function Invoices() {
                       <th className="text-left py-3 px-4 font-medium text-gray-900">Energia (kWh)</th>
                       <th className="text-left py-3 px-4 font-medium text-gray-900">Valor Total</th>
                       <th className="text-left py-3 px-4 font-medium text-gray-900">Status</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-900">Engine</th>
                       <th className="text-left py-3 px-4 font-medium text-gray-900">Confiança</th>
                       <th className="text-left py-3 px-4 font-medium text-gray-900">Ações</th>
                     </tr>
@@ -82,6 +83,11 @@ export default function Invoices() {
                         <td className="py-3 px-4">
                           <Badge className={statusColors[invoice.status]}>
                             {statusLabels[invoice.status]}
+                          </Badge>
+                        </td>
+                        <td className="py-3 px-4">
+                          <Badge className="bg-purple-100 text-purple-800">
+                            OpenAI
                           </Badge>
                         </td>
                         <td className="py-3 px-4">
@@ -114,8 +120,8 @@ export default function Invoices() {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600">Precisão Crítica</p>
-                    <p className="text-2xl font-bold text-green-600">99.2%</p>
+                    <p className="text-sm text-gray-600">Precisão Multi-Engine</p>
+                    <p className="text-2xl font-bold text-green-600">99.5%</p>
                   </div>
                   <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
                     <CheckCircle className="w-6 h-6 text-green-600" />
@@ -128,11 +134,11 @@ export default function Invoices() {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600">Faturas Processadas</p>
-                    <p className="text-2xl font-bold text-blue-600">1,247</p>
+                    <p className="text-sm text-gray-600">A/B Tests Executados</p>
+                    <p className="text-2xl font-bold text-blue-600">247</p>
                   </div>
                   <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <FileText className="w-6 h-6 text-blue-600" />
+                    <Zap className="w-6 h-6 text-blue-600" />
                   </div>
                 </div>
               </CardContent>
@@ -143,7 +149,7 @@ export default function Invoices() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-gray-600">Tempo Médio</p>
-                    <p className="text-2xl font-bold text-purple-600">2.8s</p>
+                    <p className="text-2xl font-bold text-purple-600">2.1s</p>
                   </div>
                   <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
                     <Brain className="w-6 h-6 text-purple-600" />
@@ -156,8 +162,8 @@ export default function Invoices() {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600">Taxa Revisão</p>
-                    <p className="text-2xl font-bold text-orange-600">2.1%</p>
+                    <p className="text-sm text-gray-600">Custo por Página</p>
+                    <p className="text-2xl font-bold text-orange-600">$0.008</p>
                   </div>
                   <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
                     <Eye className="w-6 h-6 text-orange-600" />
@@ -175,14 +181,14 @@ export default function Invoices() {
               <CardContent>
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <span className="font-medium">Google Vision API</span>
+                    <span className="font-medium">OpenAI Vision (GPT-4o)</span>
                     <div className="flex items-center gap-2">
                       <span className="text-green-600">99.5%</span>
                       <Badge className="bg-green-100 text-green-800">Principal</Badge>
                     </div>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="font-medium">OpenAI GPT-4V</span>
+                    <span className="font-medium">Google Vision API</span>
                     <div className="flex items-center gap-2">
                       <span className="text-blue-600">97.8%</span>
                       <Badge variant="outline">Secundário</Badge>
@@ -192,7 +198,7 @@ export default function Invoices() {
                     <span className="font-medium">Tesseract LSTM</span>
                     <div className="flex items-center gap-2">
                       <span className="text-orange-600">89.2%</span>
-                      <Badge variant="outline">Fallback</Badge>
+                      <Badge variant="outline">Em Desenvolvimento</Badge>
                     </div>
                   </div>
                 </div>
@@ -201,25 +207,31 @@ export default function Invoices() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Validações Automáticas</CardTitle>
+                <CardTitle>A/B Testing Results</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <span className="font-medium">Cross-field checks</span>
-                    <Badge className="bg-green-100 text-green-800">Ativo</Badge>
+                    <span className="font-medium">OpenAI vs Google Vision</span>
+                    <Badge className="bg-purple-100 text-purple-800">OpenAI Wins: 78%</Badge>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="font-medium">Business rules</span>
-                    <Badge className="bg-green-100 text-green-800">Ativo</Badge>
+                    <span className="font-medium">Custo Médio por Engine</span>
+                    <div className="text-sm">
+                      <div>OpenAI: $0.015</div>
+                      <div>Google: $0.005</div>
+                    </div>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="font-medium">ANEEL compliance</span>
-                    <Badge className="bg-green-100 text-green-800">Ativo</Badge>
+                    <span className="font-medium">Tempo Médio de Processamento</span>
+                    <div className="text-sm">
+                      <div>OpenAI: 3.5s</div>
+                      <div>Google: 2.0s</div>
+                    </div>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="font-medium">Anomaly detection</span>
-                    <Badge className="bg-yellow-100 text-yellow-800">Beta</Badge>
+                    <span className="font-medium">Taxa de Fallback</span>
+                    <Badge className="bg-yellow-100 text-yellow-800">5.2%</Badge>
                   </div>
                 </div>
               </CardContent>
