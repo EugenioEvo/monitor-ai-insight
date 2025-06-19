@@ -109,15 +109,15 @@ export function MultiEngineInvoiceUpload() {
             throw new Error(`Erro no processamento OCR: ${ocrError.message}`);
           }
 
-          if (!ocrResult.success) {
+          if (!ocrResult || !ocrResult.success) {
             console.error('OCR Result Error:', ocrResult);
             
             // Check for specific API errors
-            if (ocrResult.error?.includes('API key')) {
+            if (ocrResult?.error?.includes('API key')) {
               setApiErrors(prev => [...prev, `Erro de configuração de API: ${ocrResult.error}`]);
             }
             
-            throw new Error(ocrResult.error || 'Erro desconhecido no processamento');
+            throw new Error(ocrResult?.error || 'Erro desconhecido no processamento');
           }
 
           // Update status: OCR completed
@@ -125,11 +125,6 @@ export function MultiEngineInvoiceUpload() {
           status.current_step = 'OCR concluído, processando dados...';
           status.confidence_score = ocrResult.confidence_score;
           status.processing_time_ms = ocrResult.processing_time_ms;
-          setProcessingStatus([...newStatuses]);
-
-          // Update status: validation
-          status.progress = 90;
-          status.current_step = 'Aplicando validações...';
           setProcessingStatus([...newStatuses]);
 
           // Set extracted data for the first file (for review)
@@ -236,7 +231,7 @@ export function MultiEngineInvoiceUpload() {
       if (successCount > 0) {
         toast({
           title: "Processamento Concluído!",
-          description: `${successCount} arquivo(s) processado(s) com sucesso.`,
+          description: `${successCount} arquivo(s) processado(s) com sucesso usando suas APIs configuradas.`,
         });
       }
 
@@ -366,7 +361,7 @@ export function MultiEngineInvoiceUpload() {
                   <p key={index} className="text-sm">{error}</p>
                 ))}
                 <p className="text-sm text-muted-foreground">
-                  Configure as chaves de API na aba "Configuração OCR" para melhor performance.
+                  Verifique se suas chaves de API estão corretas e têm os devidos acessos.
                 </p>
               </div>
             </AlertDescription>
@@ -488,7 +483,7 @@ export function MultiEngineInvoiceUpload() {
                 <p key={index} className="text-sm">{error}</p>
               ))}
               <p className="text-sm text-muted-foreground">
-                Configure as chaves de API na aba "Configuração OCR" abaixo.
+                Suas chaves foram configuradas. Se ainda há problemas, verifique se elas estão válidas e têm os devidos acessos.
               </p>
             </div>
           </AlertDescription>
@@ -515,9 +510,9 @@ export function MultiEngineInvoiceUpload() {
                   <>
                     <Loader2 className="w-12 h-12 text-blue-500 mx-auto animate-spin" />
                     <div>
-                      <h3 className="text-lg font-semibold text-gray-900">Processando com Multi-Engine OCR...</h3>
+                      <h3 className="text-lg font-semibold text-gray-900">Processando com suas APIs configuradas...</h3>
                       <p className="text-gray-600">
-                        Sistema resiliente com fallbacks automáticos
+                        Sistema inteligente com OpenAI + Google Vision + fallbacks
                       </p>
                     </div>
                   </>
@@ -527,7 +522,7 @@ export function MultiEngineInvoiceUpload() {
                     <div>
                       <h3 className="text-lg font-semibold text-gray-900">Upload Inteligente Multi-Engine</h3>
                       <p className="text-gray-600">
-                        Sistema robusto com validação e fallbacks automáticos
+                        Sistema robusto com suas APIs configuradas e fallbacks automáticos
                       </p>
                       <p className="text-sm text-gray-500">
                         Suporte: PDF, JPG, PNG (máx. 10MB)

@@ -42,13 +42,13 @@ serve(async (req) => {
 
     console.log(`[OCR] Starting processing for: ${fileName}`);
 
-    // Validate API keys
+    // Validate API keys and determine available engines
     const availableEngines = validateAPIKeys();
+    console.log(`[OCR] Available engines: ${availableEngines.join(', ')}`);
+
     if (availableEngines.length === 0) {
       throw new Error('Nenhuma API de OCR está configurada. Configure pelo menos uma chave de API.');
     }
-
-    console.log(`[OCR] Available engines: ${availableEngines.join(', ')}`);
 
     // Default configuration with available engines
     const ocrConfig: MultiEngineConfig = {
@@ -68,22 +68,16 @@ serve(async (req) => {
     }
 
     // Download file with retry logic
-    let fileData;
-    try {
-      const { data, error: downloadError } = await supabase.storage
-        .from('invoices')
-        .download(filePath);
+    console.log(`[OCR] Downloading file: ${filePath}`);
+    const { data: fileData, error: downloadError } = await supabase.storage
+      .from('invoices')
+      .download(filePath);
 
-      if (downloadError) {
-        throw new Error(`Download error: ${downloadError.message}`);
-      }
-      fileData = data;
-    } catch (downloadErr) {
-      console.error('[OCR] Download failed:', downloadErr);
-      throw new Error(`Falha ao baixar o arquivo: ${downloadErr.message}`);
+    if (downloadError) {
+      console.error('[OCR] Download error:', downloadError);
+      throw new Error(`Falha ao baixar o arquivo: ${downloadError.message}`);
     }
 
-    // Validate file
     if (!fileData || fileData.size === 0) {
       throw new Error('Arquivo vazio ou inválido');
     }
@@ -100,7 +94,7 @@ serve(async (req) => {
 
     // Process with primary engine
     console.log(`[OCR] Processing with primary engine: ${ocrConfig.primary_engine}`);
-    let primaryResult = await processWithEngineRetry(ocrConfig.primary_engine, base64, ocrConfig.max_retries);
+    let primaryResult = await processWithEngine(ocrConfig.primary_engine, base64);
 
     // If primary failed or has low confidence, try fallbacks
     let finalResult = primaryResult;
@@ -109,7 +103,8 @@ serve(async (req) => {
       
       for (const fallbackEngine of ocrConfig.fallback_engines) {
         try {
-          const fallbackResult = await processWithEngineRetry(fallbackEngine, base64, ocrConfig.max_retries);
+          console.log(`[OCR] Trying fallback engine: ${fallbackEngine}`);
+          const fallbackResult = await processWithEngine(fallbackEngine, base64);
           
           if (!fallbackResult.error && fallbackResult.confidence_score > finalResult.confidence_score) {
             console.log(`[OCR] Fallback engine ${fallbackEngine} performed better`);
@@ -129,7 +124,7 @@ serve(async (req) => {
     }
 
     // Extract structured data
-    const extractedData = await extractStructuredDataSafe(finalResult.text);
+    const extractedData = await extractStructuredData(finalResult.text);
 
     // Enhanced data with metadata
     const enhancedData = {
@@ -142,76 +137,47 @@ serve(async (req) => {
       ab_test_performed: false
     };
 
-    // Save to database with error handling
-    try {
-      const { data: invoice, error: insertError } = await supabase
-        .from('invoices')
-        .insert({
-          file_url: filePath,
-          uc_code: extractedData.uc_code || 'UNKNOWN',
-          reference_month: extractedData.reference_month || new Date().toISOString().slice(0, 7),
-          energy_kwh: extractedData.energy_kwh || 0,
-          demand_kw: extractedData.demand_kw || 0,
-          total_r$: extractedData.total_r$ || 0,
-          taxes_r$: extractedData.taxes_r$ || 0,
-          status: 'processed',
-          extracted_data: enhancedData,
-          
-          // Expanded fields
-          subgrupo_tensao: extractedData.subgrupo_tensao,
-          consumo_fp_te_kwh: extractedData.consumo_fp_te_kwh,
-          consumo_p_te_kwh: extractedData.consumo_p_te_kwh,
-          demanda_tusd_kw: extractedData.demanda_tusd_kw,
-          demanda_te_kw: extractedData.demanda_te_kw,
-          icms_valor: extractedData.icms_valor,
-          icms_aliquota: extractedData.icms_aliquota,
-          pis_valor: extractedData.pis_valor,
-          pis_aliquota: extractedData.pis_aliquota,
-          cofins_valor: extractedData.cofins_valor,
-          cofins_aliquota: extractedData.cofins_aliquota,
-          bandeira_tipo: extractedData.bandeira_tipo,
-          bandeira_valor: extractedData.bandeira_valor,
-          data_leitura: extractedData.data_leitura,
-          data_emissao: extractedData.data_emissao,
-          data_vencimento: extractedData.data_vencimento,
-          leitura_atual: extractedData.leitura_atual,
-          leitura_anterior: extractedData.leitura_anterior,
-          multiplicador: extractedData.multiplicador,
-          
-          // Metadata
-          confidence_score: finalResult.confidence_score,
-          extraction_method: finalResult.engine,
-          requires_review: finalResult.confidence_score < ocrConfig.confidence_threshold,
-          processing_time_ms: finalResult.processing_time_ms
-        })
-        .select()
-        .single();
-
-      if (insertError) {
-        console.error('[OCR] Database insert error:', insertError);
-        throw new Error(`Database error: ${insertError.message}`);
-      }
-
-      console.log(`[OCR] Successfully processed and saved invoice: ${invoice.id}`);
-
-      return new Response(JSON.stringify({
-        success: true,
-        invoice_id: invoice.id,
+    // Save to database
+    const { data: invoice, error: insertError } = await supabase
+      .from('invoices')
+      .insert({
+        file_url: filePath,
+        uc_code: extractedData.uc_code || 'UNKNOWN',
+        reference_month: extractedData.reference_month || new Date().toISOString().slice(0, 7),
+        energy_kwh: extractedData.energy_kwh || 0,
+        demand_kw: extractedData.demand_kw || 0,
+        total_r$: extractedData.total_r$ || 0,
+        taxes_r$: extractedData.taxes_r$ || 0,
+        status: 'processed',
         extracted_data: enhancedData,
-        primary_engine: finalResult.engine,
         confidence_score: finalResult.confidence_score,
+        extraction_method: finalResult.engine,
         requires_review: finalResult.confidence_score < ocrConfig.confidence_threshold,
-        processing_time_ms: finalResult.processing_time_ms,
-        cost_estimate: finalResult.cost_estimate,
-        available_engines: availableEngines
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+        processing_time_ms: finalResult.processing_time_ms
+      })
+      .select()
+      .single();
 
-    } catch (dbError) {
-      console.error('[OCR] Database operation failed:', dbError);
-      throw new Error(`Falha ao salvar no banco de dados: ${dbError.message}`);
+    if (insertError) {
+      console.error('[OCR] Database insert error:', insertError);
+      throw new Error(`Database error: ${insertError.message}`);
     }
+
+    console.log(`[OCR] Successfully processed and saved invoice: ${invoice.id}`);
+
+    return new Response(JSON.stringify({
+      success: true,
+      invoice_id: invoice.id,
+      extracted_data: enhancedData,
+      primary_engine: finalResult.engine,
+      confidence_score: finalResult.confidence_score,
+      requires_review: finalResult.confidence_score < ocrConfig.confidence_threshold,
+      processing_time_ms: finalResult.processing_time_ms,
+      cost_estimate: finalResult.cost_estimate,
+      available_engines: availableEngines
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
 
   } catch (error) {
     console.error('[OCR] Function error:', error);
@@ -229,12 +195,14 @@ serve(async (req) => {
 function validateAPIKeys(): string[] {
   const availableEngines: string[] = [];
   
-  if (openAIApiKey && openAIApiKey.trim()) {
+  if (openAIApiKey && openAIApiKey.trim() && openAIApiKey !== 'your-openai-key-here') {
     availableEngines.push('openai');
+    console.log('[OCR] OpenAI API key configured');
   }
   
-  if (googleCloudApiKey && googleCloudApiKey.trim()) {
+  if (googleCloudApiKey && googleCloudApiKey.trim() && googleCloudApiKey !== 'your-google-key-here') {
     availableEngines.push('google_vision');
+    console.log('[OCR] Google Vision API key configured');
   }
   
   // Always have tesseract as fallback (mock implementation)
@@ -243,55 +211,39 @@ function validateAPIKeys(): string[] {
   return availableEngines;
 }
 
-async function processWithEngineRetry(engine: string, base64Data: string, maxRetries: number): Promise<OCRResult> {
-  let lastError;
-  
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      console.log(`[OCR] Attempt ${attempt}/${maxRetries} with ${engine}`);
-      return await processWithEngine(engine, base64Data);
-    } catch (error) {
-      lastError = error;
-      console.error(`[OCR] Attempt ${attempt} failed with ${engine}:`, error.message);
-      
-      if (attempt < maxRetries) {
-        // Wait before retry (exponential backoff)
-        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
-      }
-    }
-  }
-  
-  // Return error result instead of throwing
-  return {
-    engine,
-    text: '',
-    confidence_score: 0,
-    processing_time_ms: 0,
-    cost_estimate: 0,
-    error: lastError?.message || 'Unknown error'
-  };
-}
-
 async function processWithEngine(engine: string, base64Data: string): Promise<OCRResult> {
   const startTime = Date.now();
   
-  switch (engine) {
-    case 'openai':
-      return await processWithOpenAI(base64Data, startTime);
-    case 'google_vision':
-      return await processWithGoogleVision(base64Data, startTime);
-    case 'tesseract':
-      return await processWithTesseract(base64Data, startTime);
-    default:
-      throw new Error(`Unknown engine: ${engine}`);
+  try {
+    switch (engine) {
+      case 'openai':
+        return await processWithOpenAI(base64Data, startTime);
+      case 'google_vision':
+        return await processWithGoogleVision(base64Data, startTime);
+      case 'tesseract':
+        return await processWithTesseract(base64Data, startTime);
+      default:
+        throw new Error(`Unknown engine: ${engine}`);
+    }
+  } catch (error) {
+    console.error(`[OCR] Engine ${engine} failed:`, error);
+    return {
+      engine,
+      text: '',
+      confidence_score: 0,
+      processing_time_ms: Date.now() - startTime,
+      cost_estimate: 0,
+      error: error.message
+    };
   }
 }
 
 async function processWithOpenAI(base64Data: string, startTime: number): Promise<OCRResult> {
-  if (!openAIApiKey) {
+  if (!openAIApiKey || openAIApiKey === 'your-openai-key-here') {
     throw new Error('OpenAI API key not configured');
   }
 
+  console.log('[OCR] Calling OpenAI API...');
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -299,7 +251,7 @@ async function processWithOpenAI(base64Data: string, startTime: number): Promise
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'gpt-4o',
+      model: 'gpt-4o-mini',
       messages: [
         {
           role: 'system',
@@ -323,11 +275,14 @@ async function processWithOpenAI(base64Data: string, startTime: number): Promise
 
   if (!response.ok) {
     const errorText = await response.text();
+    console.error('[OCR] OpenAI API error:', errorText);
     throw new Error(`OpenAI API error ${response.status}: ${errorText}`);
   }
 
   const result = await response.json();
   const text = result.choices[0]?.message?.content || '';
+  
+  console.log('[OCR] OpenAI processing completed successfully');
   
   return {
     engine: 'openai',
@@ -339,10 +294,11 @@ async function processWithOpenAI(base64Data: string, startTime: number): Promise
 }
 
 async function processWithGoogleVision(base64Data: string, startTime: number): Promise<OCRResult> {
-  if (!googleCloudApiKey) {
+  if (!googleCloudApiKey || googleCloudApiKey === 'your-google-key-here') {
     throw new Error('Google Cloud API key not configured');
   }
 
+  console.log('[OCR] Calling Google Vision API...');
   const response = await fetch(`https://vision.googleapis.com/v1/images:annotate?key=${googleCloudApiKey}`, {
     method: 'POST',
     headers: {
@@ -367,6 +323,7 @@ async function processWithGoogleVision(base64Data: string, startTime: number): P
 
   if (!response.ok) {
     const errorText = await response.text();
+    console.error('[OCR] Google Vision API error:', errorText);
     throw new Error(`Google Vision API error ${response.status}: ${errorText}`);
   }
 
@@ -376,6 +333,8 @@ async function processWithGoogleVision(base64Data: string, startTime: number): P
   if (!textAnnotation) {
     throw new Error('No text detected by Google Vision');
   }
+
+  console.log('[OCR] Google Vision processing completed successfully');
 
   return {
     engine: 'google_vision',
@@ -387,7 +346,6 @@ async function processWithGoogleVision(base64Data: string, startTime: number): P
 }
 
 async function processWithTesseract(base64Data: string, startTime: number): Promise<OCRResult> {
-  // Mock implementation for development
   console.log('[OCR] Using mock Tesseract implementation for development');
   
   return {
@@ -427,9 +385,9 @@ Data Vencimento: 20/12/2024`,
   };
 }
 
-async function extractStructuredDataSafe(text: string): Promise<any> {
+async function extractStructuredData(text: string): Promise<any> {
   // Safe extraction with fallback to mock data
-  if (!openAIApiKey || !text) {
+  if (!openAIApiKey || !text || openAIApiKey === 'your-openai-key-here') {
     console.log('[OCR] Using mock structured data');
     return {
       uc_code: '1234567890',
@@ -446,6 +404,7 @@ async function extractStructuredDataSafe(text: string): Promise<any> {
   }
 
   try {
+    console.log('[OCR] Extracting structured data with OpenAI...');
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -453,7 +412,7 @@ async function extractStructuredDataSafe(text: string): Promise<any> {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model: 'gpt-4o-mini',
         messages: [
           {
             role: 'system',
@@ -474,7 +433,10 @@ async function extractStructuredDataSafe(text: string): Promise<any> {
 
     const result = await response.json();
     const jsonString = result.choices[0]?.message?.content || '{}';
-    return JSON.parse(jsonString);
+    const parsedData = JSON.parse(jsonString);
+    
+    console.log('[OCR] Structured data extraction completed successfully');
+    return parsedData;
   } catch (parseError) {
     console.error('[OCR] Error parsing extracted data:', parseError);
     // Return mock data as fallback
