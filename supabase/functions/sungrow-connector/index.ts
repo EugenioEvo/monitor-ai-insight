@@ -58,13 +58,20 @@ serve(async (req) => {
     reqSerialNum = generateRequestId();
     
     console.log(`[${reqSerialNum}] Starting request: ${action}`);
-    console.log(`[${reqSerialNum}] Config provided:`, {
-      username: config?.username ? 'present' : 'missing',
-      password: config?.password ? 'present' : 'missing',
-      appkey: config?.appkey ? 'present' : 'missing',
-      accessKey: config?.accessKey ? 'present' : 'missing',
+    console.log(`[${reqSerialNum}] Config validation:`, {
+      username: config?.username ? `${config.username.substring(0, 3)}***` : 'missing',
+      password: config?.password ? '***provided***' : 'missing',
+      appkey: config?.appkey ? `${config.appkey.substring(0, 8)}***` : 'missing',
+      accessKey: config?.accessKey ? `${config.accessKey.substring(0, 8)}***` : 'missing',
       baseUrl: config?.baseUrl || 'default'
     });
+    
+    // Validação básica das credenciais
+    if (action !== 'test_connection' && action !== 'discover_plants' && action !== 'get_plant_list') {
+      if (!config?.username || !config?.password || !config?.appkey || !config?.accessKey) {
+        throw new Error('Credenciais incompletas. Verifique se todos os campos estão preenchidos.');
+      }
+    }
     
     // Rate limiting check
     if (rateLimitDelay > 0) {
@@ -184,149 +191,116 @@ async function authenticateWithRetry(config: SungrowConfig, reqSerialNum: string
   console.log(`[${reqSerialNum}] Authenticating with Sungrow...`);
   
   if (!config.username || !config.password || !config.appkey || !config.accessKey) {
-    throw new Error('Username, password, appkey e accessKey são obrigatórios');
+    throw new Error('Todas as credenciais são obrigatórias: username, password, appkey e accessKey');
   }
 
-  // Testar múltiplas URLs base e endpoints
+  // URLs base dos servidores internacionais Sungrow
   const baseUrls = [
+    'https://web3.isolarcloud.com.hk',
+    'https://web3.isolarcloud.com',
     'https://gateway.isolarcloud.com.hk',
     'https://gateway.isolarcloud.com',
     'https://api.isolarcloud.com.hk',
-    'https://api.isolarcloud.com',
-    'https://isolarcloud.com.hk',
-    'https://isolarcloud.com'
+    'https://api.isolarcloud.com'
   ];
 
   const endpoints = [
     '/v1/userService/login',
     '/userService/login',
     '/api/v1/userService/login',
-    '/login'
+    '/api/userService/login'
   ];
 
   let lastError = null;
+  let attemptCount = 0;
 
   for (const baseUrl of baseUrls) {
     for (const endpoint of endpoints) {
+      attemptCount++;
       try {
-        console.log(`[${reqSerialNum}] Tentando: ${baseUrl}${endpoint}`);
+        console.log(`[${reqSerialNum}] Tentativa ${attemptCount}: ${baseUrl}${endpoint}`);
         
-        // Testar diferentes formatos de payload
-        const payloadVariations = [
-          {
-            appkey: config.appkey,
-            user_account: config.username,
-            user_password: config.password,
-            lang: 'en_us'
-          },
-          {
-            appkey: config.appkey,
-            username: config.username,
-            password: config.password,
-            lang: 'en_us'
-          },
-          {
-            app_key: config.appkey,
-            user_account: config.username,
-            user_password: config.password,
-            lang: 'en_us'
-          },
-          {
-            appKey: config.appkey,
-            userAccount: config.username,
-            userPassword: config.password,
-            lang: 'en_us'
-          }
-        ];
+        // Payload padrão baseado na documentação oficial
+        const authPayload = {
+          appkey: config.appkey,
+          user_account: config.username,
+          user_password: config.password,
+          lang: 'en_us'
+        };
 
-        for (let i = 0; i < payloadVariations.length; i++) {
-          const authPayload = payloadVariations[i];
+        console.log(`[${reqSerialNum}] Payload:`, {
+          appkey: `${config.appkey.substring(0, 8)}***`,
+          user_account: config.username,
+          user_password: '***',
+          lang: 'en_us'
+        });
+
+        const headers = {
+          'Content-Type': 'application/json',
+          'x-access-key': config.accessKey,
+          'Accept': 'application/json',
+          'User-Agent': 'Monitor.ai/1.0',
+          'Origin': baseUrl,
+          'Referer': `${baseUrl}/`
+        };
+
+        console.log(`[${reqSerialNum}] Headers:`, {
+          'Content-Type': 'application/json',
+          'x-access-key': `${config.accessKey.substring(0, 8)}***`,
+          'Accept': 'application/json',
+          'User-Agent': 'Monitor.ai/1.0'
+        });
+
+        const response = await fetchWithRetry(`${baseUrl}${endpoint}`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(authPayload)
+        });
+
+        console.log(`[${reqSerialNum}] Response status: ${response.status}`);
+
+        if (response.ok) {
+          const data: SungrowAuthResponse = await response.json();
+          console.log(`[${reqSerialNum}] Response:`, {
+            result_code: data.result_code,
+            result_msg: data.result_msg,
+            has_token: !!data.result_data?.token
+          });
           
-          console.log(`[${reqSerialNum}] Payload variação ${i + 1}:`, Object.keys(authPayload));
-
-          // Testar diferentes combinações de headers
-          const headerVariations = [
-            {
-              'Content-Type': 'application/json',
-              'x-access-key': config.accessKey,
-              'Accept': 'application/json',
-              'User-Agent': 'Monitor.ai/1.0'
-            },
-            {
-              'Content-Type': 'application/json',
-              'Access-Key': config.accessKey,
-              'Accept': 'application/json',
-              'User-Agent': 'Monitor.ai/1.0'
-            },
-            {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${config.accessKey}`,
-              'Accept': 'application/json',
-              'User-Agent': 'Monitor.ai/1.0'
-            },
-            {
-              'Content-Type': 'application/json',
-              'X-Access-Token': config.accessKey,
-              'Accept': 'application/json',
-              'User-Agent': 'Monitor.ai/1.0'
-            },
-            {
-              'Content-Type': 'application/json',
-              'api-key': config.accessKey,
-              'Accept': 'application/json',
-              'User-Agent': 'Monitor.ai/1.0'
-            }
-          ];
-
-          for (let j = 0; j < headerVariations.length; j++) {
-            const headers = headerVariations[j];
+          if (data.result_code === 1 && data.result_data?.token) {
+            // Cache token for 23 hours
+            setCache(cacheKey, data.result_data.token, 82800000);
             
-            try {
-              console.log(`[${reqSerialNum}] Headers variação ${j + 1}:`, Object.keys(headers));
-
-              const response = await fetchWithRetry(`${baseUrl}${endpoint}`, {
-                method: 'POST',
-                headers,
-                body: JSON.stringify(authPayload)
-              });
-
-              console.log(`[${reqSerialNum}] Auth response status: ${response.status}`);
-
-              if (response.ok) {
-                const data: SungrowAuthResponse = await response.json();
-                console.log(`[${reqSerialNum}] Auth response:`, {
-                  result_code: data.result_code,
-                  result_msg: data.result_msg,
-                  has_token: !!data.result_data?.token
-                });
-                
-                if (data.result_code === 1 && data.result_data?.token) {
-                  // Cache token for 23 hours (86400000ms - 1 hour buffer)
-                  setCache(cacheKey, data.result_data.token, 82800000);
-                  
-                  console.log(`[${reqSerialNum}] Authentication successful with: ${baseUrl}${endpoint}`);
-                  return data.result_data.token;
-                } else {
-                  console.error(`[${reqSerialNum}] Auth failed: ${data.result_msg} (Code: ${data.result_code})`);
-                }
-              } else {
-                const errorText = await response.text();
-                console.error(`[${reqSerialNum}] HTTP ${response.status}: ${errorText}`);
-              }
-            } catch (error) {
-              console.error(`[${reqSerialNum}] Request failed:`, error.message);
-              lastError = error;
+            console.log(`[${reqSerialNum}] Autenticação bem-sucedida com: ${baseUrl}${endpoint}`);
+            return data.result_data.token;
+          } else {
+            const errorMsg = `Erro de autenticação: ${data.result_msg} (Código: ${data.result_code})`;
+            console.error(`[${reqSerialNum}] ${errorMsg}`);
+            
+            // Mensagens de erro mais específicas
+            if (data.result_code === 'E00000' || data.result_msg === 'er_invalid_appkey') {
+              throw new Error('App Key inválida. Verifique se a chave da aplicação está correta.');
+            } else if (data.result_code === 'E00001' || data.result_msg.includes('user')) {
+              throw new Error('Usuário ou senha incorretos. Verifique suas credenciais de login.');
+            } else if (data.result_code === 'E00002' || data.result_msg.includes('access')) {
+              throw new Error('Access Key inválida. Verifique o valor da chave de acesso.');
             }
+            
+            lastError = new Error(errorMsg);
           }
+        } else {
+          const errorText = await response.text();
+          console.error(`[${reqSerialNum}] HTTP ${response.status}: ${errorText}`);
+          lastError = new Error(`HTTP ${response.status}: ${errorText}`);
         }
       } catch (error) {
-        console.error(`[${reqSerialNum}] URL ${baseUrl}${endpoint} failed:`, error.message);
+        console.error(`[${reqSerialNum}] Falha na requisição: ${error.message}`);
         lastError = error;
       }
     }
   }
 
-  throw new Error(`Authentication failed after trying all combinations. Last error: ${lastError?.message || 'Unknown error'}`);
+  throw new Error(`Falha na autenticação após ${attemptCount} tentativas. Último erro: ${lastError?.message || 'Erro desconhecido'}`);
 }
 
 async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 3): Promise<Response> {
@@ -367,17 +341,28 @@ async function testConnection(config: SungrowConfig, reqSerialNum: string) {
   try {
     console.log(`[${reqSerialNum}] Testing Sungrow connection...`);
     
+    // Validação detalhada das credenciais
+    const missingFields = [];
+    if (!config.username) missingFields.push('username');
+    if (!config.password) missingFields.push('password');
+    if (!config.appkey) missingFields.push('appkey');
+    if (!config.accessKey) missingFields.push('accessKey');
+    
+    if (missingFields.length > 0) {
+      throw new Error(`Campos obrigatórios não preenchidos: ${missingFields.join(', ')}`);
+    }
+    
     const token = await authenticateWithRetry(config, reqSerialNum);
     
     return {
       success: true,
-      message: 'Conexão estabelecida com sucesso',
+      message: 'Conexão estabelecida com sucesso! Credenciais válidas.',
       token: token.substring(0, 10) + '...',
       reqSerialNum
     };
   } catch (error) {
     console.error(`[${reqSerialNum}] Connection test failed:`, error.message);
-    throw new Error(`Connection test failed: ${error.message}`);
+    throw new Error(`Teste de conexão falhou: ${error.message}`);
   }
 }
 
@@ -395,9 +380,10 @@ async function discoverPlants(config: SungrowConfig, reqSerialNum?: string) {
     ];
     
     const baseUrls = [
-      config.baseUrl || 'https://gateway.isolarcloud.com.hk',
-      'https://gateway.isolarcloud.com',
-      'https://api.isolarcloud.com.hk'
+      config.baseUrl || 'https://web3.isolarcloud.com.hk',
+      'https://web3.isolarcloud.com',
+      'https://gateway.isolarcloud.com.hk',
+      'https://gateway.isolarcloud.com'
     ];
 
     for (const baseUrl of baseUrls) {
@@ -467,7 +453,7 @@ async function getDeviceList(config: SungrowConfig, reqSerialNum: string) {
     }
     
     const token = await authenticateWithRetry(config, reqSerialNum);
-    const baseUrl = config.baseUrl || 'https://gateway.isolarcloud.com.hk';
+    const baseUrl = config.baseUrl || 'https://web3.isolarcloud.com.hk';
 
     const payload = {
       ps_id: config.plantId,
@@ -520,7 +506,7 @@ async function getStationRealKpi(config: SungrowConfig, reqSerialNum: string, ca
     }
     
     const token = await authenticateWithRetry(config, reqSerialNum);
-    const baseUrl = config.baseUrl || 'https://gateway.isolarcloud.com.hk';
+    const baseUrl = config.baseUrl || 'https://web3.isolarcloud.com.hk';
 
     const payload = {
       ps_id: config.plantId,
@@ -573,7 +559,7 @@ async function getStationEnergy(config: SungrowConfig, period: string, reqSerial
     }
     
     const token = await authenticateWithRetry(config, reqSerialNum);
-    const baseUrl = config.baseUrl || 'https://gateway.isolarcloud.com.hk';
+    const baseUrl = config.baseUrl || 'https://web3.isolarcloud.com.hk';
 
     // Calculate date range based on period
     const today = new Date();
@@ -660,7 +646,7 @@ async function getDeviceRealTimeData(config: SungrowConfig, deviceType: string, 
     }
     
     const token = await authenticateWithRetry(config, reqSerialNum);
-    const baseUrl = config.baseUrl || 'https://gateway.isolarcloud.com.hk';
+    const baseUrl = config.baseUrl || 'https://web3.isolarcloud.com.hk';
 
     const payload = {
       ps_id: config.plantId,
@@ -724,7 +710,7 @@ async function syncData(plantId: string, reqSerialNum?: string) {
     }
 
     const token = await authenticateWithRetry(config, reqSerialNum || 'sync');
-    const baseUrl = config.baseUrl || 'https://gateway.isolarcloud.com.hk';
+    const baseUrl = config.baseUrl || 'https://web3.isolarcloud.com.hk';
 
     // Fetch real-time KPIs
     const kpiData = await getStationRealKpi(config, reqSerialNum || 'sync');
@@ -808,7 +794,7 @@ async function syncData(plantId: string, reqSerialNum?: string) {
 async function getPlantList(config: SungrowConfig, reqSerialNum?: string) {
   try {
     const token = await authenticateWithRetry(config, reqSerialNum || 'list');
-    const baseUrl = config.baseUrl || 'https://gateway.isolarcloud.com.hk';
+    const baseUrl = config.baseUrl || 'https://web3.isolarcloud.com.hk';
 
     const response = await fetchWithHeaders(`${baseUrl}/v1/stationService/getStationList`, {
       method: 'POST',
