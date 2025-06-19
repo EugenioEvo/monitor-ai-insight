@@ -203,7 +203,7 @@ export const useCustomerConsumptionData = (customerId: string) => {
       }
 
       // Buscar faturas agrupadas por mês
-      const { data, error } = await supabase
+      const { data: invoiceData, error } = await supabase
         .from("invoices")
         .select("customer_unit_id, reference_month, energy_kwh, total_r$")
         .in("customer_unit_id", unitIds)
@@ -215,7 +215,10 @@ export const useCustomerConsumptionData = (customerId: string) => {
       // Processar dados para agrupar por mês
       const monthlyData: { [key: string]: { consumption: number, cost: number } } = {};
       
-      (data as DatabaseInvoice[])?.forEach((invoice) => {
+      // Type the invoiceData properly to avoid conversion errors
+      const typedInvoiceData = invoiceData as DatabaseInvoice[];
+      
+      typedInvoiceData?.forEach((invoice) => {
         const month = invoice.reference_month;
         if (!monthlyData[month]) {
           monthlyData[month] = { consumption: 0, cost: 0 };
