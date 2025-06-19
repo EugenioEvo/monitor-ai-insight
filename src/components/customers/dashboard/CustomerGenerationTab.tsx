@@ -32,7 +32,7 @@ export const CustomerGenerationTab = ({ customerId, plants, readings }: Customer
     : [];
 
   const totalCapacity = plants.reduce((sum, plant) => sum + plant.capacity_kwp, 0);
-  const totalGeneration = readings.reduce((sum, reading) => sum + reading.energy_kWh, 0);
+  const totalGeneration = readings.reduce((sum, reading) => sum + reading.energy_kwh, 0);
 
   const getPlantColors = () => {
     const colors = ['#22c55e', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];

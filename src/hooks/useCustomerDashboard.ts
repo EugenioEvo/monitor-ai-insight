@@ -76,10 +76,10 @@ export const useCustomerDashboard = (customerId: string) => {
         // Converter dados do banco para o tipo Invoice
         invoices = (invoiceData as DatabaseInvoice[])?.map(invoice => ({
           ...invoice,
-          energy_kWh: invoice.energy_kwh,
-          demand_kW: invoice.demand_kw,
-          total_R$: invoice.total_r$,
-          taxes_R$: invoice.taxes_r$
+          energy_kwh: invoice.energy_kwh,
+          demand_kw: invoice.demand_kw,
+          total_r$: invoice.total_r$,
+          taxes_r$: invoice.taxes_r$
         } as Invoice)) || [];
       }
 
@@ -100,8 +100,8 @@ export const useCustomerDashboard = (customerId: string) => {
         // Converter dados do banco para o tipo Reading
         readings = (readingData as DatabaseReading[])?.map(reading => ({
           ...reading,
-          power_W: reading.power_w,
-          energy_kWh: reading.energy_kwh
+          power_w: reading.power_w,
+          energy_kwh: reading.energy_kwh
         } as Reading)) || [];
       }
 
@@ -215,7 +215,7 @@ export const useCustomerConsumptionData = (customerId: string) => {
       // Processar dados para agrupar por mês
       const monthlyData: { [key: string]: { consumption: number, cost: number } } = {};
       
-      data?.forEach(invoice => {
+      data?.forEach((invoice: DatabaseInvoice) => {
         const month = invoice.reference_month;
         if (!monthlyData[month]) {
           monthlyData[month] = { consumption: 0, cost: 0 };

@@ -62,11 +62,11 @@ export default function Invoices() {
                       <div>{invoice.reference_month}</div>
                     </td>
                     <td className="py-3 px-4">
-                      <div>{invoice.energy_kWh.toLocaleString('pt-BR')}</div>
+                      <div>{invoice.energy_kwh.toLocaleString('pt-BR')}</div>
                     </td>
                     <td className="py-3 px-4">
                       <div className="font-medium">
-                        R$ {invoice.total_R$.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        R$ {invoice.total_r$.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                       </div>
                     </td>
                     <td className="py-3 px-4">

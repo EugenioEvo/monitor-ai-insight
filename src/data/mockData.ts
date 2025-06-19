@@ -49,10 +49,10 @@ export const mockInvoices: Invoice[] = [
     file_url: '/invoices/fatura_202412.pdf',
     uc_code: '1234567890',
     reference_month: '2024-12',
-    energy_kWh: 1250.5,
-    demand_kW: 25.8,
-    total_R$: 890.45,
-    taxes_R$: 178.09,
+    energy_kwh: 1250.5,
+    demand_kw: 25.8,
+    total_r$: 890.45,
+    taxes_r$: 178.09,
     status: 'processed'
   }
 ];
@@ -62,8 +62,8 @@ export const mockReadings: Reading[] = [
     id: '1',
     plant_id: '1',
     timestamp: '2024-12-18T12:00:00Z',
-    power_W: 125000,
-    energy_kWh: 156.2
+    power_w: 125000,
+    energy_kwh: 156.2
   }
 ];
 

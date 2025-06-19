@@ -23,8 +23,8 @@ export const CustomerConsumptionTab = ({ customerId, units, invoices }: Customer
     );
   }
 
-  const totalConsumption = invoices.reduce((sum, invoice) => sum + invoice.energy_kWh, 0);
-  const totalCost = invoices.reduce((sum, invoice) => sum + invoice.total_R$, 0);
+  const totalConsumption = invoices.reduce((sum, invoice) => sum + invoice.energy_kwh, 0);
+  const totalCost = invoices.reduce((sum, invoice) => sum + invoice.total_r$, 0);
   const averageCost = invoices.length > 0 ? totalCost / invoices.length : 0;
 
   return (
@@ -149,11 +149,11 @@ export const CustomerConsumptionTab = ({ customerId, units, invoices }: Customer
                 <div>
                   <p className="font-medium">UC: {invoice.uc_code}</p>
                   <p className="text-sm text-muted-foreground">
-                    {invoice.reference_month} • {invoice.energy_kWh} kWh
+                    {invoice.reference_month} • {invoice.energy_kwh} kWh
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="font-medium">R$ {invoice.total_R$.toFixed(2)}</p>
+                  <p className="font-medium">R$ {invoice.total_r$.toFixed(2)}</p>
                   <Badge variant={invoice.status === 'processed' ? 'default' : 'secondary'}>
                     {invoice.status}
                   </Badge>
