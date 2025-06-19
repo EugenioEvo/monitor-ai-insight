@@ -2,7 +2,8 @@
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } from "recharts";
-import { useCustomerGenerationData, useCustomerConsumptionData } from "@/hooks/useCustomerDashboard";
+import { useCustomerGeneration } from "@/hooks/useCustomerGeneration";
+import { useCustomerConsumption } from "@/hooks/useCustomerConsumption";
 
 interface CustomerComparisonChartsProps {
   customerId: string;
@@ -15,8 +16,8 @@ export const CustomerComparisonCharts = ({
   selectedPeriod, 
   onPeriodChange 
 }: CustomerComparisonChartsProps) => {
-  const { data: generationData, isLoading: generationLoading } = useCustomerGenerationData(customerId);
-  const { data: consumptionData, isLoading: consumptionLoading } = useCustomerConsumptionData(customerId);
+  const { data: generationData, isLoading: generationLoading } = useCustomerGeneration(customerId);
+  const { data: consumptionData, isLoading: consumptionLoading } = useCustomerConsumption(customerId);
 
   const generationChartData = generationData && typeof generationData === 'object' && 'chartData' in generationData 
     ? generationData.chartData 

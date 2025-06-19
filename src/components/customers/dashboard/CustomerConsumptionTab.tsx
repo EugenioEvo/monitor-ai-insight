@@ -3,7 +3,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line } from "recharts";
 import { Badge } from "@/components/ui/badge";
 import { Building, DollarSign, TrendingDown } from "lucide-react";
-import { useCustomerConsumptionData } from "@/hooks/useCustomerDashboard";
+import { useCustomerConsumption } from "@/hooks/useCustomerConsumption";
 import type { CustomerUnit, Invoice } from "@/types";
 
 interface CustomerConsumptionTabProps {
@@ -13,7 +13,7 @@ interface CustomerConsumptionTabProps {
 }
 
 export const CustomerConsumptionTab = ({ customerId, units, invoices }: CustomerConsumptionTabProps) => {
-  const { data: consumptionData, isLoading } = useCustomerConsumptionData(customerId);
+  const { data: consumptionData, isLoading } = useCustomerConsumption(customerId);
 
   if (isLoading) {
     return (

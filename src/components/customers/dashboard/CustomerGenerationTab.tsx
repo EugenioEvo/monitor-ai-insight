@@ -3,7 +3,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { Badge } from "@/components/ui/badge";
 import { Zap, TrendingUp } from "lucide-react";
-import { useCustomerGenerationData } from "@/hooks/useCustomerDashboard";
+import { useCustomerGeneration } from "@/hooks/useCustomerGeneration";
 import type { Plant, Reading } from "@/types";
 
 interface CustomerGenerationTabProps {
@@ -13,7 +13,7 @@ interface CustomerGenerationTabProps {
 }
 
 export const CustomerGenerationTab = ({ customerId, plants, readings }: CustomerGenerationTabProps) => {
-  const { data: generationData, isLoading } = useCustomerGenerationData(customerId);
+  const { data: generationData, isLoading } = useCustomerGeneration(customerId);
 
   if (isLoading) {
     return (
