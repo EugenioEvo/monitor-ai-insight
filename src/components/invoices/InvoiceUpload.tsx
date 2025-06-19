@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, memo } from "react";
 import { Upload, FileText, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,57 +7,140 @@ import { useToast } from "@/hooks/use-toast";
 import { useSettings } from "@/hooks/useSettings";
 import { supabase } from "@/integrations/supabase/client";
 
-export function InvoiceUpload() {
+interface InvoiceUploadProps {
+  onUploadComplete?: (results: any[]) => void;
+  maxFileSize?: number; // em MB
+  acceptedFormats?: string[];
+}
+
+export const InvoiceUpload = memo(function InvoiceUpload({ 
+  onUploadComplete,
+  maxFileSize = 10,
+  acceptedFormats = ['.pdf', '.zip', '.jpg', '.jpeg', '.png']
+}: InvoiceUploadProps) {
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const { toast } = useToast();
-  const { settings, loading: settingsLoading } = useSettings();
+  const { settings, loading: settingsLoading, error: settingsError } = useSettings();
+
+  const validateFile = (file: File): string | null => {
+    // Validar tamanho
+    if (file.size > maxFileSize * 1024 * 1024) {
+      return `Arquivo muito grande. Tamanho máximo: ${maxFileSize}MB`;
+    }
+
+    // Validar formato
+    const extension = '.' + file.name.split('.').pop()?.toLowerCase();
+    if (!acceptedFormats.includes(extension)) {
+      return `Formato não suportado. Formatos aceitos: ${acceptedFormats.join(', ')}`;
+    }
+
+    return null;
+  };
 
   const handleFileUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
 
+    // Validar arquivos
+    const invalidFiles = Array.from(files).map(file => ({
+      file,
+      error: validateFile(file)
+    })).filter(item => item.error);
+
+    if (invalidFiles.length > 0) {
+      toast({
+        title: "Arquivos inválidos",
+        description: invalidFiles.map(item => `${item.file.name}: ${item.error}`).join('\n'),
+        variant: "destructive"
+      });
+      return;
+    }
+
     setUploading(true);
+    setUploadProgress(0);
+    const results = [];
     
     try {
       const ocrEngine = settings.invoices.ocrEngine;
       const autoValidation = settings.invoices.autoValidation;
       
-      console.log(`Processando com engine: ${ocrEngine}, validação automática: ${autoValidation}`);
+      console.log(`Processando ${files.length} arquivo(s) com engine: ${ocrEngine}, validação automática: ${autoValidation}`);
       
-      // Simular upload e processamento
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
+        setUploadProgress(Math.round((i / files.length) * 50)); // 50% para upload
         
-        // Upload para o Storage do Supabase
-        const fileName = `${Date.now()}-${file.name}`;
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('invoices')
-          .upload(fileName, file);
+        try {
+          // Upload para o Storage do Supabase
+          const fileName = `${Date.now()}-${file.name}`;
+          const { data: uploadData, error: uploadError } = await supabase.storage
+            .from('invoices')
+            .upload(fileName, file, {
+              cacheControl: '3600',
+              upsert: false
+            });
 
-        if (uploadError) {
-          console.error('Erro no upload:', uploadError);
-          throw uploadError;
+          if (uploadError) {
+            console.error('Erro no upload:', uploadError);
+            throw new Error(`Erro no upload de ${file.name}: ${uploadError.message}`);
+          }
+
+          console.log(`Arquivo ${file.name} enviado com sucesso:`, uploadData.path);
+          
+          results.push({
+            fileName: file.name,
+            filePath: uploadData.path,
+            status: 'uploaded',
+            size: file.size,
+            type: file.type
+          });
+        } catch (fileError) {
+          console.error(`Erro no arquivo ${file.name}:`, fileError);
+          results.push({
+            fileName: file.name,
+            status: 'error',
+            error: fileError.message
+          });
         }
-
-        console.log(`Arquivo ${file.name} enviado com sucesso:`, uploadData.path);
       }
       
-      // Simular tempo de processamento
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      setUploadProgress(75);
       
-      toast({
-        title: "Fatura processada com sucesso!",
-        description: `${files.length} arquivo(s) analisado(s) com ${ocrEngine.toUpperCase()}. ${autoValidation ? 'Dados validados automaticamente.' : 'Validação manual necessária.'}`,
-      });
+      // Simular tempo de processamento
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      setUploadProgress(100);
+      
+      const successCount = results.filter(r => r.status === 'uploaded').length;
+      const errorCount = results.filter(r => r.status === 'error').length;
+      
+      if (successCount > 0) {
+        toast({
+          title: "Upload concluído!",
+          description: `${successCount} arquivo(s) enviado(s) com sucesso. Engine: ${ocrEngine.toUpperCase()}. ${autoValidation ? 'Processamento automático iniciado.' : 'Validação manual necessária.'}`,
+        });
+      }
+      
+      if (errorCount > 0) {
+        toast({
+          title: "Alguns arquivos falharam",
+          description: `${errorCount} arquivo(s) não puderam ser processados.`,
+          variant: "destructive"
+        });
+      }
+      
+      onUploadComplete?.(results);
     } catch (error) {
       console.error('Erro no processamento:', error);
       toast({
         title: "Erro no processamento",
-        description: "Ocorreu um erro ao processar o arquivo.",
+        description: "Ocorreu um erro ao processar os arquivos.",
         variant: "destructive"
       });
     } finally {
       setUploading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -91,11 +174,26 @@ export function InvoiceUpload() {
     );
   }
 
+  if (settingsError) {
+    return (
+      <Card className="border-2 border-dashed border-red-300">
+        <CardContent className="p-8">
+          <div className="text-center space-y-4">
+            <p className="text-red-600">Erro ao carregar configurações: {settingsError}</p>
+            <Button onClick={() => window.location.reload()}>
+              Tentar Novamente
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card className="border-2 border-dashed border-gray-300 hover:border-blue-400 transition-colors">
       <CardContent className="p-8">
         <div
-          className={`text-center space-y-4 ${dragActive ? 'bg-blue-50' : ''} rounded-lg p-6 transition-colors`}
+          className={`text-center space-y-4 ${dragActive ? 'bg-blue-50 border-blue-300' : ''} rounded-lg p-6 transition-all duration-200`}
           onDragEnter={handleDrag}
           onDragLeave={handleDrag}
           onDragOver={handleDrag}
@@ -114,6 +212,14 @@ export function InvoiceUpload() {
                     : 'Extraindo dados - validação manual necessária'
                   }
                 </p>
+                {uploadProgress > 0 && (
+                  <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                    <div 
+                      className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                      style={{ width: `${uploadProgress}%` }}
+                    />
+                  </div>
+                )}
               </div>
             </>
           ) : (
@@ -125,7 +231,10 @@ export function InvoiceUpload() {
                   Engine configurado: {settings.invoices.ocrEngine.toUpperCase()}
                 </p>
                 <p className="text-sm text-gray-500">
-                  Arraste arquivos PDF/ZIP ou clique para selecionar
+                  Arraste arquivos {acceptedFormats.join(', ')} ou clique para selecionar
+                </p>
+                <p className="text-xs text-gray-400">
+                  Tamanho máximo: {maxFileSize}MB por arquivo
                 </p>
               </div>
               <div className="flex gap-2 justify-center">
@@ -141,7 +250,7 @@ export function InvoiceUpload() {
                 id="file-upload"
                 type="file"
                 multiple
-                accept=".pdf,.zip"
+                accept={acceptedFormats.join(',')}
                 className="hidden"
                 onChange={(e) => handleFileUpload(e.target.files)}
               />
@@ -151,4 +260,4 @@ export function InvoiceUpload() {
       </CardContent>
     </Card>
   );
-}
+});

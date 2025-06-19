@@ -9,7 +9,7 @@ export interface OCRConfig {
 }
 
 export const ocrConfigService = {
-  async getConfig(): Promise<OCRConfig> {
+  async getConfig(retryCount = 0): Promise<OCRConfig> {
     try {
       const { data, error } = await supabase
         .from('app_config')
@@ -17,13 +17,7 @@ export const ocrConfigService = {
         .like('key', 'invoices.%');
 
       if (error) {
-        console.error('Error loading OCR config:', error);
-        return {
-          engine: 'openai',
-          confidence_threshold: 0.8,
-          fallback_enabled: true,
-          auto_validation: true
-        };
+        throw error;
       }
 
       const config: any = {};
@@ -44,6 +38,16 @@ export const ocrConfigService = {
       };
     } catch (error) {
       console.error('Error in getConfig:', error);
+      
+      // Retry logic
+      if (retryCount < 2) {
+        console.log(`Retrying getConfig, attempt ${retryCount + 1}`);
+        await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
+        return this.getConfig(retryCount + 1);
+      }
+      
+      // Fallback para configuração padrão
+      console.warn('Using fallback OCR config due to repeated failures');
       return {
         engine: 'openai',
         confidence_threshold: 0.8,
@@ -53,8 +57,12 @@ export const ocrConfigService = {
     }
   },
 
-  async updateEngine(engine: 'openai' | 'google' | 'tesseract'): Promise<void> {
+  async updateEngine(engine: 'openai' | 'google' | 'tesseract', retryCount = 0): Promise<void> {
     try {
+      if (!['openai', 'google', 'tesseract'].includes(engine)) {
+        throw new Error('Invalid OCR engine specified');
+      }
+
       const { error } = await supabase
         .from('app_config')
         .upsert({ key: 'invoices.ocrEngine', value: engine }, { onConflict: 'key' });
@@ -62,21 +70,37 @@ export const ocrConfigService = {
       if (error) {
         throw error;
       }
+      
+      console.log(`OCR engine updated to: ${engine}`);
     } catch (error) {
       console.error('Error updating OCR engine:', error);
+      
+      // Retry logic
+      if (retryCount < 2) {
+        console.log(`Retrying updateEngine, attempt ${retryCount + 1}`);
+        await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
+        return this.updateEngine(engine, retryCount + 1);
+      }
+      
       throw error;
     }
   },
 
-  async updateConfig(config: Partial<OCRConfig>): Promise<void> {
+  async updateConfig(config: Partial<OCRConfig>, retryCount = 0): Promise<void> {
     try {
       const updates = [];
       
       if (config.engine !== undefined) {
+        if (!['openai', 'google', 'tesseract'].includes(config.engine)) {
+          throw new Error('Invalid OCR engine specified');
+        }
         updates.push({ key: 'invoices.ocrEngine', value: config.engine });
       }
       
       if (config.confidence_threshold !== undefined) {
+        if (config.confidence_threshold < 0 || config.confidence_threshold > 1) {
+          throw new Error('Confidence threshold must be between 0 and 1');
+        }
         updates.push({ key: 'invoices.confidenceThreshold', value: config.confidence_threshold.toString() });
       }
       
@@ -88,6 +112,11 @@ export const ocrConfigService = {
         updates.push({ key: 'invoices.autoValidation', value: JSON.stringify(config.auto_validation) });
       }
 
+      if (updates.length === 0) {
+        console.warn('No valid configuration updates provided');
+        return;
+      }
+
       for (const update of updates) {
         const { error } = await supabase
           .from('app_config')
@@ -97,8 +126,18 @@ export const ocrConfigService = {
           throw error;
         }
       }
+      
+      console.log(`OCR config updated with ${updates.length} changes`);
     } catch (error) {
       console.error('Error updating OCR config:', error);
+      
+      // Retry logic
+      if (retryCount < 2) {
+        console.log(`Retrying updateConfig, attempt ${retryCount + 1}`);
+        await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1)));
+        return this.updateConfig(config, retryCount + 1);
+      }
+      
       throw error;
     }
   }

@@ -1,7 +1,8 @@
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useDebounce } from '@/hooks/useDebounce';
 import { AppSettings, validateSettings } from '@/types/settings';
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -59,23 +60,23 @@ export const useSettings = () => {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
-  const loadSettings = useCallback(async () => {
+  // Debounce settings para evitar saves excessivos
+  const debouncedSettings = useDebounce(settings, 1000);
+
+  const loadSettings = useCallback(async (retryCount = 0) => {
     try {
       setLoading(true);
+      setError(null);
+      
       const { data, error } = await supabase
         .from('app_config')
         .select('key, value');
 
       if (error) {
-        console.error('Error loading settings:', error);
-        toast({
-          title: "Erro ao carregar configurações",
-          description: "Usando configurações padrão.",
-          variant: "destructive"
-        });
-        return;
+        throw error;
       }
 
       if (data && data.length > 0) {
@@ -100,17 +101,24 @@ export const useSettings = () => {
       }
     } catch (error) {
       console.error('Error loading settings:', error);
-      toast({
-        title: "Erro ao carregar configurações",
-        description: "Usando configurações padrão.",
-        variant: "destructive"
-      });
+      setError(error.message || 'Erro ao carregar configurações');
+      
+      // Retry logic para falhas de rede
+      if (retryCount < 2) {
+        setTimeout(() => loadSettings(retryCount + 1), 1000 * (retryCount + 1));
+      } else {
+        toast({
+          title: "Erro ao carregar configurações",
+          description: "Usando configurações padrão. Tente novamente em alguns minutos.",
+          variant: "destructive"
+        });
+      }
     } finally {
       setLoading(false);
     }
   }, [toast]);
 
-  const saveSettings = useCallback(async (newSettings: AppSettings) => {
+  const saveSettings = useCallback(async (newSettings: AppSettings, retryCount = 0) => {
     const validation = validateSettings(newSettings);
     
     if (!validation.isValid) {
@@ -123,6 +131,8 @@ export const useSettings = () => {
     }
 
     setSaving(true);
+    setError(null);
+    
     try {
       console.log('Saving settings:', newSettings);
       
@@ -137,7 +147,7 @@ export const useSettings = () => {
         });
       });
 
-      // Usar upsert para cada entrada de configuração
+      // Usar upsert para cada entrada de configuração com melhor tratamento de erro
       for (const entry of configEntries) {
         const { error } = await supabase
           .from('app_config')
@@ -158,11 +168,19 @@ export const useSettings = () => {
       return true;
     } catch (error) {
       console.error('Error saving settings:', error);
-      toast({
-        title: "Erro ao salvar",
-        description: "Ocorreu um erro ao salvar as configurações.",
-        variant: "destructive"
-      });
+      setError(error.message || 'Erro ao salvar configurações');
+      
+      // Retry logic para falhas de salvamento
+      if (retryCount < 2) {
+        setTimeout(() => saveSettings(newSettings, retryCount + 1), 1000 * (retryCount + 1));
+      } else {
+        toast({
+          title: "Erro ao salvar",
+          description: "Ocorreu um erro ao salvar as configurações. Tente novamente.",
+          variant: "destructive"
+        });
+      }
+      
       return false;
     } finally {
       setSaving(false);
@@ -179,16 +197,28 @@ export const useSettings = () => {
     }));
   }, []);
 
+  // Auto-save com debounce
+  useEffect(() => {
+    if (!loading && debouncedSettings !== DEFAULT_SETTINGS) {
+      const isEqual = JSON.stringify(settings) === JSON.stringify(debouncedSettings);
+      if (!isEqual) {
+        saveSettings(debouncedSettings);
+      }
+    }
+  }, [debouncedSettings, loading, saveSettings, settings]);
+
   useEffect(() => {
     loadSettings();
   }, [loadSettings]);
 
-  return {
+  // Memoizar o retorno para evitar re-renders desnecessários
+  return useMemo(() => ({
     settings,
     loading,
     saving,
+    error,
     updateSetting,
     saveSettings,
     loadSettings
-  };
+  }), [settings, loading, saving, error, updateSetting, saveSettings, loadSettings]);
 };
