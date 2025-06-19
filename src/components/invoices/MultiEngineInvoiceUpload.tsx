@@ -12,6 +12,9 @@ import { InvoiceExtractedData, InvoiceProcessingStatus as ProcessingStatus, Vali
 import { MultiEngineOCRConfig, DEFAULT_OCR_CONFIG, ABTestResult } from "@/types/ocr-engines";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { ValidationEngine } from "@/services/validationEngine";
+import { ValidationResult, DEFAULT_VALIDATION_CONFIG } from "@/types/validation";
+import { EnhancedValidationPanel } from "./EnhancedValidationPanel";
 
 export function MultiEngineInvoiceUpload() {
   const [uploading, setUploading] = useState(false);
@@ -22,6 +25,9 @@ export function MultiEngineInvoiceUpload() {
   const [currentStep, setCurrentStep] = useState<'upload' | 'processing' | 'review'>('upload');
   const [ocrConfig, setOcrConfig] = useState<MultiEngineOCRConfig>(DEFAULT_OCR_CONFIG);
   const [abTestResults, setAbTestResults] = useState<ABTestResult[]>([]);
+  const [validationResults, setValidationResults] = useState<ValidationResult[]>([]);
+  const [validationScore, setValidationScore] = useState<number>(1.0);
+  const [validationStatus, setValidationStatus] = useState<'approved' | 'review_required' | 'rejected'>('approved');
   const { toast } = useToast();
 
   const handleFileUpload = async (files: FileList | null) => {
@@ -97,11 +103,9 @@ export function MultiEngineInvoiceUpload() {
         status.current_step = 'Aplicando validações...';
         setProcessingStatus([...newStatuses]);
 
-        // Complete processing
-        status.progress = 100;
-        status.current_step = 'Processamento concluído';
-        status.status = 'completed';
-        status.requires_review = ocrResult.requires_review;
+        // Enhanced validation step with Validation Engine
+        status.progress = 85;
+        status.current_step = 'Executando Validation Engine (Fase 3)...';
         setProcessingStatus([...newStatuses]);
 
         // Set extracted data for the first file (for review)
@@ -113,39 +117,60 @@ export function MultiEngineInvoiceUpload() {
             setAbTestResults([ocrResult.ab_test_result]);
           }
 
-          // Generate validation errors based on the results
-          const mockValidationErrors: ValidationError[] = [];
+          // Initialize and run Validation Engine
+          const validationEngine = new ValidationEngine(DEFAULT_VALIDATION_CONFIG);
           
-          if (ocrResult.confidence_score < ocrConfig.confidence_threshold) {
-            mockValidationErrors.push({
-              rule_id: 'multi-engine-confidence',
-              field_name: 'Confiança Multi-Engine',
-              error_type: 'low_confidence',
-              message: `Confiança abaixo do limite configurado (${(ocrConfig.confidence_threshold * 100).toFixed(0)}%)`,
-              severity: 'warning',
-              suggested_fix: 'Considerar processar com engine alternativo ou revisão manual'
-            });
-          }
+          // Mock historical context for demonstration
+          const mockHistoricalContext = {
+            historical_invoices: [
+              { energy_kwh: 1100, total_r$: 780.50 },
+              { energy_kwh: 1180, total_r$: 825.30 },
+              { energy_kwh: 1050, total_r$: 750.25 },
+              { energy_kwh: 1220, total_r$: 890.75 },
+              { energy_kwh: 1080, total_r$: 795.60 }
+            ]
+          };
 
-          if (ocrResult.ab_test_performed) {
-            mockValidationErrors.push({
-              rule_id: 'ab-test-notification',
-              field_name: 'A/B Testing',
-              error_type: 'info',
-              message: 'A/B Test executado com sucesso entre engines',
-              severity: 'warning',
-              suggested_fix: 'Verificar resultados na aba A/B Test Results'
-            });
-          }
+          console.log('🔍 Running Validation Engine Phase 3...');
+          const validationResults = await validationEngine.validateInvoice(
+            ocrResult.extracted_data, 
+            mockHistoricalContext
+          );
 
-          setValidationErrors(mockValidationErrors);
+          const overallScore = validationEngine['calculateOverallScore'](validationResults);
+          const status = validationEngine.getValidationStatus(validationResults);
+
+          setValidationResults(validationResults);
+          setValidationScore(overallScore);
+          setValidationStatus(status);
+
+          // Legacy validation errors for backward compatibility
+          const legacyValidationErrors: ValidationError[] = validationResults.map(result => ({
+            rule_id: result.rule_id,
+            field_name: result.field_name || 'Unknown',
+            error_type: result.error_type,
+            message: result.message,
+            severity: result.severity,
+            suggested_fix: result.suggested_fix
+          }));
+
+          setValidationErrors(legacyValidationErrors);
           setCurrentStep('review');
+
+          console.log(`✅ Validation Engine completed. Score: ${(overallScore * 100).toFixed(1)}%, Status: ${status}`);
         }
+
+        // Complete processing
+        status.progress = 100;
+        status.current_step = 'Processamento e validação concluídos';
+        status.status = 'completed';
+        status.requires_review = validationStatus === 'review_required' || validationStatus === 'rejected';
+        setProcessingStatus([...newStatuses]);
       }
 
       toast({
-        title: "Processamento Multi-Engine Concluído!",
-        description: `${files.length} arquivo(s) processado(s) com ${ocrConfig.primary_engine.toUpperCase()}${ocrConfig.ab_testing_enabled ? ' + A/B Testing' : ''}.`,
+        title: "Processamento Multi-Engine + Validation Concluído!",
+        description: `${files.length} arquivo(s) processado(s) com ${ocrConfig.primary_engine.toUpperCase()} + Validation Engine Fase 3.`,
       });
 
     } catch (error) {
@@ -220,7 +245,7 @@ export function MultiEngineInvoiceUpload() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold">Revisão Multi-Engine OCR</h2>
+            <h2 className="text-2xl font-bold">Multi-Engine OCR + Validation Engine (Fase 3)</h2>
             <div className="flex items-center gap-2 mt-1">
               <Badge className="bg-purple-100 text-purple-800">
                 Engine: {extractedData.extraction_method?.toUpperCase()}
@@ -231,7 +256,18 @@ export function MultiEngineInvoiceUpload() {
                 </Badge>
               )}
               <Badge className="bg-green-100 text-green-800">
-                Confiança: {((extractedData.confidence_score || 0) * 100).toFixed(1)}%
+                OCR: {((extractedData.confidence_score || 0) * 100).toFixed(1)}%
+              </Badge>
+              <Badge className="bg-orange-100 text-orange-800">
+                Validation: {(validationScore * 100).toFixed(1)}%
+              </Badge>
+              <Badge className={
+                validationStatus === 'approved' ? 'bg-green-100 text-green-800' :
+                validationStatus === 'rejected' ? 'bg-red-100 text-red-800' :
+                'bg-yellow-100 text-yellow-800'
+              }>
+                {validationStatus === 'approved' ? 'Aprovado' :
+                 validationStatus === 'rejected' ? 'Rejeitado' : 'Revisão'}
               </Badge>
             </div>
           </div>
@@ -243,7 +279,8 @@ export function MultiEngineInvoiceUpload() {
         <Tabs defaultValue="extracted" className="space-y-4">
           <TabsList>
             <TabsTrigger value="extracted">Dados Extraídos</TabsTrigger>
-            <TabsTrigger value="validation">Validação</TabsTrigger>
+            <TabsTrigger value="validation">Validation Engine</TabsTrigger>
+            <TabsTrigger value="legacy">Validação Legacy</TabsTrigger>
             {abTestResults.length > 0 && (
               <TabsTrigger value="abtest">A/B Test Results</TabsTrigger>
             )}
@@ -258,8 +295,10 @@ export function MultiEngineInvoiceUpload() {
             </div>
             
             <div className="space-y-4">
-              <InvoiceValidationPanel
-                validationErrors={validationErrors}
+              <EnhancedValidationPanel
+                validationResults={validationResults}
+                overallScore={validationScore}
+                validationStatus={validationStatus}
                 onApprove={handleApprove}
                 onReject={handleReject}
                 onRequestReview={handleRequestReview}
@@ -268,6 +307,17 @@ export function MultiEngineInvoiceUpload() {
           </TabsContent>
 
           <TabsContent value="validation">
+            <EnhancedValidationPanel
+              validationResults={validationResults}
+              overallScore={validationScore}
+              validationStatus={validationStatus}
+              onApprove={handleApprove}
+              onReject={handleReject}
+              onRequestReview={handleRequestReview}
+            />
+          </TabsContent>
+
+          <TabsContent value="legacy">
             <InvoiceValidationPanel
               validationErrors={validationErrors}
               onApprove={handleApprove}
