@@ -16,6 +16,7 @@ import Invoices from "./pages/Invoices";
 import Chat from "./pages/Chat";
 import Agents from "./pages/Agents";
 import Alerts from "./pages/Alerts";
+import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -41,6 +42,7 @@ const App = () => (
                 <Route path="/chat" element={<Chat />} />
                 <Route path="/agents" element={<Agents />} />
                 <Route path="/alerts" element={<Alerts />} />
+                <Route path="/settings" element={<Settings />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </main>
