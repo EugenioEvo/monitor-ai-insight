@@ -1,4 +1,3 @@
-
 import { useState, useCallback } from "react";
 import { Upload, FileText, Loader2, Settings, Brain, Eye } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -315,7 +314,7 @@ export function MultiEngineInvoiceUpload() {
               </Card>
             </TabsContent>
           )}
-        </tabs>
+        </Tabs>
       </div>
     );
   }
