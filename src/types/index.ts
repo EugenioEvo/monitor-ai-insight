@@ -30,10 +30,10 @@ export interface Invoice {
   file_url: string;
   uc_code: string;
   reference_month: string;
-  energy_kWh: number;
-  demand_kW: number;
-  total_R$: number;
-  taxes_R$: number;
+  energy_kwh: number; // Usar snake_case para corresponder ao banco
+  demand_kw: number; // Usar snake_case para corresponder ao banco
+  total_r$: number; // Usar snake_case para corresponder ao banco
+  taxes_r$: number; // Usar snake_case para corresponder ao banco
   status: 'pending' | 'processed' | 'error';
   extracted_data?: any;
   customer_unit_id?: string; // Nova propriedade
@@ -43,8 +43,8 @@ export interface Reading {
   id: string;
   plant_id: string;
   timestamp: string;
-  power_W: number;
-  energy_kWh: number;
+  power_w: number; // Usar snake_case para corresponder ao banco
+  energy_kwh: number; // Usar snake_case para corresponder ao banco
 }
 
 export interface Ticket {

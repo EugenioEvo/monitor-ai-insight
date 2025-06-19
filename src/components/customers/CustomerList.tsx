@@ -1,6 +1,6 @@
 
 import { useState } from "react";
-import { Edit, Trash2, Mail, Phone, MapPin } from "lucide-react";
+import { Edit, Trash2, Mail, Phone, MapPin, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -30,9 +30,10 @@ interface CustomerListProps {
   customers: Customer[];
   isLoading: boolean;
   onEditCustomer: (customer: Customer) => void;
+  onViewDashboard: (customer: Customer) => void;
 }
 
-export const CustomerList = ({ customers, isLoading, onEditCustomer }: CustomerListProps) => {
+export const CustomerList = ({ customers, isLoading, onEditCustomer, onViewDashboard }: CustomerListProps) => {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const deleteCustomer = useDeleteCustomer();
 
@@ -144,6 +145,14 @@ export const CustomerList = ({ customers, isLoading, onEditCustomer }: CustomerL
               </TableCell>
               <TableCell className="text-right">
                 <div className="flex items-center justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onViewDashboard(customer)}
+                    title="Ver Dashboard"
+                  >
+                    <BarChart3 className="w-4 h-4" />
+                  </Button>
                   <Button
                     variant="outline"
                     size="sm"
