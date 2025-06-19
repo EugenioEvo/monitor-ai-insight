@@ -15,6 +15,9 @@ import { Badge } from "@/components/ui/badge";
 import { ValidationEngine } from "@/services/validationEngine";
 import { ValidationResult, DEFAULT_VALIDATION_CONFIG } from "@/types/validation";
 import { EnhancedValidationPanel } from "./EnhancedValidationPanel";
+import { MLPipeline } from "@/services/mlPipeline";
+import { MLPrediction } from "@/types/ml-pipeline";
+import { MLPipelinePanel } from "./MLPipelinePanel";
 
 export function MultiEngineInvoiceUpload() {
   const [uploading, setUploading] = useState(false);
@@ -28,6 +31,10 @@ export function MultiEngineInvoiceUpload() {
   const [validationResults, setValidationResults] = useState<ValidationResult[]>([]);
   const [validationScore, setValidationScore] = useState<number>(1.0);
   const [validationStatus, setValidationStatus] = useState<'approved' | 'review_required' | 'rejected'>('approved');
+  const [mlPipeline] = useState(() => new MLPipeline());
+  const [validationPrediction, setValidationPrediction] = useState<MLPrediction | null>(null);
+  const [anomalyPrediction, setAnomalyPrediction] = useState<MLPrediction | null>(null);
+  const [modelStatus, setModelStatus] = useState<any>({});
   const { toast } = useToast();
 
   const handleFileUpload = async (files: FileList | null) => {
@@ -117,10 +124,14 @@ export function MultiEngineInvoiceUpload() {
             setAbTestResults([ocrResult.ab_test_result]);
           }
 
-          // Initialize and run Validation Engine
+          // Phase 3: Validation Engine
+          status.progress = 80;
+          status.current_step = 'Executando Validation Engine...';
+          setProcessingStatus([...newStatuses]);
+
           const validationEngine = new ValidationEngine(DEFAULT_VALIDATION_CONFIG);
           
-          // Mock historical context for demonstration
+          // Mock historical context
           const mockHistoricalContext = {
             historical_invoices: [
               { energy_kwh: 1100, total_r$: 780.50 },
@@ -138,11 +149,33 @@ export function MultiEngineInvoiceUpload() {
           );
 
           const overallScore = validationEngine['calculateOverallScore'](validationResults);
-          const status = validationEngine.getValidationStatus(validationResults);
+          const validationStatus = validationEngine.getValidationStatus(validationResults);
 
           setValidationResults(validationResults);
           setValidationScore(overallScore);
-          setValidationStatus(status);
+          setValidationStatus(validationStatus);
+
+          // Phase 4: ML Pipeline
+          status.progress = 90;
+          status.current_step = 'Executando ML Pipeline (Fase 4)...';
+          setProcessingStatus([...newStatuses]);
+
+          console.log('🤖 Running ML Pipeline Phase 4...');
+          
+          // Get ML predictions
+          const validationPred = await mlPipeline.predictValidationResults(ocrResult.extracted_data);
+          const anomalyPred = await mlPipeline.detectAnomalies(ocrResult.extracted_data, mockHistoricalContext.historical_invoices);
+          
+          setValidationPrediction(validationPred);
+          setAnomalyPrediction(anomalyPred);
+          setModelStatus(mlPipeline.getModelStatus());
+
+          // Add training data for continuous learning
+          await mlPipeline.addTrainingData(
+            ocrResult.extracted_data,
+            validationResults,
+            { user_approved: validationStatus === 'approved' }
+          );
 
           // Legacy validation errors for backward compatibility
           const legacyValidationErrors: ValidationError[] = validationResults.map(result => ({
@@ -157,27 +190,27 @@ export function MultiEngineInvoiceUpload() {
           setValidationErrors(legacyValidationErrors);
           setCurrentStep('review');
 
-          console.log(`✅ Validation Engine completed. Score: ${(overallScore * 100).toFixed(1)}%, Status: ${status}`);
+          console.log(`✅ ML Pipeline completed. Validation: ${(validationPred.confidence * 100).toFixed(1)}%, Anomaly: ${(anomalyPred.confidence * 100).toFixed(1)}%`);
         }
 
         // Complete processing
         status.progress = 100;
-        status.current_step = 'Processamento e validação concluídos';
+        status.current_step = 'Processamento, validação e ML concluídos';
         status.status = 'completed';
         status.requires_review = validationStatus === 'review_required' || validationStatus === 'rejected';
         setProcessingStatus([...newStatuses]);
       }
 
       toast({
-        title: "Processamento Multi-Engine + Validation Concluído!",
-        description: `${files.length} arquivo(s) processado(s) com ${ocrConfig.primary_engine.toUpperCase()} + Validation Engine Fase 3.`,
+        title: "Processamento Completo com ML!",
+        description: `${files.length} arquivo(s) processado(s) com Multi-Engine OCR + Validation + ML Pipeline.`,
       });
 
     } catch (error) {
       console.error('Error in multi-engine upload:', error);
       toast({
         title: "Erro no processamento",
-        description: "Ocorreu um erro durante o processamento multi-engine.",
+        description: "Ocorreu um erro durante o processamento completo.",
         variant: "destructive"
       });
     } finally {
@@ -240,12 +273,20 @@ export function MultiEngineInvoiceUpload() {
     });
   };
 
+  const handleMLFeedback = (prediction: MLPrediction, feedback: any) => {
+    console.log('📝 Received ML feedback:', feedback);
+    toast({
+      title: "Feedback ML registrado",
+      description: "Obrigado! Seu feedback ajudará a melhorar o modelo.",
+    });
+  };
+
   if (currentStep === 'review' && extractedData) {
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-bold">Multi-Engine OCR + Validation Engine (Fase 3)</h2>
+            <h2 className="text-2xl font-bold">Multi-Engine OCR + Validation + ML Pipeline</h2>
             <div className="flex items-center gap-2 mt-1">
               <Badge className="bg-purple-100 text-purple-800">
                 Engine: {extractedData.extraction_method?.toUpperCase()}
@@ -260,6 +301,9 @@ export function MultiEngineInvoiceUpload() {
               </Badge>
               <Badge className="bg-orange-100 text-orange-800">
                 Validation: {(validationScore * 100).toFixed(1)}%
+              </Badge>
+              <Badge className="bg-purple-100 text-purple-800">
+                ML: {validationPrediction ? (validationPrediction.confidence * 100).toFixed(1) + '%' : 'N/A'}
               </Badge>
               <Badge className={
                 validationStatus === 'approved' ? 'bg-green-100 text-green-800' :
@@ -280,6 +324,7 @@ export function MultiEngineInvoiceUpload() {
           <TabsList>
             <TabsTrigger value="extracted">Dados Extraídos</TabsTrigger>
             <TabsTrigger value="validation">Validation Engine</TabsTrigger>
+            <TabsTrigger value="ml">ML Pipeline</TabsTrigger>
             <TabsTrigger value="legacy">Validação Legacy</TabsTrigger>
             {abTestResults.length > 0 && (
               <TabsTrigger value="abtest">A/B Test Results</TabsTrigger>
@@ -314,6 +359,15 @@ export function MultiEngineInvoiceUpload() {
               onApprove={handleApprove}
               onReject={handleReject}
               onRequestReview={handleRequestReview}
+            />
+          </TabsContent>
+
+          <TabsContent value="ml">
+            <MLPipelinePanel
+              validationPrediction={validationPrediction || undefined}
+              anomalyPrediction={anomalyPrediction || undefined}
+              modelStatus={modelStatus}
+              onFeedback={handleMLFeedback}
             />
           </TabsContent>
 
@@ -446,3 +500,4 @@ export function MultiEngineInvoiceUpload() {
     </div>
   );
 }
+

@@ -98,7 +98,7 @@ export interface ValidationRule {
   description: string;
   rule_type: 'field_check' | 'cross_validation' | 'business_logic';
   enabled: boolean;
-  severity: 'warning' | 'error';
+  severity: 'warning' | 'error' | 'critical';
 }
 
 export interface ValidationError {
@@ -106,7 +106,7 @@ export interface ValidationError {
   field_name: string;
   error_type: string;
   message: string;
-  severity: 'warning' | 'error';
+  severity: 'warning' | 'error' | 'critical';
   suggested_fix?: string;
 }
 
