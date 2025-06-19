@@ -37,17 +37,42 @@ serve(async (req) => {
   }
 
   try {
+    console.log('[OCR] Function started');
+    
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const { filePath, fileName, config } = await req.json();
+    const requestBody = await req.json();
+    const { filePath, fileName, config } = requestBody;
 
-    console.log(`[OCR] Starting processing for: ${fileName}`);
+    console.log(`[OCR] Processing request for file: ${fileName}`);
+    console.log(`[OCR] File path: ${filePath}`);
+
+    // Validate request data
+    if (!filePath || !fileName) {
+      console.error('[OCR] Missing required parameters');
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: 'Missing filePath or fileName',
+        error_type: 'ValidationError'
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     // Validate API keys and determine available engines
     const availableEngines = validateAPIKeys();
     console.log(`[OCR] Available engines: ${availableEngines.join(', ')}`);
 
     if (availableEngines.length === 0) {
-      throw new Error('Nenhuma API de OCR está configurada. Configure pelo menos uma chave de API.');
+      console.error('[OCR] No API keys configured');
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: 'Nenhuma API de OCR está configurada. Configure pelo menos uma chave de API.',
+        error_type: 'ConfigurationError'
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // Default configuration with available engines
@@ -67,7 +92,7 @@ serve(async (req) => {
       console.log(`[OCR] Primary engine not available, using: ${ocrConfig.primary_engine}`);
     }
 
-    // Download file with retry logic
+    // Download file
     console.log(`[OCR] Downloading file: ${filePath}`);
     const { data: fileData, error: downloadError } = await supabase.storage
       .from('invoices')
@@ -75,15 +100,38 @@ serve(async (req) => {
 
     if (downloadError) {
       console.error('[OCR] Download error:', downloadError);
-      throw new Error(`Falha ao baixar o arquivo: ${downloadError.message}`);
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: `Falha ao baixar o arquivo: ${downloadError.message}`,
+        error_type: 'DownloadError'
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     if (!fileData || fileData.size === 0) {
-      throw new Error('Arquivo vazio ou inválido');
+      console.error('[OCR] File is empty or invalid');
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: 'Arquivo vazio ou inválido',
+        error_type: 'FileError'
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     if (fileData.size > 10 * 1024 * 1024) { // 10MB limit
-      throw new Error('Arquivo muito grande (máximo 10MB)');
+      console.error('[OCR] File too large');
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: 'Arquivo muito grande (máximo 10MB)',
+        error_type: 'FileSizeError'
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // Convert to base64
@@ -94,11 +142,10 @@ serve(async (req) => {
 
     // Process with primary engine
     console.log(`[OCR] Processing with primary engine: ${ocrConfig.primary_engine}`);
-    let primaryResult = await processWithEngine(ocrConfig.primary_engine, base64);
+    let finalResult = await processWithEngine(ocrConfig.primary_engine, base64);
 
     // If primary failed or has low confidence, try fallbacks
-    let finalResult = primaryResult;
-    if ((primaryResult.error || primaryResult.confidence_score < ocrConfig.confidence_threshold) && ocrConfig.fallback_engines.length > 0) {
+    if ((finalResult.error || finalResult.confidence_score < ocrConfig.confidence_threshold) && ocrConfig.fallback_engines.length > 0) {
       console.log(`[OCR] Primary result insufficient, trying fallbacks`);
       
       for (const fallbackEngine of ocrConfig.fallback_engines) {
@@ -117,7 +164,7 @@ serve(async (req) => {
       }
     }
 
-    // If all engines failed, create mock data for development
+    // If all engines failed, use mock data for development
     if (finalResult.error || !finalResult.text) {
       console.log('[OCR] All engines failed, using mock data for development');
       finalResult = createMockOCRResult();
@@ -160,7 +207,14 @@ serve(async (req) => {
 
     if (insertError) {
       console.error('[OCR] Database insert error:', insertError);
-      throw new Error(`Database error: ${insertError.message}`);
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: `Database error: ${insertError.message}`,
+        error_type: 'DatabaseError'
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     console.log(`[OCR] Successfully processed and saved invoice: ${invoice.id}`);
@@ -183,8 +237,8 @@ serve(async (req) => {
     console.error('[OCR] Function error:', error);
     return new Response(JSON.stringify({ 
       success: false, 
-      error: error.message,
-      error_type: error.name || 'ProcessingError'
+      error: error.message || 'Erro interno do servidor',
+      error_type: error.name || 'InternalError'
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
