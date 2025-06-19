@@ -2,13 +2,25 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.0';
 
-const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+// Flexible Supabase credentials management with fallbacks
+const supabaseUrl = Deno.env.get('SUPABASE_URL') || 
+                   (globalThis as any).SUPABASE_URL || 
+                   undefined;
+const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || 
+                   (globalThis as any).SUPABASE_SERVICE_ROLE_KEY || 
+                   undefined;
+
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error('Supabase credentials not found. Please set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in your environment or Lovable secrets.');
+}
+
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+// Complete CORS headers with all required methods
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS, GET',
 };
 
 interface SungrowConfig {
@@ -40,12 +52,13 @@ interface ApiCache {
 // Cache em memória com TTL configurável
 const apiCache: ApiCache = {};
 
-// Rate limiting com exponential backoff
+// Intelligent rate limiting with smart reset
 let rateLimitDelay = 0;
 const MAX_DELAY = 300000; // 5 minutos
 const BASE_DELAY = 60000; // 1 minuto
 
 serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -66,14 +79,14 @@ serve(async (req) => {
       baseUrl: config?.baseUrl || 'default'
     });
     
-    // Validação básica das credenciais
+    // Validação robusta das credenciais
     if (action !== 'test_connection' && action !== 'discover_plants' && action !== 'get_plant_list') {
       if (!config?.username || !config?.password || !config?.appkey || !config?.accessKey) {
-        throw new Error('Credenciais incompletas. Verifique se todos os campos estão preenchidos.');
+        throw new Error('Credenciais incompletas. Verifique se todos os campos estão preenchidos: username, password, appkey e accessKey são obrigatórios.');
       }
     }
     
-    // Rate limiting check
+    // Rate limiting check with smart delay
     if (rateLimitDelay > 0) {
       console.log(`[${reqSerialNum}] Rate limited, waiting ${rateLimitDelay}ms`);
       await new Promise(resolve => setTimeout(resolve, rateLimitDelay));
@@ -111,8 +124,11 @@ serve(async (req) => {
         throw new Error(`Ação não suportada: ${action}`);
     }
 
-    // Reset rate limit on success
-    rateLimitDelay = 0;
+    // Smart reset of rate limit on success or non-rate-limit errors
+    if (rateLimitDelay > 0) {
+      console.log(`[${reqSerialNum}] Request successful, resetting rate limit delay`);
+      rateLimitDelay = 0;
+    }
     
     const duration = Date.now() - startTime;
     if (result.data && Array.isArray(result.data)) {
@@ -131,21 +147,41 @@ serve(async (req) => {
   } catch (error) {
     const duration = Date.now() - startTime;
     
+    // Enhanced error handling with specific Sungrow error details
+    let errorMessage = error.message;
+    let statusCode = 500;
+    
     // Handle rate limiting with exponential backoff
     if (error.message.includes('429') || error.message.includes('000110')) {
       rateLimitDelay = Math.min(rateLimitDelay === 0 ? BASE_DELAY : rateLimitDelay * 2, MAX_DELAY);
       console.error(`[${reqSerialNum}] Rate limited, next delay: ${rateLimitDelay}ms`);
+      statusCode = 429;
+      errorMessage = `Rate limit exceeded. Próxima tentativa em ${Math.round(rateLimitDelay / 1000)} segundos.`;
+    } else if (error.message.includes('401')) {
+      statusCode = 401;
+      errorMessage = 'Credenciais inválidas. Verifique username, password, appkey e accessKey.';
+    } else if (error.message.includes('403')) {
+      statusCode = 403;
+      errorMessage = 'Acesso negado. Verifique se sua accessKey tem as permissões necessárias.';
+    } else if (error.message.includes('Supabase credentials')) {
+      statusCode = 500;
+      errorMessage = 'Configuração do servidor incompleta. Entre em contato com o administrador.';
     }
     
-    console.error(`[${reqSerialNum}] Error: ${error.message}, duration: ${duration}ms`);
+    console.error(`[${reqSerialNum}] Error: ${errorMessage}, duration: ${duration}ms`);
+    console.error(`[${reqSerialNum}] Stack trace:`, error.stack);
     
     return new Response(
       JSON.stringify({ 
         success: false,
-        error: error.message,
+        error: errorMessage,
+        details: error.message !== errorMessage ? error.message : undefined,
         reqSerialNum 
       }),
-      { status: error.message.includes('429') ? 429 : 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { 
+        status: statusCode, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
     );
   }
 });
@@ -190,11 +226,18 @@ async function authenticateWithRetry(config: SungrowConfig, reqSerialNum: string
   
   console.log(`[${reqSerialNum}] Authenticating with Sungrow...`);
   
-  if (!config.username || !config.password || !config.appkey || !config.accessKey) {
-    throw new Error('Todas as credenciais são obrigatórias: username, password, appkey e accessKey');
+  // Enhanced credential validation
+  const missingFields = [];
+  if (!config.username) missingFields.push('username');
+  if (!config.password) missingFields.push('password');
+  if (!config.appkey) missingFields.push('appkey');
+  if (!config.accessKey) missingFields.push('accessKey');
+  
+  if (missingFields.length > 0) {
+    throw new Error(`Campos obrigatórios ausentes: ${missingFields.join(', ')}`);
   }
 
-  // URLs base dos servidores internacionais Sungrow
+  // Updated international Sungrow servers
   const baseUrls = [
     'https://web3.isolarcloud.com.hk',
     'https://web3.isolarcloud.com',
@@ -220,7 +263,7 @@ async function authenticateWithRetry(config: SungrowConfig, reqSerialNum: string
       try {
         console.log(`[${reqSerialNum}] Tentativa ${attemptCount}: ${baseUrl}${endpoint}`);
         
-        // Payload padrão baseado na documentação oficial
+        // Enhanced payload with proper field mapping
         const authPayload = {
           appkey: config.appkey,
           user_account: config.username,
@@ -251,51 +294,67 @@ async function authenticateWithRetry(config: SungrowConfig, reqSerialNum: string
           'User-Agent': 'Monitor.ai/1.0'
         });
 
-        const response = await fetchWithRetry(`${baseUrl}${endpoint}`, {
+        const response = await fetchWithTimeout(`${baseUrl}${endpoint}`, {
           method: 'POST',
           headers,
           body: JSON.stringify(authPayload)
-        });
+        }, 30000);
 
         console.log(`[${reqSerialNum}] Response status: ${response.status}`);
 
-        if (response.ok) {
-          const data: SungrowAuthResponse = await response.json();
-          console.log(`[${reqSerialNum}] Response:`, {
-            result_code: data.result_code,
-            result_msg: data.result_msg,
-            has_token: !!data.result_data?.token
-          });
+        // Enhanced error handling with specific Sungrow details
+        if (!response.ok) {
+          const errorDetail = await response.text();
+          console.error(`[${reqSerialNum}] HTTP ${response.status}: ${errorDetail}`);
           
-          if (data.result_code === 1 && data.result_data?.token) {
-            // Cache token for 23 hours
-            setCache(cacheKey, data.result_data.token, 82800000);
-            
-            console.log(`[${reqSerialNum}] Autenticação bem-sucedida com: ${baseUrl}${endpoint}`);
-            return data.result_data.token;
-          } else {
-            const errorMsg = `Erro de autenticação: ${data.result_msg} (Código: ${data.result_code})`;
-            console.error(`[${reqSerialNum}] ${errorMsg}`);
-            
-            // Mensagens de erro mais específicas
-            if (data.result_code === 'E00000' || data.result_msg === 'er_invalid_appkey') {
-              throw new Error('App Key inválida. Verifique se a chave da aplicação está correta.');
-            } else if (data.result_code === 'E00001' || data.result_msg.includes('user')) {
-              throw new Error('Usuário ou senha incorretos. Verifique suas credenciais de login.');
-            } else if (data.result_code === 'E00002' || data.result_msg.includes('access')) {
-              throw new Error('Access Key inválida. Verifique o valor da chave de acesso.');
-            }
-            
-            lastError = new Error(errorMsg);
+          if (response.status === 401) {
+            throw new Error(`401 Unauthorized: Credenciais inválidas. Verifique username, password e accessKey. Detalhes: ${errorDetail}`);
+          } else if (response.status === 403) {
+            throw new Error(`403 Forbidden: AccessKey sem permissão ou inválida. Detalhes: ${errorDetail}`);
+          } else if (response.status === 429) {
+            throw new Error(`429 Rate Limited: Muitas tentativas. Aguarde antes de tentar novamente. Detalhes: ${errorDetail}`);
           }
+          
+          lastError = new Error(`Sungrow ${response.status}: ${errorDetail}`);
+          continue;
+        }
+
+        const data: SungrowAuthResponse = await response.json();
+        console.log(`[${reqSerialNum}] Response:`, {
+          result_code: data.result_code,
+          result_msg: data.result_msg,
+          has_token: !!data.result_data?.token
+        });
+        
+        if (data.result_code === 1 && data.result_data?.token) {
+          // Cache token for 23 hours
+          setCache(cacheKey, data.result_data.token, 82800000);
+          
+          console.log(`[${reqSerialNum}] Autenticação bem-sucedida com: ${baseUrl}${endpoint}`);
+          return data.result_data.token;
         } else {
-          const errorText = await response.text();
-          console.error(`[${reqSerialNum}] HTTP ${response.status}: ${errorText}`);
-          lastError = new Error(`HTTP ${response.status}: ${errorText}`);
+          const errorMsg = `Erro de autenticação: ${data.result_msg} (Código: ${data.result_code})`;
+          console.error(`[${reqSerialNum}] ${errorMsg}`);
+          
+          // Enhanced error messages with specific guidance
+          if (data.result_code === 'E00000' || data.result_msg === 'er_invalid_appkey') {
+            throw new Error('App Key inválida. Verifique se a chave da aplicação está correta e foi obtida do portal oficial Sungrow.');
+          } else if (data.result_code === 'E00001' || data.result_msg.includes('user')) {
+            throw new Error('Usuário ou senha incorretos. Verifique suas credenciais de login do portal iSolarCloud.');
+          } else if (data.result_code === 'E00002' || data.result_msg.includes('access')) {
+            throw new Error('Access Key inválida. Verifique o valor da chave de acesso obtida no portal.');
+          }
+          
+          lastError = new Error(errorMsg);
         }
       } catch (error) {
-        console.error(`[${reqSerialNum}] Falha na requisição: ${error.message}`);
+        console.error(`[${reqSerialNum}] Falha na requisição para ${baseUrl}${endpoint}: ${error.message}`);
         lastError = error;
+        
+        // If it's a credential error, don't continue trying other endpoints
+        if (error.message.includes('401') || error.message.includes('403') || error.message.includes('Credential')) {
+          throw error;
+        }
       }
     }
   }
@@ -303,23 +362,54 @@ async function authenticateWithRetry(config: SungrowConfig, reqSerialNum: string
   throw new Error(`Falha na autenticação após ${attemptCount} tentativas. Último erro: ${lastError?.message || 'Erro desconhecido'}`);
 }
 
+// Replace AbortSignal.timeout with manual AbortController
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 30000): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
+  
+  try {
+    console.log(`Making request to: ${url}`);
+    
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    
+    console.log(`Response status: ${response.status}`);
+    
+    // Smart rate limit reset - if we get a successful response or non-rate-limit error
+    if (response.ok || (response.status < 429 && response.status !== 401 && response.status !== 403)) {
+      if (rateLimitDelay > 0) {
+        console.log(`Request to ${url} successful, resetting rate limit`);
+        rateLimitDelay = 0;
+      }
+    }
+    
+    return response;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 3): Promise<Response> {
   let retries = 0;
   
   while (retries < maxRetries) {
     try {
-      console.log(`Making request to: ${url} (attempt ${retries + 1})`);
+      const response = await fetchWithTimeout(url, options, 30000);
       
-      const response = await fetch(url, {
-        ...options,
-        signal: AbortSignal.timeout(30000) // 30 second timeout
-      });
-      
-      console.log(`Response status: ${response.status}`);
-      
-      // Handle specific error codes
+      // Handle specific error codes with detailed messages
       if (response.status === 429) {
-        throw new Error('Rate limit exceeded (429)');
+        const detail = await response.text();
+        throw new Error(`Rate limit exceeded (429): ${detail}`);
+      } else if (response.status === 401) {
+        const detail = await response.text();
+        throw new Error(`Unauthorized (401): ${detail}`);
+      } else if (response.status === 403) {
+        const detail = await response.text();
+        throw new Error(`Forbidden (403): ${detail}`);
       }
       
       return response;
@@ -329,7 +419,7 @@ async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 3)
         throw error;
       }
       
-      console.log(`Request failed, retrying in ${retries * 1000}ms...`);
+      console.log(`Request failed, retrying in ${retries * 1000}ms... (${retries}/${maxRetries})`);
       await new Promise(resolve => setTimeout(resolve, retries * 1000));
     }
   }
@@ -341,7 +431,7 @@ async function testConnection(config: SungrowConfig, reqSerialNum: string) {
   try {
     console.log(`[${reqSerialNum}] Testing Sungrow connection...`);
     
-    // Validação detalhada das credenciais
+    // Enhanced credential validation with specific field checks
     const missingFields = [];
     if (!config.username) missingFields.push('username');
     if (!config.password) missingFields.push('password');
@@ -349,14 +439,14 @@ async function testConnection(config: SungrowConfig, reqSerialNum: string) {
     if (!config.accessKey) missingFields.push('accessKey');
     
     if (missingFields.length > 0) {
-      throw new Error(`Campos obrigatórios não preenchidos: ${missingFields.join(', ')}`);
+      throw new Error(`Campos obrigatórios não preenchidos: ${missingFields.join(', ')}. Todos os campos são necessários para conectar com o Sungrow.`);
     }
     
     const token = await authenticateWithRetry(config, reqSerialNum);
     
     return {
       success: true,
-      message: 'Conexão estabelecida com sucesso! Credenciais válidas.',
+      message: 'Conexão estabelecida com sucesso! Credenciais válidas e token obtido.',
       token: token.substring(0, 10) + '...',
       reqSerialNum
     };
@@ -391,7 +481,7 @@ async function discoverPlants(config: SungrowConfig, reqSerialNum?: string) {
         try {
           console.log(`[${reqSerialNum || 'unknown'}] Trying: ${baseUrl}${endpoint}`);
           
-          const response = await fetchWithRetry(`${baseUrl}${endpoint}`, {
+          const response = await fetchWithTimeout(`${baseUrl}${endpoint}`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -840,23 +930,27 @@ async function fetchWithHeaders(url: string, options: RequestInit): Promise<Resp
   console.log(`Making request to: ${url}`);
   console.log(`Headers:`, JSON.stringify(options.headers, null, 2));
   
-  const response = await fetch(url, options);
+  const response = await fetchWithTimeout(url, options);
   console.log(`Response status: ${response.status}`);
   
-  // Handle specific Sungrow error codes
+  // Enhanced error handling with specific Sungrow error codes
   if (!response.ok) {
+    const errorDetail = await response.text();
+    
     if (response.status === 429) {
-      throw new Error('Rate limit exceeded (429)');
+      throw new Error(`Rate limit exceeded (429): ${errorDetail}`);
     }
     if (response.status >= 500) {
-      throw new Error(`Server error: ${response.status}`);
+      throw new Error(`Server error (${response.status}): ${errorDetail}`);
     }
     if (response.status === 401) {
-      throw new Error('Unauthorized access - check credentials');
+      throw new Error(`Unauthorized access (401): Verifique suas credenciais. ${errorDetail}`);
     }
     if (response.status === 403) {
-      throw new Error('Forbidden - check access key');
+      throw new Error(`Forbidden access (403): Verifique sua access key. ${errorDetail}`);
     }
+    
+    throw new Error(`Sungrow API error (${response.status}): ${errorDetail}`);
   }
   
   return response;
