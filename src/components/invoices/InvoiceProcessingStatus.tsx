@@ -4,10 +4,10 @@ import { Progress } from "@/components/ui/progress";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle, AlertCircle, Clock, Eye } from "lucide-react";
-import { InvoiceProcessingStatus } from "@/types/invoice";
+import type { InvoiceProcessingStatus as InvoiceStatus } from "@/types/invoice";
 
 interface InvoiceProcessingStatusProps {
-  processingStatus: InvoiceProcessingStatus[];
+  processingStatus: InvoiceStatus[];
 }
 
 const statusColors = {

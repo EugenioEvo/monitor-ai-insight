@@ -108,7 +108,7 @@ export function InvoiceDataExtractor({
                   <Input
                     id={field.key}
                     type={field.type}
-                    value={editedData[field.key as keyof InvoiceExtractedData] || ''}
+                    value={String(editedData[field.key as keyof InvoiceExtractedData] || '')}
                     onChange={(e) => setEditedData(prev => ({
                       ...prev,
                       [field.key]: field.type === 'number' ? Number(e.target.value) : e.target.value

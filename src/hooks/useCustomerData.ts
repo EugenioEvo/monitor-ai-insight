@@ -29,17 +29,8 @@ interface DatabaseReading {
   created_at: string;
 }
 
-// Interface para dados de consumo com aliases limpos
-interface ConsumptionData {
-  customer_unit_id: string;
-  reference_month: string;
-  energy_kwh: number;
-  total_amount: number;
-  taxes_amount: number;
-}
-
-// Hook para buscar dados completos de um cliente
-export const useCustomerDashboard = (customerId: string) => {
+// Hook principal para buscar dados completos de um cliente
+export const useCustomerData = (customerId: string) => {
   return useQuery({
     queryKey: ["customer-dashboard", customerId],
     queryFn: async () => {
@@ -130,109 +121,6 @@ export const useCustomerDashboard = (customerId: string) => {
         readings,
         metrics: metrics as CustomerMetrics[]
       };
-    },
-    enabled: !!customerId,
-  });
-};
-
-// Hook para buscar dados de geração mensal por planta
-export const useCustomerGenerationData = (customerId: string) => {
-  return useQuery({
-    queryKey: ["customer-generation", customerId],
-    queryFn: async () => {
-      const { data: plants, error: plantsError } = await supabase
-        .from("plants")
-        .select("id, name")
-        .eq("customer_id", customerId);
-
-      if (plantsError) throw plantsError;
-
-      const plantIds = plants?.map(plant => plant.id) || [];
-      
-      if (plantIds.length === 0) {
-        return { chartData: [], plants: [] };
-      }
-
-      const { data, error } = await supabase
-        .from("readings")
-        .select("plant_id, timestamp, energy_kwh")
-        .in("plant_id", plantIds)
-        .order("timestamp", { ascending: true });
-
-      if (error) throw error;
-
-      const monthlyData: { [key: string]: { [plantId: string]: number } } = {};
-      
-      data?.forEach(reading => {
-        const month = reading.timestamp.substring(0, 7);
-        if (!monthlyData[month]) {
-          monthlyData[month] = {};
-        }
-        if (!monthlyData[month][reading.plant_id]) {
-          monthlyData[month][reading.plant_id] = 0;
-        }
-        monthlyData[month][reading.plant_id] += reading.energy_kwh;
-      });
-
-      const chartData = Object.entries(monthlyData).map(([month, plantData]) => ({
-        month,
-        ...plantData,
-        total: Object.values(plantData).reduce((sum: number, value: number) => sum + value, 0)
-      }));
-
-      return { chartData, plants: plants || [] };
-    },
-    enabled: !!customerId,
-  });
-};
-
-// Hook para buscar dados de consumo mensal por UC
-export const useCustomerConsumptionData = (customerId: string) => {
-  return useQuery({
-    queryKey: ["customer-consumption", customerId],
-    queryFn: async () => {
-      const { data: units, error: unitsError } = await supabase
-        .from("customer_units")
-        .select("id, uc_code, unit_name")
-        .eq("customer_id", customerId)
-        .eq("is_active", true);
-
-      if (unitsError) throw unitsError;
-
-      const unitIds = units?.map(unit => unit.id) || [];
-      
-      if (unitIds.length === 0) {
-        return { chartData: [], units: [] };
-      }
-
-      // Buscar faturas com consulta simples
-      const { data: invoiceData, error } = await supabase
-        .from("invoices")
-        .select("customer_unit_id, reference_month, energy_kwh, total_r$, taxes_r$")
-        .in("customer_unit_id", unitIds)
-        .eq("status", "processed")
-        .order("reference_month", { ascending: true });
-
-      if (error) throw error;
-
-      const monthlyData: { [key: string]: { consumption: number, cost: number } } = {};
-      
-      invoiceData?.forEach((invoice: any) => {
-        const month = invoice.reference_month;
-        if (!monthlyData[month]) {
-          monthlyData[month] = { consumption: 0, cost: 0 };
-        }
-        monthlyData[month].consumption += invoice.energy_kwh;
-        monthlyData[month].cost += invoice.total_r$;
-      });
-
-      const chartData = Object.entries(monthlyData).map(([month, data]) => ({
-        month,
-        consumption: data.consumption,
-        cost: data.cost
-      }));
-
-      return { chartData, units: units || [] };
     },
     enabled: !!customerId,
   });

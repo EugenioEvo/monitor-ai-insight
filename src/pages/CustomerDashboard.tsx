@@ -5,7 +5,7 @@ import { ArrowLeft, TrendingUp, TrendingDown, Zap, DollarSign } from "lucide-rea
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useCustomerDashboard } from "@/hooks/useCustomerDashboard";
+import { useCustomerData } from "@/hooks/useCustomerData";
 import { CustomerGenerationTab } from "@/components/customers/dashboard/CustomerGenerationTab";
 import { CustomerConsumptionTab } from "@/components/customers/dashboard/CustomerConsumptionTab";
 import { CustomerOverviewCards } from "@/components/customers/dashboard/CustomerOverviewCards";
@@ -16,7 +16,7 @@ const CustomerDashboard = () => {
   const navigate = useNavigate();
   const [selectedPeriod, setSelectedPeriod] = useState("12"); // últimos 12 meses
   
-  const { data, isLoading, error } = useCustomerDashboard(customerId!);
+  const { data, isLoading, error } = useCustomerData(customerId!);
 
   if (isLoading) {
     return (
