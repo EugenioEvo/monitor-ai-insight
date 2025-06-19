@@ -91,6 +91,112 @@ export type Database = {
           },
         ]
       }
+      customer_metrics: {
+        Row: {
+          calculated_at: string | null
+          created_at: string
+          customer_id: string
+          energy_balance_kwh: number | null
+          id: string
+          month: string
+          total_consumption_kwh: number | null
+          total_generation_kwh: number | null
+          total_savings_r$: number | null
+          updated_at: string
+        }
+        Insert: {
+          calculated_at?: string | null
+          created_at?: string
+          customer_id: string
+          energy_balance_kwh?: number | null
+          id?: string
+          month: string
+          total_consumption_kwh?: number | null
+          total_generation_kwh?: number | null
+          total_savings_r$?: number | null
+          updated_at?: string
+        }
+        Update: {
+          calculated_at?: string | null
+          created_at?: string
+          customer_id?: string
+          energy_balance_kwh?: number | null
+          id?: string
+          month?: string
+          total_consumption_kwh?: number | null
+          total_generation_kwh?: number | null
+          total_savings_r$?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_metrics_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customer_units: {
+        Row: {
+          address_city: string | null
+          address_complement: string | null
+          address_neighborhood: string | null
+          address_number: string | null
+          address_state: string | null
+          address_street: string | null
+          address_zip_code: string | null
+          created_at: string
+          customer_id: string
+          id: string
+          is_active: boolean | null
+          uc_code: string
+          unit_name: string | null
+          updated_at: string
+        }
+        Insert: {
+          address_city?: string | null
+          address_complement?: string | null
+          address_neighborhood?: string | null
+          address_number?: string | null
+          address_state?: string | null
+          address_street?: string | null
+          address_zip_code?: string | null
+          created_at?: string
+          customer_id: string
+          id?: string
+          is_active?: boolean | null
+          uc_code: string
+          unit_name?: string | null
+          updated_at?: string
+        }
+        Update: {
+          address_city?: string | null
+          address_complement?: string | null
+          address_neighborhood?: string | null
+          address_number?: string | null
+          address_state?: string | null
+          address_street?: string | null
+          address_zip_code?: string | null
+          created_at?: string
+          customer_id?: string
+          id?: string
+          is_active?: boolean | null
+          uc_code?: string
+          unit_name?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_units_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customers: {
         Row: {
           address_city: string | null
@@ -148,6 +254,7 @@ export type Database = {
       invoices: {
         Row: {
           created_at: string
+          customer_unit_id: string | null
           demand_kw: number
           energy_kwh: number
           extracted_data: Json | null
@@ -162,6 +269,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          customer_unit_id?: string | null
           demand_kw?: number
           energy_kwh?: number
           extracted_data?: Json | null
@@ -176,6 +284,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          customer_unit_id?: string | null
           demand_kw?: number
           energy_kwh?: number
           extracted_data?: Json | null
@@ -188,7 +297,15 @@ export type Database = {
           uc_code?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "invoices_customer_unit_id_fkey"
+            columns: ["customer_unit_id"]
+            isOneToOne: false
+            referencedRelation: "customer_units"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       monitoring_configs: {
         Row: {
@@ -238,6 +355,7 @@ export type Database = {
           capacity_kwp: number
           concessionaria: string
           created_at: string
+          customer_id: string | null
           id: string
           last_sync: string | null
           lat: number
@@ -255,6 +373,7 @@ export type Database = {
           capacity_kwp: number
           concessionaria: string
           created_at?: string
+          customer_id?: string | null
           id?: string
           last_sync?: string | null
           lat: number
@@ -272,6 +391,7 @@ export type Database = {
           capacity_kwp?: number
           concessionaria?: string
           created_at?: string
+          customer_id?: string | null
           id?: string
           last_sync?: string | null
           lat?: number
@@ -283,7 +403,15 @@ export type Database = {
           sync_enabled?: boolean | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "plants_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       readings: {
         Row: {

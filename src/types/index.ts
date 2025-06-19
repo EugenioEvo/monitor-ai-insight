@@ -13,6 +13,7 @@ export interface Plant {
   api_credentials?: any;
   sync_enabled?: boolean;
   last_sync?: string;
+  customer_id?: string; // Nova propriedade
 }
 
 export interface Beneficiary {
@@ -35,6 +36,7 @@ export interface Invoice {
   taxes_R$: number;
   status: 'pending' | 'processed' | 'error';
   extracted_data?: any;
+  customer_unit_id?: string; // Nova propriedade
 }
 
 export interface Reading {
@@ -95,6 +97,37 @@ export interface Customer {
   address_city?: string;
   address_state?: string;
   address_zip_code?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// Novos tipos para as novas estruturas
+export interface CustomerUnit {
+  id: string;
+  customer_id: string;
+  uc_code: string;
+  unit_name?: string;
+  address_street?: string;
+  address_number?: string;
+  address_complement?: string;
+  address_neighborhood?: string;
+  address_city?: string;
+  address_state?: string;
+  address_zip_code?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CustomerMetrics {
+  id: string;
+  customer_id: string;
+  month: string;
+  total_generation_kwh: number;
+  total_consumption_kwh: number;
+  total_savings_r$: number;
+  energy_balance_kwh: number;
+  calculated_at?: string;
   created_at: string;
   updated_at: string;
 }

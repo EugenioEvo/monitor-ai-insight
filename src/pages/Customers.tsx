@@ -1,18 +1,20 @@
 
 import { useState } from "react";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { CustomerList } from "@/components/customers/CustomerList";
 import { CustomerForm } from "@/components/customers/CustomerForm";
 import { useCustomers } from "@/hooks/useCustomers";
+import { useNavigate } from "react-router-dom";
 import type { Customer } from "@/types";
 
 const Customers = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const navigate = useNavigate();
   
   const { data: customers = [], isLoading } = useCustomers();
 
@@ -30,6 +32,10 @@ const Customers = () => {
   const handleEditCustomer = (customer: Customer) => {
     setEditingCustomer(customer);
     setShowForm(true);
+  };
+
+  const handleViewDashboard = (customer: Customer) => {
+    navigate(`/customers/${customer.id}/dashboard`);
   };
 
   const handleCloseForm = () => {
@@ -81,6 +87,7 @@ const Customers = () => {
             customers={filteredCustomers}
             isLoading={isLoading}
             onEditCustomer={handleEditCustomer}
+            onViewDashboard={handleViewDashboard}
           />
         </CardContent>
       </Card>

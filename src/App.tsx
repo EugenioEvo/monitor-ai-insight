@@ -11,6 +11,7 @@ import Dashboard from "./pages/Dashboard";
 import Plants from "./pages/Plants";
 import PlantDashboard from "./pages/PlantDashboard";
 import Customers from "./pages/Customers";
+import CustomerDashboard from "./pages/CustomerDashboard";
 import Invoices from "./pages/Invoices";
 import Chat from "./pages/Chat";
 import Agents from "./pages/Agents";
@@ -35,6 +36,7 @@ const App = () => (
                 <Route path="/plants" element={<Plants />} />
                 <Route path="/plants/:id/dashboard" element={<PlantDashboard />} />
                 <Route path="/customers" element={<Customers />} />
+                <Route path="/customers/:id/dashboard" element={<CustomerDashboard />} />
                 <Route path="/invoices" element={<Invoices />} />
                 <Route path="/chat" element={<Chat />} />
                 <Route path="/agents" element={<Agents />} />
