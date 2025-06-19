@@ -8,9 +8,19 @@ export interface OCRConfig {
   auto_validation: boolean;
 }
 
+// Cache configuration for 5 minutes
+let configCache: { config: OCRConfig; timestamp: number } | null = null;
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
 export const ocrConfigService = {
   async getConfig(retryCount = 0): Promise<OCRConfig> {
     try {
+      // Check cache first
+      if (configCache && Date.now() - configCache.timestamp < CACHE_DURATION) {
+        console.log('Using cached OCR config');
+        return configCache.config;
+      }
+
       const { data, error } = await supabase
         .from('app_config')
         .select('key, value')
@@ -30,12 +40,20 @@ export const ocrConfigService = {
         }
       });
 
-      return {
+      const ocrConfig = {
         engine: config.ocrEngine || 'openai',
         confidence_threshold: parseFloat(config.confidenceThreshold) || 0.8,
         fallback_enabled: Boolean(config.fallbackEnabled ?? true),
         auto_validation: Boolean(config.autoValidation ?? true)
+      } as OCRConfig;
+
+      // Update cache
+      configCache = {
+        config: ocrConfig,
+        timestamp: Date.now()
       };
+
+      return ocrConfig;
     } catch (error) {
       console.error('Error in getConfig:', error);
       
@@ -70,6 +88,9 @@ export const ocrConfigService = {
       if (error) {
         throw error;
       }
+      
+      // Clear cache after update
+      configCache = null;
       
       console.log(`OCR engine updated to: ${engine}`);
     } catch (error) {
@@ -127,6 +148,9 @@ export const ocrConfigService = {
         }
       }
       
+      // Clear cache after update
+      configCache = null;
+      
       console.log(`OCR config updated with ${updates.length} changes`);
     } catch (error) {
       console.error('Error updating OCR config:', error);
@@ -140,5 +164,11 @@ export const ocrConfigService = {
       
       throw error;
     }
+  },
+
+  // Clear cache method for external use
+  clearCache(): void {
+    configCache = null;
+    console.log('OCR config cache cleared');
   }
 };
