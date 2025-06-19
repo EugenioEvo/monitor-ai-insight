@@ -187,168 +187,180 @@ async function authenticateWithRetry(config: SungrowConfig, reqSerialNum: string
     throw new Error('Username, password, appkey e accessKey são obrigatórios');
   }
 
-  // Debugging avançado das credenciais
-  console.log(`[${reqSerialNum}] Debug credenciais:`, {
-    username_length: config.username?.length || 0,
-    password_length: config.password?.length || 0,
-    appkey_length: config.appkey?.length || 0,
-    accessKey_length: config.accessKey?.length || 0,
-    username_format: config.username?.includes('@') ? 'email' : 'string',
-    has_special_chars: /[^\w@.-]/.test(config.username + config.appkey + config.accessKey)
-  });
-
-  // Testar múltiplas URLs base
+  // Testar múltiplas URLs base e endpoints
   const baseUrls = [
-    config.baseUrl || 'https://gateway.isolarcloud.com.hk',
+    'https://gateway.isolarcloud.com.hk',
     'https://gateway.isolarcloud.com',
     'https://api.isolarcloud.com.hk',
-    'https://api.isolarcloud.com'
+    'https://api.isolarcloud.com',
+    'https://isolarcloud.com.hk',
+    'https://isolarcloud.com'
+  ];
+
+  const endpoints = [
+    '/v1/userService/login',
+    '/userService/login',
+    '/api/v1/userService/login',
+    '/login'
   ];
 
   let lastError = null;
 
   for (const baseUrl of baseUrls) {
-    try {
-      console.log(`[${reqSerialNum}] Tentando URL: ${baseUrl}`);
-      
-      // Testar diferentes formatos de payload
-      const payloadVariations = [
-        {
-          appkey: config.appkey,
-          user_account: config.username,
-          user_password: config.password,
-          lang: 'en_us'
-        },
-        {
-          appkey: config.appkey,
-          username: config.username,
-          password: config.password,
-          lang: 'en_us'
-        },
-        {
-          app_key: config.appkey,
-          user_account: config.username,
-          user_password: config.password,
-          lang: 'en_us'
-        }
-      ];
-
-      for (let i = 0; i < payloadVariations.length; i++) {
-        const authPayload = payloadVariations[i];
+    for (const endpoint of endpoints) {
+      try {
+        console.log(`[${reqSerialNum}] Tentando: ${baseUrl}${endpoint}`);
         
-        console.log(`[${reqSerialNum}] Tentando payload variação ${i + 1}:`, {
-          ...Object.keys(authPayload).reduce((acc, key) => {
-            acc[key] = key.includes('password') ? 'present' : authPayload[key];
-            return acc;
-          }, {} as any)
-        });
-
-        // Testar diferentes combinações de headers
-        const headerVariations = [
+        // Testar diferentes formatos de payload
+        const payloadVariations = [
           {
-            'Content-Type': 'application/json',
-            'x-access-key': config.accessKey,
-            'Accept': 'application/json',
-            'User-Agent': 'Monitor.ai/1.0'
+            appkey: config.appkey,
+            user_account: config.username,
+            user_password: config.password,
+            lang: 'en_us'
           },
           {
-            'Content-Type': 'application/json',
-            'Access-Key': config.accessKey,
-            'Accept': 'application/json',
-            'User-Agent': 'Monitor.ai/1.0'
+            appkey: config.appkey,
+            username: config.username,
+            password: config.password,
+            lang: 'en_us'
           },
           {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${config.accessKey}`,
-            'Accept': 'application/json',
-            'User-Agent': 'Monitor.ai/1.0'
+            app_key: config.appkey,
+            user_account: config.username,
+            user_password: config.password,
+            lang: 'en_us'
+          },
+          {
+            appKey: config.appkey,
+            userAccount: config.username,
+            userPassword: config.password,
+            lang: 'en_us'
           }
         ];
 
-        for (let j = 0; j < headerVariations.length; j++) {
-          const headers = headerVariations[j];
+        for (let i = 0; i < payloadVariations.length; i++) {
+          const authPayload = payloadVariations[i];
           
-          console.log(`[${reqSerialNum}] Tentando headers variação ${j + 1}:`, Object.keys(headers));
+          console.log(`[${reqSerialNum}] Payload variação ${i + 1}:`, Object.keys(authPayload));
 
-          try {
-            const response = await fetchWithHeaders(`${baseUrl}/v1/userService/login`, {
-              method: 'POST',
-              headers,
-              body: JSON.stringify(authPayload)
-            });
-
-            console.log(`[${reqSerialNum}] Auth response status: ${response.status}`);
-
-            if (!response.ok) {
-              const errorText = await response.text();
-              console.error(`[${reqSerialNum}] Auth failed with status ${response.status}: ${errorText}`);
-              continue;
+          // Testar diferentes combinações de headers
+          const headerVariations = [
+            {
+              'Content-Type': 'application/json',
+              'x-access-key': config.accessKey,
+              'Accept': 'application/json',
+              'User-Agent': 'Monitor.ai/1.0'
+            },
+            {
+              'Content-Type': 'application/json',
+              'Access-Key': config.accessKey,
+              'Accept': 'application/json',
+              'User-Agent': 'Monitor.ai/1.0'
+            },
+            {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${config.accessKey}`,
+              'Accept': 'application/json',
+              'User-Agent': 'Monitor.ai/1.0'
+            },
+            {
+              'Content-Type': 'application/json',
+              'X-Access-Token': config.accessKey,
+              'Accept': 'application/json',
+              'User-Agent': 'Monitor.ai/1.0'
+            },
+            {
+              'Content-Type': 'application/json',
+              'api-key': config.accessKey,
+              'Accept': 'application/json',
+              'User-Agent': 'Monitor.ai/1.0'
             }
+          ];
 
-            const data: SungrowAuthResponse = await response.json();
-            console.log(`[${reqSerialNum}] Auth response:`, {
-              result_code: data.result_code,
-              result_msg: data.result_msg,
-              has_token: !!data.result_data?.token
-            });
+          for (let j = 0; j < headerVariations.length; j++) {
+            const headers = headerVariations[j];
             
-            if (data.result_code === 1 && data.result_data?.token) {
-              // Cache token for 23 hours (86400000ms - 1 hour buffer)
-              setCache(cacheKey, data.result_data.token, 82800000);
-              
-              console.log(`[${reqSerialNum}] Authentication successful with URL: ${baseUrl}, Payload: ${i + 1}, Headers: ${j + 1}`);
-              return data.result_data.token;
-            } else {
-              console.error(`[${reqSerialNum}] Auth failed: ${data.result_msg} (Code: ${data.result_code})`);
+            try {
+              console.log(`[${reqSerialNum}] Headers variação ${j + 1}:`, Object.keys(headers));
+
+              const response = await fetchWithRetry(`${baseUrl}${endpoint}`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(authPayload)
+              });
+
+              console.log(`[${reqSerialNum}] Auth response status: ${response.status}`);
+
+              if (response.ok) {
+                const data: SungrowAuthResponse = await response.json();
+                console.log(`[${reqSerialNum}] Auth response:`, {
+                  result_code: data.result_code,
+                  result_msg: data.result_msg,
+                  has_token: !!data.result_data?.token
+                });
+                
+                if (data.result_code === 1 && data.result_data?.token) {
+                  // Cache token for 23 hours (86400000ms - 1 hour buffer)
+                  setCache(cacheKey, data.result_data.token, 82800000);
+                  
+                  console.log(`[${reqSerialNum}] Authentication successful with: ${baseUrl}${endpoint}`);
+                  return data.result_data.token;
+                } else {
+                  console.error(`[${reqSerialNum}] Auth failed: ${data.result_msg} (Code: ${data.result_code})`);
+                }
+              } else {
+                const errorText = await response.text();
+                console.error(`[${reqSerialNum}] HTTP ${response.status}: ${errorText}`);
+              }
+            } catch (error) {
+              console.error(`[${reqSerialNum}] Request failed:`, error.message);
+              lastError = error;
             }
-          } catch (error) {
-            console.error(`[${reqSerialNum}] Request failed:`, error.message);
-            lastError = error;
           }
         }
+      } catch (error) {
+        console.error(`[${reqSerialNum}] URL ${baseUrl}${endpoint} failed:`, error.message);
+        lastError = error;
       }
+    }
+  }
+
+  throw new Error(`Authentication failed after trying all combinations. Last error: ${lastError?.message || 'Unknown error'}`);
+}
+
+async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 3): Promise<Response> {
+  let retries = 0;
+  
+  while (retries < maxRetries) {
+    try {
+      console.log(`Making request to: ${url} (attempt ${retries + 1})`);
+      
+      const response = await fetch(url, {
+        ...options,
+        signal: AbortSignal.timeout(30000) // 30 second timeout
+      });
+      
+      console.log(`Response status: ${response.status}`);
+      
+      // Handle specific error codes
+      if (response.status === 429) {
+        throw new Error('Rate limit exceeded (429)');
+      }
+      
+      return response;
     } catch (error) {
-      console.error(`[${reqSerialNum}] URL ${baseUrl} failed:`, error.message);
-      lastError = error;
-    }
-  }
-
-  throw new Error(`Authentication failed after trying all variations. Last error: ${lastError?.message || 'Unknown error'}`);
-}
-
-function getStandardHeaders(accessKey: string): Record<string, string> {
-  return {
-    'Content-Type': 'application/json',
-    'x-access-key': accessKey,
-    'Accept': 'application/json',
-    'User-Agent': 'Monitor.ai/1.0'
-  };
-}
-
-async function fetchWithHeaders(url: string, options: RequestInit): Promise<Response> {
-  console.log(`Making request to: ${url}`);
-  console.log(`Headers:`, JSON.stringify(options.headers, null, 2));
-  
-  const response = await fetch(url, options);
-  console.log(`Response status: ${response.status}`);
-  
-  // Handle specific Sungrow error codes
-  if (!response.ok) {
-    if (response.status === 429) {
-      throw new Error('Rate limit exceeded (429)');
-    }
-    if (response.status >= 500) {
-      throw new Error(`Server error: ${response.status}`);
-    }
-    if (response.status === 401) {
-      throw new Error('Unauthorized access - check credentials');
-    }
-    if (response.status === 403) {
-      throw new Error('Forbidden - check access key');
+      retries++;
+      if (retries >= maxRetries) {
+        throw error;
+      }
+      
+      console.log(`Request failed, retrying in ${retries * 1000}ms...`);
+      await new Promise(resolve => setTimeout(resolve, retries * 1000));
     }
   }
   
-  return response;
+  throw new Error('Max retries exceeded');
 }
 
 async function testConnection(config: SungrowConfig, reqSerialNum: string) {
@@ -366,6 +378,80 @@ async function testConnection(config: SungrowConfig, reqSerialNum: string) {
   } catch (error) {
     console.error(`[${reqSerialNum}] Connection test failed:`, error.message);
     throw new Error(`Connection test failed: ${error.message}`);
+  }
+}
+
+async function discoverPlants(config: SungrowConfig, reqSerialNum?: string) {
+  try {
+    console.log(`[${reqSerialNum || 'unknown'}] Discovering Sungrow plants...`);
+    
+    const token = await authenticateWithRetry(config, reqSerialNum || 'discovery');
+    
+    // Try multiple endpoints for getting station list
+    const endpoints = [
+      '/v1/stationService/getStationList',
+      '/stationService/getStationList',
+      '/api/v1/stationService/getStationList'
+    ];
+    
+    const baseUrls = [
+      config.baseUrl || 'https://gateway.isolarcloud.com.hk',
+      'https://gateway.isolarcloud.com',
+      'https://api.isolarcloud.com.hk'
+    ];
+
+    for (const baseUrl of baseUrls) {
+      for (const endpoint of endpoints) {
+        try {
+          console.log(`[${reqSerialNum || 'unknown'}] Trying: ${baseUrl}${endpoint}`);
+          
+          const response = await fetchWithRetry(`${baseUrl}${endpoint}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-access-key': config.accessKey,
+              'token': token,
+              'Accept': 'application/json',
+              'User-Agent': 'Monitor.ai/1.0'
+            },
+            body: JSON.stringify({
+              lang: 'en_us'
+            })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            
+            if (data.result_code === 1) {
+              const plants = data.result_data?.map((station: any) => ({
+                id: station.ps_id?.toString() || station.id?.toString(),
+                name: station.ps_name || station.name || 'Unknown Plant',
+                capacity: station.nominal_power || station.capacity || 0,
+                location: station.ps_location_lat && station.ps_location_lng 
+                  ? `${station.ps_location_lat}, ${station.ps_location_lng}` 
+                  : 'Location not available',
+                status: station.ps_status === 1 ? 'Active' : 'Inactive',
+                installationDate: station.create_date || station.installation_date
+              })) || [];
+
+              console.log(`[${reqSerialNum || 'unknown'}] ${plants.length} plants discovered`);
+
+              return {
+                success: true,
+                plants,
+                reqSerialNum
+              };
+            }
+          }
+        } catch (error) {
+          console.error(`[${reqSerialNum || 'unknown'}] Endpoint ${baseUrl}${endpoint} failed:`, error.message);
+        }
+      }
+    }
+
+    throw new Error('Failed to discover plants with any endpoint');
+  } catch (error) {
+    throw new Error(`Plant discovery failed: ${error.message}`);
   }
 }
 
@@ -617,56 +703,6 @@ async function getDeviceRealTimeData(config: SungrowConfig, deviceType: string, 
   }
 }
 
-async function discoverPlants(config: SungrowConfig, reqSerialNum?: string) {
-  try {
-    console.log(`[${reqSerialNum || 'unknown'}] Discovering Sungrow plants...`);
-    
-    const token = await authenticateWithRetry(config, reqSerialNum || 'discovery');
-    const baseUrl = config.baseUrl || 'https://gateway.isolarcloud.com.hk';
-
-    const response = await fetchWithHeaders(`${baseUrl}/v1/stationService/getStationList`, {
-      method: 'POST',
-      headers: {
-        ...getStandardHeaders(config.accessKey),
-        'token': token
-      },
-      body: JSON.stringify({
-        lang: 'en_us'
-      })
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`API Error: ${response.status} - ${errorText}`);
-    }
-
-    const data = await response.json();
-    
-    if (data.result_code !== 1) {
-      throw new Error(`Error: ${data.result_msg}`);
-    }
-
-    const plants = data.result_data?.map((station: any) => ({
-      id: station.ps_id.toString(),
-      name: station.ps_name,
-      capacity: station.nominal_power,
-      location: `${station.ps_location_lat || 'N/A'}, ${station.ps_location_lng || 'N/A'}`,
-      status: station.ps_status === 1 ? 'Active' : 'Inactive',
-      installationDate: station.create_date
-    })) || [];
-
-    console.log(`[${reqSerialNum || 'unknown'}] ${plants.length} plants discovered`);
-
-    return {
-      success: true,
-      plants,
-      reqSerialNum
-    };
-  } catch (error) {
-    throw new Error(`Plant discovery failed: ${error.message}`);
-  }
-}
-
 async function syncData(plantId: string, reqSerialNum?: string) {
   const startTime = Date.now();
   let dataPointsSynced = 0;
@@ -803,4 +839,39 @@ async function getPlantList(config: SungrowConfig, reqSerialNum?: string) {
   } catch (error) {
     throw new Error(`Failed to fetch plant list: ${error.message}`);
   }
+}
+
+function getStandardHeaders(accessKey: string): Record<string, string> {
+  return {
+    'Content-Type': 'application/json',
+    'x-access-key': accessKey,
+    'Accept': 'application/json',
+    'User-Agent': 'Monitor.ai/1.0'
+  };
+}
+
+async function fetchWithHeaders(url: string, options: RequestInit): Promise<Response> {
+  console.log(`Making request to: ${url}`);
+  console.log(`Headers:`, JSON.stringify(options.headers, null, 2));
+  
+  const response = await fetch(url, options);
+  console.log(`Response status: ${response.status}`);
+  
+  // Handle specific Sungrow error codes
+  if (!response.ok) {
+    if (response.status === 429) {
+      throw new Error('Rate limit exceeded (429)');
+    }
+    if (response.status >= 500) {
+      throw new Error(`Server error: ${response.status}`);
+    }
+    if (response.status === 401) {
+      throw new Error('Unauthorized access - check credentials');
+    }
+    if (response.status === 403) {
+      throw new Error('Forbidden - check access key');
+    }
+  }
+  
+  return response;
 }
