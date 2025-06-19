@@ -50,27 +50,6 @@ export type Database = {
           },
         ]
       }
-      app_config: {
-        Row: {
-          created_at: string
-          key: string
-          updated_at: string
-          value: string
-        }
-        Insert: {
-          created_at?: string
-          key: string
-          updated_at?: string
-          value: string
-        }
-        Update: {
-          created_at?: string
-          key?: string
-          updated_at?: string
-          value?: string
-        }
-        Relationships: []
-      }
       beneficiaries: {
         Row: {
           allocation_percent: number

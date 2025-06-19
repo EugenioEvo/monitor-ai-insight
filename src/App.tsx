@@ -13,46 +13,42 @@ import PlantDashboard from "./pages/PlantDashboard";
 import Customers from "./pages/Customers";
 import CustomerDashboard from "./pages/CustomerDashboard";
 import Invoices from "./pages/Invoices";
-import Alerts from "./pages/Alerts";
-import Agents from "./pages/Agents";
 import Chat from "./pages/Chat";
-import Settings from "./pages/Settings";
+import Agents from "./pages/Agents";
+import Alerts from "./pages/Alerts";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
-function App() {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <SidebarProvider>
-            <div className="flex min-h-screen w-full">
-              <AppSidebar />
-              <main className="flex-1 overflow-auto">
-                <Routes>
-                  <Route path="/" element={<Index />} />
-                  <Route path="/dashboard" element={<Dashboard />} />
-                  <Route path="/plants" element={<Plants />} />
-                  <Route path="/plants/:id" element={<PlantDashboard />} />
-                  <Route path="/customers" element={<Customers />} />
-                  <Route path="/customers/:id" element={<CustomerDashboard />} />
-                  <Route path="/invoices" element={<Invoices />} />
-                  <Route path="/alerts" element={<Alerts />} />
-                  <Route path="/agents" element={<Agents />} />
-                  <Route path="/chat" element={<Chat />} />
-                  <Route path="/settings" element={<Settings />} />
-                  <Route path="*" element={<NotFound />} />
-                </Routes>
-              </main>
-            </div>
-          </SidebarProvider>
-        </BrowserRouter>
-      </TooltipProvider>
-    </QueryClientProvider>
-  );
-}
+const App = () => (
+  <QueryClientProvider client={queryClient}>
+    <TooltipProvider>
+      <Toaster />
+      <Sonner />
+      <BrowserRouter>
+        <SidebarProvider defaultOpen>
+          <div className="min-h-screen flex w-full">
+            <AppSidebar />
+            <main className="flex-1 p-6">
+              <Routes>
+                <Route path="/" element={<Index />} />
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/plants" element={<Plants />} />
+                <Route path="/plants/:id/dashboard" element={<PlantDashboard />} />
+                <Route path="/customers" element={<Customers />} />
+                <Route path="/customers/:id/dashboard" element={<CustomerDashboard />} />
+                <Route path="/invoices" element={<Invoices />} />
+                <Route path="/chat" element={<Chat />} />
+                <Route path="/agents" element={<Agents />} />
+                <Route path="/alerts" element={<Alerts />} />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </main>
+          </div>
+        </SidebarProvider>
+      </BrowserRouter>
+    </TooltipProvider>
+  </QueryClientProvider>
+);
 
 export default App;
