@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { Upload, FileText, Loader2, Settings, Brain, Eye } from "lucide-react";
+import { Upload, FileText, Loader2, Settings, Brain, Eye, AlertTriangle, CheckCircle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -18,6 +18,7 @@ import { EnhancedValidationPanel } from "./EnhancedValidationPanel";
 import { MLPipeline } from "@/services/mlPipeline";
 import { MLPrediction } from "@/types/ml-pipeline";
 import { MLPipelinePanel } from "./MLPipelinePanel";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 export function MultiEngineInvoiceUpload() {
   const [uploading, setUploading] = useState(false);
@@ -35,6 +36,7 @@ export function MultiEngineInvoiceUpload() {
   const [validationPrediction, setValidationPrediction] = useState<MLPrediction | null>(null);
   const [anomalyPrediction, setAnomalyPrediction] = useState<MLPrediction | null>(null);
   const [modelStatus, setModelStatus] = useState<any>({});
+  const [apiErrors, setApiErrors] = useState<string[]>([]);
   const { toast } = useToast();
 
   const handleFileUpload = async (files: FileList | null) => {
@@ -42,14 +44,27 @@ export function MultiEngineInvoiceUpload() {
 
     setUploading(true);
     setCurrentStep('processing');
+    setApiErrors([]);
 
     try {
       const fileArray = Array.from(files);
+      
+      // Validate files
+      for (const file of fileArray) {
+        if (file.size > 10 * 1024 * 1024) {
+          throw new Error(`Arquivo ${file.name} é muito grande (máximo 10MB)`);
+        }
+        
+        if (!file.type.includes('pdf') && !file.type.includes('image')) {
+          throw new Error(`Arquivo ${file.name} tem formato inválido (apenas PDF e imagens)`);
+        }
+      }
+
       const newStatuses: ProcessingStatus[] = fileArray.map((file, index) => ({
         id: `file-${Date.now()}-${index}`,
         status: 'uploaded',
         progress: 0,
-        current_step: 'Iniciando processamento multi-engine...'
+        current_step: 'Validando arquivo...'
       }));
 
       setProcessingStatus(newStatuses);
@@ -58,159 +73,178 @@ export function MultiEngineInvoiceUpload() {
         const file = fileArray[i];
         const status = newStatuses[i];
 
-        // Update status: uploading file
-        status.progress = 10;
-        status.current_step = 'Fazendo upload do arquivo...';
-        status.status = 'processing';
-        setProcessingStatus([...newStatuses]);
-
-        // Upload file to Supabase Storage
-        const fileName = `${Date.now()}-${file.name}`;
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('invoices')
-          .upload(fileName, file);
-
-        if (uploadError) {
-          status.status = 'error';
-          status.error_message = uploadError.message;
+        try {
+          // Update status: uploading file
+          status.progress = 10;
+          status.current_step = 'Fazendo upload do arquivo...';
+          status.status = 'processing';
           setProcessingStatus([...newStatuses]);
-          continue;
-        }
 
-        // Update status: processing with multi-engine OCR
-        status.progress = 30;
-        status.current_step = `Processando com ${ocrConfig.primary_engine.toUpperCase()}...`;
-        setProcessingStatus([...newStatuses]);
+          // Upload file to Supabase Storage
+          const fileName = `${Date.now()}-${file.name}`;
+          const { data: uploadData, error: uploadError } = await supabase.storage
+            .from('invoices')
+            .upload(fileName, file);
 
-        // Call multi-engine OCR function
-        const { data: ocrResult, error: ocrError } = await supabase.functions.invoke('multi-engine-ocr', {
-          body: {
-            filePath: fileName,
-            fileName: file.name,
-            config: ocrConfig
-          }
-        });
-
-        if (ocrError) {
-          status.status = 'error';
-          status.error_message = ocrError.message;
-          setProcessingStatus([...newStatuses]);
-          continue;
-        }
-
-        // Update status: OCR completed
-        status.progress = 70;
-        status.current_step = 'Extraindo dados estruturados...';
-        status.confidence_score = ocrResult.confidence_score;
-        status.processing_time_ms = ocrResult.processing_time_ms;
-        setProcessingStatus([...newStatuses]);
-
-        // Update status: validation
-        status.progress = 90;
-        status.current_step = 'Aplicando validações...';
-        setProcessingStatus([...newStatuses]);
-
-        // Enhanced validation step with Validation Engine
-        status.progress = 85;
-        status.current_step = 'Executando Validation Engine (Fase 3)...';
-        setProcessingStatus([...newStatuses]);
-
-        // Set extracted data for the first file (for review)
-        if (i === 0) {
-          setExtractedData(ocrResult.extracted_data);
-          
-          // Set A/B test results if available
-          if (ocrResult.ab_test_result) {
-            setAbTestResults([ocrResult.ab_test_result]);
+          if (uploadError) {
+            throw new Error(`Erro no upload: ${uploadError.message}`);
           }
 
-          // Phase 3: Validation Engine
-          status.progress = 80;
-          status.current_step = 'Executando Validation Engine...';
+          // Update status: processing with multi-engine OCR
+          status.progress = 30;
+          status.current_step = `Processando com Multi-Engine OCR...`;
           setProcessingStatus([...newStatuses]);
 
-          const validationEngine = new ValidationEngine(DEFAULT_VALIDATION_CONFIG);
-          
-          // Mock historical context
-          const mockHistoricalContext = {
-            historical_invoices: [
-              { energy_kwh: 1100, total_r$: 780.50 },
-              { energy_kwh: 1180, total_r$: 825.30 },
-              { energy_kwh: 1050, total_r$: 750.25 },
-              { energy_kwh: 1220, total_r$: 890.75 },
-              { energy_kwh: 1080, total_r$: 795.60 }
-            ]
-          };
+          // Call multi-engine OCR function
+          const { data: ocrResult, error: ocrError } = await supabase.functions.invoke('multi-engine-ocr', {
+            body: {
+              filePath: fileName,
+              fileName: file.name,
+              config: ocrConfig
+            }
+          });
 
-          console.log('🔍 Running Validation Engine Phase 3...');
-          const validationResults = await validationEngine.validateInvoice(
-            ocrResult.extracted_data, 
-            mockHistoricalContext
-          );
+          if (ocrError) {
+            console.error('OCR Error:', ocrError);
+            throw new Error(`Erro no processamento OCR: ${ocrError.message}`);
+          }
 
-          const overallScore = validationEngine['calculateOverallScore'](validationResults);
-          const validationStatus = validationEngine.getValidationStatus(validationResults);
+          if (!ocrResult.success) {
+            console.error('OCR Result Error:', ocrResult);
+            
+            // Check for specific API errors
+            if (ocrResult.error?.includes('API key')) {
+              setApiErrors(prev => [...prev, `Erro de configuração de API: ${ocrResult.error}`]);
+            }
+            
+            throw new Error(ocrResult.error || 'Erro desconhecido no processamento');
+          }
 
-          setValidationResults(validationResults);
-          setValidationScore(overallScore);
-          setValidationStatus(validationStatus);
+          // Update status: OCR completed
+          status.progress = 70;
+          status.current_step = 'OCR concluído, processando dados...';
+          status.confidence_score = ocrResult.confidence_score;
+          status.processing_time_ms = ocrResult.processing_time_ms;
+          setProcessingStatus([...newStatuses]);
 
-          // Phase 4: ML Pipeline
+          // Update status: validation
           status.progress = 90;
-          status.current_step = 'Executando ML Pipeline (Fase 4)...';
+          status.current_step = 'Aplicando validações...';
           setProcessingStatus([...newStatuses]);
 
-          console.log('🤖 Running ML Pipeline Phase 4...');
+          // Set extracted data for the first file (for review)
+          if (i === 0) {
+            setExtractedData(ocrResult.extracted_data);
+            
+            // Set A/B test results if available
+            if (ocrResult.ab_test_result) {
+              setAbTestResults([ocrResult.ab_test_result]);
+            }
+
+            // Phase 3: Validation Engine
+            status.progress = 85;
+            status.current_step = 'Executando Validation Engine...';
+            setProcessingStatus([...newStatuses]);
+
+            const validationEngine = new ValidationEngine(DEFAULT_VALIDATION_CONFIG);
+            
+            // Mock historical context
+            const mockHistoricalContext = {
+              historical_invoices: [
+                { energy_kwh: 1100, total_r$: 780.50 },
+                { energy_kwh: 1180, total_r$: 825.30 },
+                { energy_kwh: 1050, total_r$: 750.25 },
+                { energy_kwh: 1220, total_r$: 890.75 },
+                { energy_kwh: 1080, total_r$: 795.60 }
+              ]
+            };
+
+            console.log('🔍 Running Validation Engine Phase 3...');
+            const validationResults = await validationEngine.validateInvoice(
+              ocrResult.extracted_data, 
+              mockHistoricalContext
+            );
+
+            const overallScore = validationEngine['calculateOverallScore'](validationResults);
+            const validationStatus = validationEngine.getValidationStatus(validationResults);
+
+            setValidationResults(validationResults);
+            setValidationScore(overallScore);
+            setValidationStatus(validationStatus);
+
+            // Phase 4: ML Pipeline
+            status.progress = 95;
+            status.current_step = 'Executando ML Pipeline...';
+            setProcessingStatus([...newStatuses]);
+
+            console.log('🤖 Running ML Pipeline Phase 4...');
+            
+            // Get ML predictions
+            const validationPred = await mlPipeline.predictValidationResults(ocrResult.extracted_data);
+            const anomalyPred = await mlPipeline.detectAnomalies(ocrResult.extracted_data, mockHistoricalContext.historical_invoices);
+            
+            setValidationPrediction(validationPred);
+            setAnomalyPrediction(anomalyPred);
+            setModelStatus(mlPipeline.getModelStatus());
+
+            // Add training data for continuous learning
+            await mlPipeline.addTrainingData(
+              ocrResult.extracted_data,
+              validationResults,
+              { user_approved: validationStatus === 'approved' }
+            );
+
+            // Legacy validation errors for backward compatibility
+            const legacyValidationErrors: ValidationError[] = validationResults.map(result => ({
+              rule_id: result.rule_id,
+              field_name: result.field_name || 'Unknown',
+              error_type: result.error_type,
+              message: result.message,
+              severity: result.severity,
+              suggested_fix: result.suggested_fix
+            }));
+
+            setValidationErrors(legacyValidationErrors);
+            setCurrentStep('review');
+
+            console.log(`✅ ML Pipeline completed. Validation: ${(validationPred.confidence * 100).toFixed(1)}%, Anomaly: ${(anomalyPred.confidence * 100).toFixed(1)}%`);
+          }
+
+          // Complete processing
+          status.progress = 100;
+          status.current_step = 'Processamento concluído com sucesso';
+          status.status = 'completed';
+          status.requires_review = validationStatus === 'review_required' || validationStatus === 'rejected';
+          setProcessingStatus([...newStatuses]);
+
+        } catch (fileError) {
+          console.error(`Error processing file ${file.name}:`, fileError);
+          status.status = 'error';
+          status.error_message = fileError.message;
+          setProcessingStatus([...newStatuses]);
           
-          // Get ML predictions
-          const validationPred = await mlPipeline.predictValidationResults(ocrResult.extracted_data);
-          const anomalyPred = await mlPipeline.detectAnomalies(ocrResult.extracted_data, mockHistoricalContext.historical_invoices);
-          
-          setValidationPrediction(validationPred);
-          setAnomalyPrediction(anomalyPred);
-          setModelStatus(mlPipeline.getModelStatus());
-
-          // Add training data for continuous learning
-          await mlPipeline.addTrainingData(
-            ocrResult.extracted_data,
-            validationResults,
-            { user_approved: validationStatus === 'approved' }
-          );
-
-          // Legacy validation errors for backward compatibility
-          const legacyValidationErrors: ValidationError[] = validationResults.map(result => ({
-            rule_id: result.rule_id,
-            field_name: result.field_name || 'Unknown',
-            error_type: result.error_type,
-            message: result.message,
-            severity: result.severity,
-            suggested_fix: result.suggested_fix
-          }));
-
-          setValidationErrors(legacyValidationErrors);
-          setCurrentStep('review');
-
-          console.log(`✅ ML Pipeline completed. Validation: ${(validationPred.confidence * 100).toFixed(1)}%, Anomaly: ${(anomalyPred.confidence * 100).toFixed(1)}%`);
+          toast({
+            title: "Erro no processamento",
+            description: `Falha ao processar ${file.name}: ${fileError.message}`,
+            variant: "destructive"
+          });
         }
-
-        // Complete processing
-        status.progress = 100;
-        status.current_step = 'Processamento, validação e ML concluídos';
-        status.status = 'completed';
-        status.requires_review = validationStatus === 'review_required' || validationStatus === 'rejected';
-        setProcessingStatus([...newStatuses]);
       }
 
-      toast({
-        title: "Processamento Completo com ML!",
-        description: `${files.length} arquivo(s) processado(s) com Multi-Engine OCR + Validation + ML Pipeline.`,
-      });
+      // Show success if any files were processed successfully
+      const successCount = newStatuses.filter(s => s.status === 'completed').length;
+      if (successCount > 0) {
+        toast({
+          title: "Processamento Concluído!",
+          description: `${successCount} arquivo(s) processado(s) com sucesso.`,
+        });
+      }
 
     } catch (error) {
       console.error('Error in multi-engine upload:', error);
       toast({
         title: "Erro no processamento",
-        description: "Ocorreu um erro durante o processamento completo.",
+        description: error.message || "Ocorreu um erro durante o processamento.",
         variant: "destructive"
       });
     } finally {
@@ -244,6 +278,7 @@ export function MultiEngineInvoiceUpload() {
     setExtractedData(null);
     setProcessingStatus([]);
     setAbTestResults([]);
+    setApiErrors([]);
   };
 
   const handleReject = () => {
@@ -256,6 +291,7 @@ export function MultiEngineInvoiceUpload() {
     setExtractedData(null);
     setProcessingStatus([]);
     setAbTestResults([]);
+    setApiErrors([]);
   };
 
   const handleRequestReview = () => {
@@ -319,6 +355,23 @@ export function MultiEngineInvoiceUpload() {
             Voltar ao Upload
           </Button>
         </div>
+
+        {apiErrors.length > 0 && (
+          <Alert>
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              <div className="space-y-1">
+                <p className="font-medium">Problemas detectados com APIs:</p>
+                {apiErrors.map((error, index) => (
+                  <p key={index} className="text-sm">{error}</p>
+                ))}
+                <p className="text-sm text-muted-foreground">
+                  Configure as chaves de API na aba "Configuração OCR" para melhor performance.
+                </p>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
 
         <Tabs defaultValue="extracted" className="space-y-4">
           <TabsList>
@@ -425,6 +478,23 @@ export function MultiEngineInvoiceUpload() {
 
   return (
     <div className="space-y-6">
+      {apiErrors.length > 0 && (
+        <Alert>
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            <div className="space-y-1">
+              <p className="font-medium">Problemas com configuração de APIs:</p>
+              {apiErrors.map((error, index) => (
+                <p key={index} className="text-sm">{error}</p>
+              ))}
+              <p className="text-sm text-muted-foreground">
+                Configure as chaves de API na aba "Configuração OCR" abaixo.
+              </p>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
       <Tabs defaultValue="upload" className="space-y-6">
         <TabsList>
           <TabsTrigger value="upload">Upload</TabsTrigger>
@@ -447,8 +517,7 @@ export function MultiEngineInvoiceUpload() {
                     <div>
                       <h3 className="text-lg font-semibold text-gray-900">Processando com Multi-Engine OCR...</h3>
                       <p className="text-gray-600">
-                        {ocrConfig.primary_engine.toUpperCase()} + 
-                        {ocrConfig.ab_testing_enabled ? ' A/B Testing' : ' Fallback Engines'}
+                        Sistema resiliente com fallbacks automáticos
                       </p>
                     </div>
                   </>
@@ -458,8 +527,10 @@ export function MultiEngineInvoiceUpload() {
                     <div>
                       <h3 className="text-lg font-semibold text-gray-900">Upload Inteligente Multi-Engine</h3>
                       <p className="text-gray-600">
-                        Sistema avançado com {ocrConfig.primary_engine.toUpperCase()} + 
-                        {ocrConfig.ab_testing_enabled ? ' A/B Testing' : ' Engines de Fallback'}
+                        Sistema robusto com validação e fallbacks automáticos
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        Suporte: PDF, JPG, PNG (máx. 10MB)
                       </p>
                     </div>
                     <div className="flex gap-2 justify-center">
@@ -500,4 +571,3 @@ export function MultiEngineInvoiceUpload() {
     </div>
   );
 }
-
