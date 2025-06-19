@@ -34,8 +34,8 @@ interface ConsumptionData {
   customer_unit_id: string;
   reference_month: string;
   energy_kwh: number;
-  total_amount: number; // alias para total_r$
-  taxes_amount: number; // alias para taxes_r$
+  total_amount: number;
+  taxes_amount: number;
 }
 
 // Hook para buscar dados completos de um cliente
@@ -102,11 +102,10 @@ export const useCustomerDashboard = (customerId: string) => {
           .select("*")
           .in("plant_id", plantIds)
           .order("timestamp", { ascending: false })
-          .limit(1000); // Últimas 1000 leituras
+          .limit(1000);
 
         if (readingsError) throw readingsError;
         
-        // Converter dados do banco para o tipo Reading
         readings = (readingData as DatabaseReading[])?.map(reading => ({
           ...reading,
           power_w: reading.power_w,
@@ -141,7 +140,6 @@ export const useCustomerGenerationData = (customerId: string) => {
   return useQuery({
     queryKey: ["customer-generation", customerId],
     queryFn: async () => {
-      // Buscar plantas do cliente
       const { data: plants, error: plantsError } = await supabase
         .from("plants")
         .select("id, name")
@@ -155,7 +153,6 @@ export const useCustomerGenerationData = (customerId: string) => {
         return { chartData: [], plants: [] };
       }
 
-      // Buscar leituras agrupadas por mês
       const { data, error } = await supabase
         .from("readings")
         .select("plant_id, timestamp, energy_kwh")
@@ -164,11 +161,10 @@ export const useCustomerGenerationData = (customerId: string) => {
 
       if (error) throw error;
 
-      // Processar dados para agrupar por mês e planta
       const monthlyData: { [key: string]: { [plantId: string]: number } } = {};
       
       data?.forEach(reading => {
-        const month = reading.timestamp.substring(0, 7); // YYYY-MM
+        const month = reading.timestamp.substring(0, 7);
         if (!monthlyData[month]) {
           monthlyData[month] = {};
         }
@@ -178,7 +174,6 @@ export const useCustomerGenerationData = (customerId: string) => {
         monthlyData[month][reading.plant_id] += reading.energy_kwh;
       });
 
-      // Converter para formato do gráfico
       const chartData = Object.entries(monthlyData).map(([month, plantData]) => ({
         month,
         ...plantData,
@@ -196,7 +191,6 @@ export const useCustomerConsumptionData = (customerId: string) => {
   return useQuery({
     queryKey: ["customer-consumption", customerId],
     queryFn: async () => {
-      // Buscar UCs do cliente
       const { data: units, error: unitsError } = await supabase
         .from("customer_units")
         .select("id, uc_code, unit_name")
@@ -211,32 +205,27 @@ export const useCustomerConsumptionData = (customerId: string) => {
         return { chartData: [], units: [] };
       }
 
-      // Buscar faturas agrupadas por mês usando aliases para colunas com $
+      // Buscar faturas com consulta simples
       const { data: invoiceData, error } = await supabase
         .from("invoices")
-        .select("customer_unit_id, reference_month, energy_kwh, total_r$ as total_amount, taxes_r$ as taxes_amount")
+        .select("customer_unit_id, reference_month, energy_kwh, total_r$, taxes_r$")
         .in("customer_unit_id", unitIds)
         .eq("status", "processed")
         .order("reference_month", { ascending: true });
 
       if (error) throw error;
 
-      // Processar dados para agrupar por mês
       const monthlyData: { [key: string]: { consumption: number, cost: number } } = {};
       
-      // Usar a interface com aliases limpos
-      const typedInvoiceData = invoiceData as ConsumptionData[];
-      
-      typedInvoiceData?.forEach((invoice) => {
+      invoiceData?.forEach((invoice: any) => {
         const month = invoice.reference_month;
         if (!monthlyData[month]) {
           monthlyData[month] = { consumption: 0, cost: 0 };
         }
         monthlyData[month].consumption += invoice.energy_kwh;
-        monthlyData[month].cost += invoice.total_amount; // usando o alias
+        monthlyData[month].cost += invoice.total_r$;
       });
 
-      // Converter para formato do gráfico
       const chartData = Object.entries(monthlyData).map(([month, data]) => ({
         month,
         consumption: data.consumption,
