@@ -6,47 +6,52 @@ import type { AppSettings } from '@/types/settings';
 
 const defaultSettings: AppSettings = {
   plants: {
-    autoSync: true,
-    syncInterval: 15,
+    autoDiscovery: true,
+    monitoringInterval: 15,
     alertThreshold: 80,
-    maintenanceReminder: true
+    enableNotifications: true
   },
   customers: {
-    autoCreateUnits: true,
-    requireDocument: true,
+    autoGenerateReports: true,
+    emailNotifications: true,
+    invoiceReminders: true,
     defaultCurrency: 'BRL'
   },
   invoices: {
     ocrEngine: 'openai',
     autoValidation: true,
-    confidenceThreshold: 0.8,
-    fallbackEnabled: true
+    duplicateDetection: true,
+    storageRetention: 90
   },
   maintenance: {
-    scheduleEnabled: true,
-    reminderDays: 7,
-    criticalAlerts: true
+    preventiveMaintenance: true,
+    maintenanceInterval: 7,
+    alertsEnabled: true,
+    autoScheduling: true
   },
   alerts: {
-    emailEnabled: true,
-    smsEnabled: false,
-    alertSeverity: 'medium',
-    retention: 90
+    emailAlerts: true,
+    smsAlerts: false,
+    pushNotifications: true,
+    alertSeverity: 'medium'
   },
   reports: {
-    autoGenerate: true,
+    autoGeneration: true,
     reportFrequency: 'monthly',
-    includeCharts: true
+    includeCharts: true,
+    emailDelivery: true
   },
   ai: {
     chatEnabled: true,
-    autoRespond: false,
-    learningMode: true
+    autoResponses: false,
+    learningMode: true,
+    dataCollection: true
   },
   general: {
     theme: 'auto',
     language: 'pt-BR',
-    timezone: 'America/Sao_Paulo'
+    timezone: 'America/Sao_Paulo',
+    companyName: 'Monitor.ai'
   }
 };
 

@@ -22,7 +22,7 @@ export const InvoiceUpload = memo(function InvoiceUpload({
   const [dragActive, setDragActive] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const { toast } = useToast();
-  const { settings, loading: settingsLoading, error: settingsError } = useSettings();
+  const { settings, loading: settingsLoading } = useSettings();
 
   const validateFile = (file: File): string | null => {
     // Validar tamanho
@@ -168,21 +168,6 @@ export const InvoiceUpload = memo(function InvoiceUpload({
           <div className="text-center space-y-4">
             <Loader2 className="w-12 h-12 text-gray-400 mx-auto animate-spin" />
             <p className="text-gray-600">Carregando configurações...</p>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (settingsError) {
-    return (
-      <Card className="border-2 border-dashed border-red-300">
-        <CardContent className="p-8">
-          <div className="text-center space-y-4">
-            <p className="text-red-600">Erro ao carregar configurações: {settingsError}</p>
-            <Button onClick={() => window.location.reload()}>
-              Tentar Novamente
-            </Button>
           </div>
         </CardContent>
       </Card>
