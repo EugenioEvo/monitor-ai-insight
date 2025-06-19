@@ -1,58 +1,8 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-
-export interface AppSettings {
-  plants: {
-    autoDiscovery: boolean;
-    monitoringInterval: number;
-    alertThreshold: number;
-    enableNotifications: boolean;
-  };
-  customers: {
-    autoGenerateReports: boolean;
-    emailNotifications: boolean;
-    invoiceReminders: boolean;
-    defaultCurrency: string;
-  };
-  invoices: {
-    ocrEngine: string;
-    autoValidation: boolean;
-    duplicateDetection: boolean;
-    storageRetention: number;
-  };
-  maintenance: {
-    preventiveMaintenance: boolean;
-    maintenanceInterval: number;
-    alertsEnabled: boolean;
-    autoScheduling: boolean;
-  };
-  alerts: {
-    emailAlerts: boolean;
-    smsAlerts: boolean;
-    pushNotifications: boolean;
-    alertSeverity: string;
-  };
-  reports: {
-    autoGeneration: boolean;
-    reportFrequency: string;
-    includeCharts: boolean;
-    emailDelivery: boolean;
-  };
-  ai: {
-    chatEnabled: boolean;
-    autoResponses: boolean;
-    learningMode: boolean;
-    dataCollection: boolean;
-  };
-  general: {
-    theme: string;
-    language: string;
-    timezone: string;
-    companyName: string;
-  };
-}
+import { AppSettings, validateSettings } from '@/types/settings';
 
 const DEFAULT_SETTINGS: AppSettings = {
   plants: {
@@ -111,18 +61,24 @@ export const useSettings = () => {
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
 
-  const loadSettings = async () => {
+  const loadSettings = useCallback(async () => {
     try {
+      setLoading(true);
       const { data, error } = await supabase
         .from('app_config')
         .select('key, value');
 
       if (error) {
         console.error('Error loading settings:', error);
+        toast({
+          title: "Erro ao carregar configurações",
+          description: "Usando configurações padrão.",
+          variant: "destructive"
+        });
         return;
       }
 
-      if (data) {
+      if (data && data.length > 0) {
         const loadedSettings = { ...DEFAULT_SETTINGS };
         
         data.forEach(({ key, value }) => {
@@ -152,9 +108,20 @@ export const useSettings = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
 
-  const saveSettings = async (newSettings: AppSettings) => {
+  const saveSettings = useCallback(async (newSettings: AppSettings) => {
+    const validation = validateSettings(newSettings);
+    
+    if (!validation.isValid) {
+      toast({
+        title: "Configurações inválidas",
+        description: validation.errors.join(', '),
+        variant: "destructive"
+      });
+      return false;
+    }
+
     setSaving(true);
     try {
       console.log('Saving settings:', newSettings);
@@ -170,7 +137,7 @@ export const useSettings = () => {
         });
       });
 
-      // Upsert all settings
+      // Usar upsert para cada entrada de configuração
       for (const entry of configEntries) {
         const { error } = await supabase
           .from('app_config')
@@ -187,6 +154,8 @@ export const useSettings = () => {
         title: "Configurações salvas",
         description: "Todas as configurações foram atualizadas com sucesso.",
       });
+
+      return true;
     } catch (error) {
       console.error('Error saving settings:', error);
       toast({
@@ -194,12 +163,13 @@ export const useSettings = () => {
         description: "Ocorreu um erro ao salvar as configurações.",
         variant: "destructive"
       });
+      return false;
     } finally {
       setSaving(false);
     }
-  };
+  }, [toast]);
 
-  const updateSetting = (section: keyof AppSettings, key: string, value: any) => {
+  const updateSetting = useCallback((section: keyof AppSettings, key: string, value: any) => {
     setSettings(prev => ({
       ...prev,
       [section]: {
@@ -207,11 +177,11 @@ export const useSettings = () => {
         [key]: value
       }
     }));
-  };
+  }, []);
 
   useEffect(() => {
     loadSettings();
-  }, []);
+  }, [loadSettings]);
 
   return {
     settings,
