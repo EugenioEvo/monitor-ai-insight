@@ -1,8 +1,8 @@
+
 import { useState, useCallback } from "react";
-import { Upload, FileText, Loader2, CheckCircle, AlertCircle, Settings, Brain } from "lucide-react";
+import { Upload, FileText, Loader2, Settings, Brain, Eye } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { InvoiceProcessingStatus } from "./InvoiceProcessingStatus";
@@ -25,172 +25,140 @@ export function MultiEngineInvoiceUpload() {
   const [abTestResults, setAbTestResults] = useState<ABTestResult[]>([]);
   const { toast } = useToast();
 
-  const simulateMultiEngineProcessing = async (files: FileList) => {
-    const fileArray = Array.from(files);
-    const newStatuses: ProcessingStatus[] = fileArray.map((file, index) => ({
-      id: `file-${Date.now()}-${index}`,
-      status: 'uploaded',
-      progress: 0,
-      current_step: 'Iniciando processamento multi-engine...'
-    }));
-
-    setProcessingStatus(newStatuses);
-    setCurrentStep('processing');
-
-    for (let i = 0; i < newStatuses.length; i++) {
-      const status = newStatuses[i];
-      
-      // Simulação de etapas de processamento multi-engine
-      const steps = [
-        { progress: 5, step: 'Analisando formato do arquivo...', status: 'processing' as const },
-        { progress: 15, step: 'Carregando arquivo para processamento...', status: 'processing' as const },
-        { progress: 25, step: `Executando OCR primário (${ocrConfig.primary_engine.toUpperCase()})...`, status: 'processing' as const },
-        { progress: 40, step: ocrConfig.ab_testing_enabled ? 'Executando A/B Test com engine secundário...' : 'Processando com engine principal...', status: 'processing' as const },
-        { progress: 55, step: 'Comparando resultados dos engines...', status: 'extracted' as const },
-        { progress: 70, step: 'Extraindo 50+ campos estruturados...', status: 'extracted' as const },
-        { progress: 85, step: 'Aplicando validações multi-engine...', status: 'validated' as const },
-        { progress: 100, step: 'Processamento multi-engine concluído', status: 'completed' as const }
-      ];
-
-      for (const stepData of steps) {
-        await new Promise(resolve => setTimeout(resolve, 800));
-        
-        status.progress = stepData.progress;
-        status.current_step = stepData.step;
-        status.status = stepData.status;
-        
-        if (stepData.progress === 40) {
-          status.confidence_score = 0.88 + Math.random() * 0.1;
-        }
-        
-        if (stepData.progress === 70) {
-          status.processing_time_ms = 2000 + Math.random() * 1500;
-        }
-
-        setProcessingStatus([...newStatuses]);
-      }
-
-      // Simular dados extraídos com informações multi-engine
-      if (i === 0) {
-        const mockExtractedData: InvoiceExtractedData = {
-          // Dados básicos
-          uc_code: '1234567890',
-          reference_month: '2024-12',
-          energy_kwh: 1250.5,
-          demand_kw: 25.8,
-          total_r$: 890.45,
-          taxes_r$: 178.09,
-          
-          // Dados expandidos
-          subgrupo_tensao: 'A4',
-          consumo_fp_te_kwh: 950.3,
-          consumo_p_te_kwh: 300.2,
-          demanda_tusd_kw: 22.5,
-          demanda_te_kw: 25.8,
-          icms_valor: 125.67,
-          icms_aliquota: 18,
-          pis_valor: 12.45,
-          pis_aliquota: 1.65,
-          cofins_valor: 39.97,
-          cofins_aliquota: 7.6,
-          bandeira_tipo: 'Verde',
-          bandeira_valor: 0,
-          data_leitura: '2024-11-28',
-          data_emissao: '2024-12-05',
-          data_vencimento: '2024-12-20',
-          leitura_atual: 145678.5,
-          leitura_anterior: 144428.0,
-          multiplicador: 1.0,
-          tarifa_te_tusd: 0.15847,
-          tarifa_te_te: 0.31205,
-          tarifa_demanda_tusd: 12.85,
-          tarifa_demanda_te: 25.47,
-          valor_tusd: 198.75,
-          valor_te: 390.32,
-          valor_demanda_tusd: 289.13,
-          valor_demanda_te: 657.12,
-          energia_injetada_kwh: 856.2,
-          energia_compensada_kwh: 856.2,
-          saldo_creditos_kwh: 125.5,
-          contrib_ilum_publica: 15.45,
-          issqn_valor: 0,
-          outras_taxas: 8.75,
-          classe_subclasse: 'Comercial - Outros Serviços',
-          modalidade_tarifaria: 'Convencional B3',
-          fator_potencia: 0.92,
-          dias_faturamento: 30,
-          
-          // Metadados multi-engine
-          confidence_score: status.confidence_score,
-          extraction_method: ocrConfig.primary_engine,
-          requires_review: status.confidence_score < ocrConfig.confidence_threshold,
-          processing_time_ms: status.processing_time_ms,
-          observacoes: `Processado com ${ocrConfig.primary_engine.toUpperCase()}${ocrConfig.ab_testing_enabled ? ' + A/B Test' : ''}`,
-          codigo_barras: '84890000001234567890123456789012345678901234',
-          linha_digitavel: '84890.00000 01234.567890 12345.678901 2 34567890123456'
-        };
-
-        setExtractedData(mockExtractedData);
-
-        // Simular A/B test result se habilitado
-        if (ocrConfig.ab_testing_enabled) {
-          const mockABResult: ABTestResult = {
-            test_id: `ab-${Date.now()}`,
-            engine_a: ocrConfig.primary_engine,
-            engine_b: ocrConfig.fallback_engines[0] || 'google_vision',
-            file_id: status.id,
-            result_a: {
-              engine: ocrConfig.primary_engine,
-              text: 'Mock OCR result A',
-              confidence_score: status.confidence_score!,
-              processing_time_ms: 3200,
-              cost_estimate: 0.015
-            },
-            result_b: {
-              engine: ocrConfig.fallback_engines[0] || 'google_vision',
-              text: 'Mock OCR result B',
-              confidence_score: status.confidence_score! - 0.02,
-              processing_time_ms: 2100,
-              cost_estimate: 0.005
-            },
-            winner: 'a',
-            criteria: 'confidence_score',
-            timestamp: new Date().toISOString()
-          };
-          setAbTestResults([mockABResult]);
-        }
-
-        // Validações específicas para multi-engine
-        const mockValidationErrors: ValidationError[] = [];
-        
-        if (mockExtractedData.confidence_score < ocrConfig.confidence_threshold) {
-          mockValidationErrors.push({
-            rule_id: 'multi-engine-confidence',
-            field_name: 'Confiança Multi-Engine',
-            error_type: 'low_confidence',
-            message: `Confiança abaixo do limite configurado (${(ocrConfig.confidence_threshold * 100).toFixed(0)}%)`,
-            severity: 'warning',
-            suggested_fix: 'Considerar processar com engine alternativo ou revisão manual'
-          });
-        }
-
-        setValidationErrors(mockValidationErrors);
-        setCurrentStep('review');
-      }
-    }
-
-    toast({
-      title: "Processamento Multi-Engine Concluído!",
-      description: `${files.length} arquivo(s) processado(s) com ${ocrConfig.primary_engine.toUpperCase()}${ocrConfig.ab_testing_enabled ? ' + A/B Testing' : ''}.`,
-    });
-  };
-
   const handleFileUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
 
     setUploading(true);
-    await simulateMultiEngineProcessing(files);
-    setUploading(false);
+    setCurrentStep('processing');
+
+    try {
+      const fileArray = Array.from(files);
+      const newStatuses: ProcessingStatus[] = fileArray.map((file, index) => ({
+        id: `file-${Date.now()}-${index}`,
+        status: 'uploaded',
+        progress: 0,
+        current_step: 'Iniciando processamento multi-engine...'
+      }));
+
+      setProcessingStatus(newStatuses);
+
+      for (let i = 0; i < fileArray.length; i++) {
+        const file = fileArray[i];
+        const status = newStatuses[i];
+
+        // Update status: uploading file
+        status.progress = 10;
+        status.current_step = 'Fazendo upload do arquivo...';
+        status.status = 'processing';
+        setProcessingStatus([...newStatuses]);
+
+        // Upload file to Supabase Storage
+        const fileName = `${Date.now()}-${file.name}`;
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('invoices')
+          .upload(fileName, file);
+
+        if (uploadError) {
+          status.status = 'error';
+          status.error_message = uploadError.message;
+          setProcessingStatus([...newStatuses]);
+          continue;
+        }
+
+        // Update status: processing with multi-engine OCR
+        status.progress = 30;
+        status.current_step = `Processando com ${ocrConfig.primary_engine.toUpperCase()}...`;
+        setProcessingStatus([...newStatuses]);
+
+        // Call multi-engine OCR function
+        const { data: ocrResult, error: ocrError } = await supabase.functions.invoke('multi-engine-ocr', {
+          body: {
+            filePath: fileName,
+            fileName: file.name,
+            config: ocrConfig
+          }
+        });
+
+        if (ocrError) {
+          status.status = 'error';
+          status.error_message = ocrError.message;
+          setProcessingStatus([...newStatuses]);
+          continue;
+        }
+
+        // Update status: OCR completed
+        status.progress = 70;
+        status.current_step = 'Extraindo dados estruturados...';
+        status.confidence_score = ocrResult.confidence_score;
+        status.processing_time_ms = ocrResult.processing_time_ms;
+        setProcessingStatus([...newStatuses]);
+
+        // Update status: validation
+        status.progress = 90;
+        status.current_step = 'Aplicando validações...';
+        setProcessingStatus([...newStatuses]);
+
+        // Complete processing
+        status.progress = 100;
+        status.current_step = 'Processamento concluído';
+        status.status = 'completed';
+        status.requires_review = ocrResult.requires_review;
+        setProcessingStatus([...newStatuses]);
+
+        // Set extracted data for the first file (for review)
+        if (i === 0) {
+          setExtractedData(ocrResult.extracted_data);
+          
+          // Set A/B test results if available
+          if (ocrResult.ab_test_result) {
+            setAbTestResults([ocrResult.ab_test_result]);
+          }
+
+          // Generate validation errors based on the results
+          const mockValidationErrors: ValidationError[] = [];
+          
+          if (ocrResult.confidence_score < ocrConfig.confidence_threshold) {
+            mockValidationErrors.push({
+              rule_id: 'multi-engine-confidence',
+              field_name: 'Confiança Multi-Engine',
+              error_type: 'low_confidence',
+              message: `Confiança abaixo do limite configurado (${(ocrConfig.confidence_threshold * 100).toFixed(0)}%)`,
+              severity: 'warning',
+              suggested_fix: 'Considerar processar com engine alternativo ou revisão manual'
+            });
+          }
+
+          if (ocrResult.ab_test_performed) {
+            mockValidationErrors.push({
+              rule_id: 'ab-test-notification',
+              field_name: 'A/B Testing',
+              error_type: 'info',
+              message: 'A/B Test executado com sucesso entre engines',
+              severity: 'warning',
+              suggested_fix: 'Verificar resultados na aba A/B Test Results'
+            });
+          }
+
+          setValidationErrors(mockValidationErrors);
+          setCurrentStep('review');
+        }
+      }
+
+      toast({
+        title: "Processamento Multi-Engine Concluído!",
+        description: `${files.length} arquivo(s) processado(s) com ${ocrConfig.primary_engine.toUpperCase()}${ocrConfig.ab_testing_enabled ? ' + A/B Testing' : ''}.`,
+      });
+
+    } catch (error) {
+      console.error('Error in multi-engine upload:', error);
+      toast({
+        title: "Erro no processamento",
+        description: "Ocorreu um erro durante o processamento multi-engine.",
+        variant: "destructive"
+      });
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleDrag = useCallback((e: React.DragEvent) => {
@@ -347,7 +315,7 @@ export function MultiEngineInvoiceUpload() {
               </Card>
             </TabsContent>
           )}
-        </Tabs>
+        </tabs>
       </div>
     );
   }
