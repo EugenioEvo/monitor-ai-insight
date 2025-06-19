@@ -29,6 +29,15 @@ interface DatabaseReading {
   created_at: string;
 }
 
+// Interface para dados de consumo com aliases limpos
+interface ConsumptionData {
+  customer_unit_id: string;
+  reference_month: string;
+  energy_kwh: number;
+  total_amount: number; // alias para total_r$
+  taxes_amount: number; // alias para taxes_r$
+}
+
 // Hook para buscar dados completos de um cliente
 export const useCustomerDashboard = (customerId: string) => {
   return useQuery({
@@ -202,10 +211,10 @@ export const useCustomerConsumptionData = (customerId: string) => {
         return { chartData: [], units: [] };
       }
 
-      // Buscar faturas agrupadas por mês
+      // Buscar faturas agrupadas por mês usando aliases para colunas com $
       const { data: invoiceData, error } = await supabase
         .from("invoices")
-        .select("customer_unit_id, reference_month, energy_kwh, total_r$")
+        .select("customer_unit_id, reference_month, energy_kwh, total_r$ as total_amount, taxes_r$ as taxes_amount")
         .in("customer_unit_id", unitIds)
         .eq("status", "processed")
         .order("reference_month", { ascending: true });
@@ -215,8 +224,8 @@ export const useCustomerConsumptionData = (customerId: string) => {
       // Processar dados para agrupar por mês
       const monthlyData: { [key: string]: { consumption: number, cost: number } } = {};
       
-      // Type the invoiceData properly to avoid conversion errors
-      const typedInvoiceData = invoiceData as DatabaseInvoice[];
+      // Usar a interface com aliases limpos
+      const typedInvoiceData = invoiceData as ConsumptionData[];
       
       typedInvoiceData?.forEach((invoice) => {
         const month = invoice.reference_month;
@@ -224,7 +233,7 @@ export const useCustomerConsumptionData = (customerId: string) => {
           monthlyData[month] = { consumption: 0, cost: 0 };
         }
         monthlyData[month].consumption += invoice.energy_kwh;
-        monthlyData[month].cost += invoice.total_r$;
+        monthlyData[month].cost += invoice.total_amount; // usando o alias
       });
 
       // Converter para formato do gráfico
