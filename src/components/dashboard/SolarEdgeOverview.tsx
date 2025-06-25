@@ -3,17 +3,18 @@ import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { MetricCard } from '@/components/dashboard/MetricCard';
-import { Zap, Sun, TrendingUp, Calendar, MapPin, Wifi } from 'lucide-react';
+import { Zap, Sun, TrendingUp, Calendar, MapPin, Activity, AlertTriangle } from 'lucide-react';
 import { useEnergyData } from '@/hooks/useEnergyData';
 import { useLocalReadings } from '@/hooks/useLocalReadings';
 import { solarEdgeDataAdapter } from '@/utils/dataAdapters';
+import { ErrorBoundary } from '@/components/ui/error-boundary';
 import type { Plant } from '@/types';
 
 interface SolarEdgeOverviewProps {
   plant: Plant;
 }
 
-export const SolarEdgeOverview = ({ plant }: SolarEdgeOverviewProps) => {
+const SolarEdgeOverviewContent = ({ plant }: SolarEdgeOverviewProps) => {
   const { data: energyData, isLoading, error } = useEnergyData(plant, 'DAY');
   const { data: localReadings } = useLocalReadings(plant);
 
@@ -45,7 +46,23 @@ export const SolarEdgeOverview = ({ plant }: SolarEdgeOverviewProps) => {
   }
 
   const currentPower = localReadings?.[0]?.power_w || 0;
-  const normalizedData = solarEdgeDataAdapter.normalizeOverview(energyData || [], currentPower, plant);
+  
+  let normalizedData;
+  try {
+    normalizedData = solarEdgeDataAdapter.normalizeOverview(energyData, currentPower, plant);
+  } catch (err) {
+    console.error('Error normalizing SolarEdge data:', err, { energyData, currentPower });
+    // Fallback data
+    normalizedData = {
+      currentPower: currentPower / 1000,
+      dailyEnergy: 0,
+      monthlyEnergy: 0,
+      totalEnergy: 0,
+      efficiency: 0,
+      lastUpdate: new Date().toISOString(),
+      status: 'offline' as const
+    };
+  }
 
   return (
     <div className="space-y-6">
@@ -53,9 +70,12 @@ export const SolarEdgeOverview = ({ plant }: SolarEdgeOverviewProps) => {
       {error && (
         <Card className="border-red-200 bg-red-50">
           <CardHeader>
-            <CardTitle className="text-red-700">Erro na Conexão SolarEdge</CardTitle>
+            <CardTitle className="text-red-700 flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5" />
+              Erro na Conexão SolarEdge
+            </CardTitle>
             <CardDescription className="text-red-600">
-              Não foi possível conectar com o SolarEdge. Verifique as configurações de API.
+              Não foi possível conectar com a API SolarEdge. Verifique as configurações.
             </CardDescription>
           </CardHeader>
         </Card>
@@ -74,13 +94,7 @@ export const SolarEdgeOverview = ({ plant }: SolarEdgeOverviewProps) => {
                 Dados gerais e status atual da instalação
               </CardDescription>
             </div>
-            <div className="flex gap-2">
-              {getStatusBadge()}
-              <Badge variant="outline" className="text-blue-600">
-                <Wifi className="w-3 h-3 mr-1" />
-                SolarEdge API
-              </Badge>
-            </div>
+            {getStatusBadge()}
           </div>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -118,7 +132,7 @@ export const SolarEdgeOverview = ({ plant }: SolarEdgeOverviewProps) => {
           title="Potência Atual"
           value={`${normalizedData.currentPower.toFixed(2)} kW`}
           icon={Zap}
-          description="Geração instantânea"
+          description="Geração agora"
         />
         
         <MetricCard
@@ -129,10 +143,10 @@ export const SolarEdgeOverview = ({ plant }: SolarEdgeOverviewProps) => {
         />
         
         <MetricCard
-          title="Capacidade"
-          value={`${plant.capacity_kwp} kWp`}
-          icon={TrendingUp}
-          description="Instalada"
+          title="Energia Mensal"
+          value={`${normalizedData.monthlyEnergy.toFixed(1)} kWh`}
+          icon={Activity}
+          description="Produção mensal"
         />
         
         <MetricCard
@@ -144,7 +158,7 @@ export const SolarEdgeOverview = ({ plant }: SolarEdgeOverviewProps) => {
       </div>
 
       {/* Connection Status */}
-      {plant.monitoring_system === 'solaredge' && !energyData && !isLoading && !error && (
+      {!energyData && !isLoading && !error && (
         <Card className="border-yellow-200 bg-yellow-50">
           <CardHeader>
             <CardTitle className="text-yellow-700">Aguardando Dados</CardTitle>
@@ -155,5 +169,22 @@ export const SolarEdgeOverview = ({ plant }: SolarEdgeOverviewProps) => {
         </Card>
       )}
     </div>
+  );
+};
+
+export const SolarEdgeOverview = ({ plant }: SolarEdgeOverviewProps) => {
+  return (
+    <ErrorBoundary fallback={
+      <Card className="border-red-200 bg-red-50">
+        <CardHeader>
+          <CardTitle className="text-red-700">Erro no Dashboard SolarEdge</CardTitle>
+          <CardDescription className="text-red-600">
+            Ocorreu um erro ao carregar os dados da planta. Tente recarregar a página.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    }>
+      <SolarEdgeOverviewContent plant={plant} />
+    </ErrorBoundary>
   );
 };

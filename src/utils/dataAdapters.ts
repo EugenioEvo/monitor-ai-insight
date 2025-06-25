@@ -18,9 +18,29 @@ export interface NormalizedChartData {
 }
 
 export const solarEdgeDataAdapter = {
-  normalizeOverview: (energyData: any[], currentPower: number = 0, plant: any): NormalizedPlantData => {
-    const dailyEnergy = energyData?.reduce((sum, reading) => sum + (reading.energy || 0), 0) || 0;
-    const efficiency = plant.capacity_kwp > 0 ? (currentPower / plant.capacity_kwp * 100) : 0;
+  normalizeOverview: (energyData: any, currentPower: number = 0, plant: any): NormalizedPlantData => {
+    // Garantir que energyData seja tratado corretamente
+    let dailyEnergy = 0;
+    
+    if (energyData && energyData.values && Array.isArray(energyData.values)) {
+      // Se energyData tem uma estrutura de SolarEdge com values array
+      dailyEnergy = energyData.values.reduce((sum: number, reading: any) => {
+        const value = reading.value || reading.energy || 0;
+        return sum + (typeof value === 'number' ? value / 1000 : 0); // Convert Wh to kWh
+      }, 0);
+    } else if (Array.isArray(energyData)) {
+      // Se energyData é um array direto
+      dailyEnergy = energyData.reduce((sum: number, reading: any) => {
+        const value = reading.value || reading.energy || 0;
+        return sum + (typeof value === 'number' ? value / 1000 : 0); // Convert Wh to kWh
+      }, 0);
+    } else if (energyData && typeof energyData === 'object') {
+      // Se energyData é um objeto único
+      const value = energyData.value || energyData.energy || 0;
+      dailyEnergy = typeof value === 'number' ? value / 1000 : 0; // Convert Wh to kWh
+    }
+
+    const efficiency = plant && plant.capacity_kwp > 0 ? (currentPower / 1000 / plant.capacity_kwp * 100) : 0;
     
     return {
       currentPower: currentPower / 1000, // Convert W to kW
@@ -33,14 +53,27 @@ export const solarEdgeDataAdapter = {
     };
   },
 
-  normalizeChartData: (energyData: any[], period: string): NormalizedChartData[] => {
-    if (!energyData || !Array.isArray(energyData)) return [];
+  normalizeChartData: (energyData: any, period: string): NormalizedChartData[] => {
+    if (!energyData) return [];
     
-    return energyData.map(item => ({
+    let dataArray: any[] = [];
+    
+    if (energyData.values && Array.isArray(energyData.values)) {
+      // SolarEdge API format
+      dataArray = energyData.values;
+    } else if (Array.isArray(energyData)) {
+      // Direct array format
+      dataArray = energyData;
+    } else {
+      // Single object or unknown format
+      return [];
+    }
+    
+    return dataArray.map((item: any) => ({
       date: item.date || item.time || 'N/A',
-      energy: parseFloat(item.energy || item.value || 0),
+      energy: parseFloat(item.value || item.energy || 0) / 1000, // Convert Wh to kWh
       power: item.power ? parseFloat(item.power) : undefined,
-      time: item.time
+      time: item.time || item.date
     })).filter(item => item.energy > 0);
   }
 };
