@@ -3,9 +3,10 @@ import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { RefreshCw, CheckCircle, AlertCircle, Clock, Activity } from 'lucide-react';
+import { RefreshCw, CheckCircle, AlertCircle, Clock, Activity, Settings } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { useAutoSync } from '@/hooks/useAutoSync';
 import type { Plant } from '@/types';
 
 interface SungrowSyncStatusProps {
@@ -16,6 +17,8 @@ interface SungrowSyncStatusProps {
 export const SungrowSyncStatus = ({ plant, onUpdate }: SungrowSyncStatusProps) => {
   const { toast } = useToast();
   const [syncing, setSyncing] = useState(false);
+  const [toggling, setToggling] = useState(false);
+  const { syncEnabled, performAutoSync } = useAutoSync(plant);
 
   const handleManualSync = async () => {
     setSyncing(true);
@@ -55,6 +58,36 @@ export const SungrowSyncStatus = ({ plant, onUpdate }: SungrowSyncStatusProps) =
     }
   };
 
+  const toggleAutoSync = async () => {
+    setToggling(true);
+    try {
+      const { error } = await supabase
+        .from('plants')
+        .update({ sync_enabled: !plant.sync_enabled })
+        .eq('id', plant.id);
+
+      if (error) {
+        throw new Error(`Erro ao alterar configuração: ${error.message}`);
+      }
+
+      toast({
+        title: plant.sync_enabled ? "Sincronização automática desabilitada" : "Sincronização automática habilitada",
+        description: plant.sync_enabled 
+          ? "A sincronização automática foi desabilitada para esta planta."
+          : "A sincronização automática foi habilitada. Dados serão sincronizados a cada 15 minutos.",
+      });
+      onUpdate?.();
+    } catch (error: any) {
+      toast({
+        title: "Erro na configuração",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setToggling(false);
+    }
+  };
+
   const getSyncStatusBadge = () => {
     const lastSync = plant.last_sync;
     
@@ -84,7 +117,7 @@ export const SungrowSyncStatus = ({ plant, onUpdate }: SungrowSyncStatusProps) =
               Status de Sincronização Sungrow
             </CardTitle>
             <CardDescription>
-              Monitoramento da sincronização automática de dados
+              Monitoramento da sincronização de dados e alertas
             </CardDescription>
           </div>
           {getSyncStatusBadge()}
@@ -121,8 +154,14 @@ export const SungrowSyncStatus = ({ plant, onUpdate }: SungrowSyncStatusProps) =
 
           <div className="space-y-2">
             <div className="text-sm text-muted-foreground">Sistema</div>
-            <div className="font-medium">
+            <div className="flex flex-col gap-1">
               <Badge variant="outline">Sungrow OpenAPI</Badge>
+              {syncEnabled && (
+                <Badge variant="outline" className="text-green-600">
+                  <Activity className="w-3 h-3 mr-1" />
+                  Auto-Sync Ativo
+                </Badge>
+              )}
             </div>
           </div>
         </div>
@@ -136,13 +175,27 @@ export const SungrowSyncStatus = ({ plant, onUpdate }: SungrowSyncStatusProps) =
             {syncing && <RefreshCw className="w-4 h-4 mr-2 animate-spin" />}
             {syncing ? 'Sincronizando...' : 'Sincronizar Agora'}
           </Button>
+          
+          <Button 
+            onClick={toggleAutoSync}
+            disabled={toggling}
+            variant="outline"
+            size="sm"
+          >
+            {toggling && <RefreshCw className="w-4 h-4 mr-2 animate-spin" />}
+            <Settings className="w-4 h-4 mr-2" />
+            {plant.sync_enabled ? 'Desabilitar Auto-Sync' : 'Habilitar Auto-Sync'}
+          </Button>
         </div>
 
         {plant.last_sync && (
           <div className="text-sm text-muted-foreground">
             <div className="flex items-center gap-2">
               <Activity className="w-4 h-4" />
-              Próxima sincronização automática: {plant.sync_enabled ? 'em 15 minutos' : 'Desabilitada'}
+              {plant.sync_enabled ? 
+                'Próxima sincronização automática: em até 15 minutos' : 
+                'Sincronização automática desabilitada'
+              }
             </div>
           </div>
         )}

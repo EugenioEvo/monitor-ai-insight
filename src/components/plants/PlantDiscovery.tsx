@@ -169,8 +169,17 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
           continue;
         }
 
+        // Preparar configuração com plantId correto para Sungrow
+        let finalConfig = config;
+        if (systemType === 'sungrow') {
+          finalConfig = {
+            ...config,
+            plantId: plant.id // Garantir que o plantId seja definido na importação
+          };
+        }
+
         // Criar nova planta
-        const { error: insertError } = await supabase
+        const { data: newPlant, error: insertError } = await supabase
           .from('plants')
           .insert({
             name: plant.name,
@@ -182,19 +191,43 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
             status: 'active' as const,
             monitoring_system: systemType,
             api_site_id: plant.id,
-            api_credentials: config as any,
+            api_credentials: finalConfig as any,
             sync_enabled: true
-          });
+          })
+          .select()
+          .single();
 
         if (insertError) {
           console.error(`Erro ao importar ${plant.name}:`, insertError);
           continue;
         }
+
+        // Após importar, fazer sincronização inicial automática
+        if (newPlant && systemType === 'sungrow') {
+          try {
+            console.log(`Iniciando sincronização inicial para planta ${plant.name}`);
+            
+            const { data: syncResult, error: syncError } = await supabase.functions.invoke('sungrow-connector', {
+              body: {
+                action: 'sync_data',
+                plantId: newPlant.id
+              }
+            });
+
+            if (syncError) {
+              console.error(`Erro na sincronização inicial da planta ${plant.name}:`, syncError);
+            } else if (syncResult?.success) {
+              console.log(`Sincronização inicial bem-sucedida para ${plant.name}`);
+            }
+          } catch (syncError) {
+            console.error(`Falha na sincronização inicial da planta ${plant.name}:`, syncError);
+          }
+        }
       }
 
       toast({
         title: "Importação concluída!",
-        description: `${selectedPlants.length} plantas foram importadas com sucesso.`,
+        description: `${selectedPlants.length} plantas foram importadas com sucesso e a sincronização inicial foi iniciada.`,
       });
       
       onPlantImported();

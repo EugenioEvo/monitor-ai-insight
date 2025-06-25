@@ -1,12 +1,14 @@
+
 import React from 'react';
 import { SungrowPlantOverview } from './SungrowPlantOverview';
 import { SungrowManualSync } from './SungrowManualSync';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { MetricCard } from './MetricCard';
-import { Zap, Sun, TrendingUp, Calendar, MapPin } from 'lucide-react';
+import { Zap, Sun, TrendingUp, Calendar, MapPin, Activity } from 'lucide-react';
 import { useEnergyData } from '@/hooks/useEnergyData';
 import { useLocalReadings } from '@/hooks/useLocalReadings';
+import { useAutoSync } from '@/hooks/useAutoSync';
 import type { Plant } from '@/types';
 
 interface PlantOverviewProps {
@@ -14,12 +16,30 @@ interface PlantOverviewProps {
 }
 
 export const PlantOverview = ({ plant }: PlantOverviewProps) => {
+  // Inicializar sincronização automática
+  const { syncEnabled } = useAutoSync(plant);
+
   // Se for planta Sungrow, usar componente específico
   if (plant.monitoring_system === 'sungrow') {
     return (
       <div className="space-y-6">
         <SungrowPlantOverview plant={plant} />
         <SungrowManualSync plant={plant} />
+        
+        {/* Indicador de sincronização automática */}
+        {syncEnabled && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <Activity className="w-4 h-4 text-green-500" />
+                Sincronização Automática Ativa
+              </CardTitle>
+              <CardDescription>
+                Dados sendo sincronizados automaticamente a cada 15 minutos
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        )}
       </div>
     );
   }
@@ -54,7 +74,15 @@ export const PlantOverview = ({ plant }: PlantOverviewProps) => {
                 Dados gerais e status atual da instalação
               </CardDescription>
             </div>
-            {getStatusBadge()}
+            <div className="flex gap-2">
+              {getStatusBadge()}
+              {syncEnabled && (
+                <Badge variant="outline" className="text-green-600">
+                  <Activity className="w-3 h-3 mr-1" />
+                  Auto-Sync
+                </Badge>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
