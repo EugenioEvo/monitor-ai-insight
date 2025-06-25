@@ -8,10 +8,11 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { AlertCircle, CheckCircle, Loader2, Plus, MapPin, Zap, Download } from 'lucide-react';
+import { AlertCircle, CheckCircle, Loader2, Plus, MapPin, Zap, Download, Settings } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import type { SolarEdgeConfig, SungrowConfig } from '@/types/monitoring';
+import { SungrowConnectionTest } from './SungrowConnectionTest';
 
 interface DiscoveredPlant {
   id: string;
@@ -20,6 +21,8 @@ interface DiscoveredPlant {
   location?: string;
   status?: string;
   installationDate?: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 interface PlantDiscoveryProps {
@@ -166,20 +169,20 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
           continue;
         }
 
-        // Criar nova planta - corrigindo os tipos para serem compatíveis com o banco
+        // Criar nova planta
         const { error: insertError } = await supabase
           .from('plants')
           .insert({
             name: plant.name,
             capacity_kwp: plant.capacity || 0,
-            lat: -23.5505, // Coordenadas padrão (São Paulo)
-            lng: -46.6333,
+            lat: plant.latitude || -23.5505,
+            lng: plant.longitude || -46.6333,
             concessionaria: 'A definir',
             start_date: plant.installationDate || new Date().toISOString().split('T')[0],
             status: 'active' as const,
             monitoring_system: systemType,
             api_site_id: plant.id,
-            api_credentials: config as any, // Cast para Json type
+            api_credentials: config as any,
             sync_enabled: true
           });
 
@@ -216,19 +219,24 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
     );
   };
 
+  const handleSungrowConnectionSuccess = (config: SungrowConfig) => {
+    setSungrowConfig(config);
+    setCurrentStep(3);
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
         <Button onClick={() => setIsOpen(true)}>
           <Plus className="w-4 h-4 mr-2" />
-          Adicionar Plantas
+          Descobrir Plantas
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Importar Plantas do Portal</DialogTitle>
+          <DialogTitle>Descobrir e Importar Plantas</DialogTitle>
           <DialogDescription>
-            Conecte-se ao seu portal de monitoramento para descobrir e importar suas plantas solares
+            Conecte-se ao seu portal de monitoramento para descobrir e importar suas plantas solares automaticamente
           </DialogDescription>
         </DialogHeader>
 
@@ -253,7 +261,7 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
               <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 ${currentStep >= 3 ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground'}`}>
                 3
               </div>
-              <span className="text-sm font-medium">Importar</span>
+              <span className="text-sm font-medium">Descobrir</span>
             </div>
           </div>
 
@@ -295,7 +303,7 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
               <CardHeader>
                 <CardTitle>Configurar Credenciais</CardTitle>
                 <CardDescription>
-                  Insira suas credenciais do {systemType === 'solaredge' ? 'SolarEdge' : 'Sungrow'}
+                  {systemType === 'sungrow' ? 'Configure suas credenciais do Sungrow com teste automático' : 'Insira suas credenciais do SolarEdge'}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -343,59 +351,26 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
                         />
                       </div>
                     </div>
+                    <div className="flex justify-between pt-4">
+                      <Button variant="outline" onClick={() => setCurrentStep(1)}>
+                        Voltar
+                      </Button>
+                      <Button onClick={testConnection} disabled={testing}>
+                        {testing && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                        Testar e Continuar
+                      </Button>
+                    </div>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="sg-username">Usuário</Label>
-                      <Input
-                        id="sg-username"
-                        value={sungrowConfig.username}
-                        onChange={(e) => setSungrowConfig(prev => ({ ...prev, username: e.target.value }))}
-                        placeholder="Seu usuário Sungrow"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="sg-password">Senha</Label>
-                      <Input
-                        id="sg-password"
-                        type="password"
-                        value={sungrowConfig.password}
-                        onChange={(e) => setSungrowConfig(prev => ({ ...prev, password: e.target.value }))}
-                        placeholder="Sua senha Sungrow"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="sg-appkey">App Key (Chave da Aplicação)</Label>
-                      <Input
-                        id="sg-appkey"
-                        value={sungrowConfig.appkey}
-                        onChange={(e) => setSungrowConfig(prev => ({ ...prev, appkey: e.target.value }))}
-                        placeholder="Chave da aplicação"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="sg-accesskey">Access Key Value (Valor da Chave de Acesso)</Label>
-                      <Input
-                        id="sg-accesskey"
-                        type="password"
-                        value={sungrowConfig.accessKey}
-                        onChange={(e) => setSungrowConfig(prev => ({ ...prev, accessKey: e.target.value }))}
-                        placeholder="Valor da chave de acesso"
-                      />
+                  <div className="space-y-4">
+                    <SungrowConnectionTest onConnectionSuccess={handleSungrowConnectionSuccess} />
+                    <div className="flex justify-between pt-4">
+                      <Button variant="outline" onClick={() => setCurrentStep(1)}>
+                        Voltar
+                      </Button>
                     </div>
                   </div>
                 )}
-                
-                <div className="flex justify-between pt-4">
-                  <Button variant="outline" onClick={() => setCurrentStep(1)}>
-                    Voltar
-                  </Button>
-                  <Button onClick={testConnection} disabled={testing}>
-                    {testing && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                    Testar e Continuar
-                  </Button>
-                </div>
               </CardContent>
             </Card>
           )}
@@ -474,7 +449,7 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
                               {plant.capacity && (
                                 <span className="flex items-center gap-1">
                                   <Zap className="w-3 h-3" />
-                                  {plant.capacity} kWp
+                                  {plant.capacity} kW
                                 </span>
                               )}
                               {plant.location && (

@@ -7,11 +7,14 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { AlertCircle, CheckCircle, Loader2, Zap } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { AlertCircle, CheckCircle, Loader2, Zap, Settings } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import type { Plant } from '@/types';
 import type { SolarEdgeConfig, SungrowConfig } from '@/types/monitoring';
+import { SungrowConnectionTest } from './SungrowConnectionTest';
+import { SungrowPlantDiscovery } from './SungrowPlantDiscovery';
 
 interface MonitoringSetupProps {
   plant: Plant;
@@ -26,6 +29,7 @@ export const MonitoringSetup = ({ plant, onUpdate }: MonitoringSetupProps) => {
     plant.monitoring_system || 'manual'
   );
   const [syncEnabled, setSyncEnabled] = useState(plant.sync_enabled || false);
+  const [activeTab, setActiveTab] = useState('config');
   
   // SolarEdge config
   const [solarEdgeConfig, setSolarEdgeConfig] = useState<SolarEdgeConfig>({
@@ -88,7 +92,7 @@ export const MonitoringSetup = ({ plant, onUpdate }: MonitoringSetupProps) => {
         .from('plants')
         .update({
           monitoring_system: systemType,
-          api_credentials: systemType === 'manual' ? null : config as any, // Cast para any para compatibilidade com Json
+          api_credentials: systemType === 'manual' ? null : config as any,
           sync_enabled: syncEnabled,
           api_site_id: systemType === 'solaredge' ? solarEdgeConfig.siteId : 
                       systemType === 'sungrow' ? sungrowConfig.plantId : null
@@ -103,6 +107,7 @@ export const MonitoringSetup = ({ plant, onUpdate }: MonitoringSetupProps) => {
       });
       
       onUpdate();
+      setActiveTab('config');
     } catch (error: any) {
       toast({
         title: "Erro ao salvar",
@@ -147,6 +152,26 @@ export const MonitoringSetup = ({ plant, onUpdate }: MonitoringSetupProps) => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSungrowConnectionSuccess = (config: SungrowConfig) => {
+    setSungrowConfig(config);
+    setActiveTab('discovery');
+  };
+
+  const handleSungrowPlantsSelected = (plants: any[]) => {
+    if (plants.length > 0) {
+      const selectedPlant = plants[0]; // Use primeira planta selecionada
+      setSungrowConfig(prev => ({
+        ...prev,
+        plantId: selectedPlant.id
+      }));
+      setActiveTab('config');
+      toast({
+        title: "Planta selecionada!",
+        description: `Planta "${selectedPlant.name}" configurada para sincronização.`,
+      });
     }
   };
 
@@ -236,59 +261,105 @@ export const MonitoringSetup = ({ plant, onUpdate }: MonitoringSetupProps) => {
           </div>
         )}
 
-        {/* Configuração Sungrow */}
+        {/* Configuração Sungrow Melhorada */}
         {systemType === 'sungrow' && (
-          <div className="space-y-4 p-4 border rounded-lg">
-            <h4 className="font-medium">Configuração Sungrow</h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="sg-username">Usuário</Label>
-                <Input
-                  id="sg-username"
-                  value={sungrowConfig.username}
-                  onChange={(e) => setSungrowConfig(prev => ({ ...prev, username: e.target.value }))}
-                  placeholder="Seu usuário Sungrow"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="sg-password">Senha</Label>
-                <Input
-                  id="sg-password"
-                  type="password"
-                  value={sungrowConfig.password}
-                  onChange={(e) => setSungrowConfig(prev => ({ ...prev, password: e.target.value }))}
-                  placeholder="Sua senha Sungrow"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="sg-appkey">App Key (Chave da Aplicação)</Label>
-                <Input
-                  id="sg-appkey"
-                  value={sungrowConfig.appkey}
-                  onChange={(e) => setSungrowConfig(prev => ({ ...prev, appkey: e.target.value }))}
-                  placeholder="Chave da aplicação"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="sg-accesskey">Access Key Value (Valor da Chave de Acesso)</Label>
-                <Input
-                  id="sg-accesskey"
-                  type="password"
-                  value={sungrowConfig.accessKey}
-                  onChange={(e) => setSungrowConfig(prev => ({ ...prev, accessKey: e.target.value }))}
-                  placeholder="Valor da chave de acesso"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="sg-plant-id">Plant ID</Label>
-                <Input
-                  id="sg-plant-id"
-                  value={sungrowConfig.plantId}
-                  onChange={(e) => setSungrowConfig(prev => ({ ...prev, plantId: e.target.value }))}
-                  placeholder="ID da planta"
-                />
-              </div>
-            </div>
+          <div className="space-y-4">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="config" className="flex items-center gap-2">
+                  <Settings className="w-4 h-4" />
+                  Configuração
+                </TabsTrigger>
+                <TabsTrigger value="test">Teste</TabsTrigger>
+                <TabsTrigger value="discovery">Descoberta</TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="config" className="space-y-4">
+                <div className="p-4 border rounded-lg">
+                  <h4 className="font-medium mb-4">Configuração Manual Sungrow</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="sg-username">Usuário</Label>
+                      <Input
+                        id="sg-username"
+                        value={sungrowConfig.username}
+                        onChange={(e) => setSungrowConfig(prev => ({ ...prev, username: e.target.value }))}
+                        placeholder="Seu usuário Sungrow"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="sg-password">Senha</Label>
+                      <Input
+                        id="sg-password"
+                        type="password"
+                        value={sungrowConfig.password}
+                        onChange={(e) => setSungrowConfig(prev => ({ ...prev, password: e.target.value }))}
+                        placeholder="Sua senha Sungrow"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="sg-appkey">App Key</Label>
+                      <Input
+                        id="sg-appkey"
+                        value={sungrowConfig.appkey}
+                        onChange={(e) => setSungrowConfig(prev => ({ ...prev, appkey: e.target.value }))}
+                        placeholder="Chave da aplicação"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="sg-accesskey">Access Key Value</Label>
+                      <Input
+                        id="sg-accesskey"
+                        type="password"
+                        value={sungrowConfig.accessKey}
+                        onChange={(e) => setSungrowConfig(prev => ({ ...prev, accessKey: e.target.value }))}
+                        placeholder="Valor da chave de acesso"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="sg-plant-id">Plant ID</Label>
+                      <Input
+                        id="sg-plant-id"
+                        value={sungrowConfig.plantId}
+                        onChange={(e) => setSungrowConfig(prev => ({ ...prev, plantId: e.target.value }))}
+                        placeholder="ID da planta"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </TabsContent>
+              
+              <TabsContent value="test">
+                <SungrowConnectionTest onConnectionSuccess={handleSungrowConnectionSuccess} />
+              </TabsContent>
+              
+              <TabsContent value="discovery">
+                {sungrowConfig.username && sungrowConfig.appkey && sungrowConfig.accessKey ? (
+                  <SungrowPlantDiscovery 
+                    config={sungrowConfig} 
+                    onPlantsSelected={handleSungrowPlantsSelected}
+                  />
+                ) : (
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="text-center">
+                        <AlertCircle className="w-12 h-12 text-yellow-500 mx-auto mb-4" />
+                        <h3 className="font-medium mb-2">Credenciais necessárias</h3>
+                        <p className="text-sm text-muted-foreground mb-4">
+                          Configure e teste suas credenciais primeiro para descobrir plantas automaticamente.
+                        </p>
+                        <Button 
+                          variant="outline" 
+                          onClick={() => setActiveTab('test')}
+                        >
+                          Ir para Teste de Conexão
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </TabsContent>
+            </Tabs>
           </div>
         )}
 
