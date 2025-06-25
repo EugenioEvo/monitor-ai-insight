@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { useEnergyData } from '@/hooks/useEnergyData';
@@ -6,6 +5,7 @@ import { useLocalReadings } from '@/hooks/useLocalReadings';
 import { PeriodSelector } from './PeriodSelector';
 import { EnergyProductionChart } from './EnergyProductionChart';
 import { PowerChart } from './PowerChart';
+import { SungrowProductionCharts } from './SungrowProductionCharts';
 import { processChartData } from '@/utils/chartDataProcessor';
 import type { Plant } from '@/types';
 
@@ -14,6 +14,11 @@ interface ProductionChartsProps {
 }
 
 export const ProductionCharts = ({ plant }: ProductionChartsProps) => {
+  // Se for planta Sungrow, usar componente específico
+  if (plant.monitoring_system === 'sungrow') {
+    return <SungrowProductionCharts plant={plant} />;
+  }
+
   const [period, setPeriod] = useState<'DAY' | 'MONTH' | 'YEAR'>('DAY');
 
   const { data: energyData, isLoading } = useEnergyData(plant, period);

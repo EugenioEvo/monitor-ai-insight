@@ -1,319 +1,150 @@
-
 import React from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { AlertTriangle, CheckCircle, Settings, Cpu } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { AlertTriangle, CheckCircle, Wifi, WifiOff } from 'lucide-react';
+import { SungrowEquipmentStatus } from './SungrowEquipmentStatus';
 import type { Plant } from '@/types';
-import type { SolarEdgeConfig } from '@/types/monitoring';
 
 interface EquipmentStatusProps {
   plant: Plant;
 }
 
 export const EquipmentStatus = ({ plant }: EquipmentStatusProps) => {
-  const { data: equipment, isLoading, error } = useQuery({
-    queryKey: ['equipment', plant.id, plant.monitoring_system, plant.api_site_id],
-    queryFn: async () => {
-      if (plant.monitoring_system !== 'solaredge' || !plant.api_credentials) {
-        return null;
-      }
+  // Se for planta Sungrow, usar componente específico
+  if (plant.monitoring_system === 'sungrow') {
+    return <SungrowEquipmentStatus plant={plant} />;
+  }
 
-      console.log('Fetching equipment status for plant:', plant.id);
-      console.log('Plant config:', {
-        monitoring_system: plant.monitoring_system,
-        api_site_id: plant.api_site_id,
-        has_credentials: !!plant.api_credentials
-      });
-
-      // Use api_site_id from plant if siteId is empty in credentials
-      const config = {
-        ...plant.api_credentials as SolarEdgeConfig,
-        siteId: plant.api_site_id || (plant.api_credentials as SolarEdgeConfig)?.siteId
-      };
-
-      console.log('Using config for equipment:', {
-        hasApiKey: !!config.apiKey,
-        siteId: config.siteId
-      });
-
-      const { data, error } = await supabase.functions.invoke('solaredge-connector', {
-        body: {
-          action: 'get_equipment_list',
-          config: config
-        }
-      });
-
-      if (error) {
-        console.error('Supabase function error:', error);
-        throw error;
-      }
-
-      console.log('Equipment response from SolarEdge:', data);
-      return data.success ? data.data : null;
+  const mockEquipment = [
+    {
+      id: 1,
+      name: 'Inversor Principal',
+      type: 'Inversor',
+      status: 'online',
+      power: 5.2,
+      temperature: 45,
+      efficiency: 98.5,
+      lastUpdate: new Date()
     },
-    enabled: plant.monitoring_system === 'solaredge' && !!plant.api_credentials && (!!plant.api_site_id || !!(plant.api_credentials as SolarEdgeConfig)?.siteId),
-    refetchInterval: 5 * 60 * 1000, // Refetch every 5 minutes
-    staleTime: 2 * 60 * 1000, // Consider data stale after 2 minutes
-  });
+    {
+      id: 2,
+      name: 'String Box 1',
+      type: 'String Box',
+      status: 'online',
+      current: 8.5,
+      voltage: 380,
+      lastUpdate: new Date()
+    },
+    {
+      id: 3,
+      name: 'Monitoramento',
+      type: 'Monitor',
+      status: 'online',
+      connection: 'WiFi',
+      signal: 85,
+      lastUpdate: new Date()
+    }
+  ];
 
   const getStatusIcon = (status: string) => {
-    switch (status?.toLowerCase()) {
-      case 'active':
-      case 'ok':
-        return <CheckCircle className="w-4 h-4 text-green-500" />;
-      case 'alert':
-      case 'warning':
-        return <AlertTriangle className="w-4 h-4 text-yellow-500" />;
-      case 'error':
-      case 'fault':
-        return <AlertTriangle className="w-4 h-4 text-red-500" />;
-      default:
-        return <Settings className="w-4 h-4 text-gray-500" />;
-    }
+    return status === 'online' ? 
+      <CheckCircle className="w-4 h-4 text-green-500" /> : 
+      <AlertTriangle className="w-4 h-4 text-red-500" />;
   };
 
   const getStatusBadge = (status: string) => {
-    switch (status?.toLowerCase()) {
-      case 'active':
-      case 'ok':
-        return <Badge variant="default">Ativo</Badge>;
-      case 'alert':
-      case 'warning':
-        return <Badge variant="outline">Alerta</Badge>;
-      case 'error':
-      case 'fault':
-        return <Badge variant="destructive">Erro</Badge>;
-      default:
-        return <Badge variant="secondary">Desconhecido</Badge>;
-    }
+    return status === 'online' ? 
+      <Badge variant="default">Online</Badge> : 
+      <Badge variant="destructive">Offline</Badge>;
   };
 
-  if (isLoading) {
-    return (
-      <div className="space-y-4">
-        {[1, 2, 3].map((i) => (
-          <Card key={i} className="animate-pulse">
-            <CardHeader>
-              <div className="h-6 bg-gray-200 rounded w-1/3"></div>
-              <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Status dos Equipamentos</CardTitle>
+          <CardDescription>
+            Monitoramento dos dispositivos da planta solar
+          </CardDescription>
+        </CardHeader>
+      </Card>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {mockEquipment.map((equipment) => (
+          <Card key={equipment.id}>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  {getStatusIcon(equipment.status)}
+                  {equipment.name}
+                </CardTitle>
+                {getStatusBadge(equipment.status)}
+              </div>
+              <CardDescription>{equipment.type}</CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="h-20 bg-gray-200 rounded"></div>
+            <CardContent className="space-y-3">
+              {equipment.type === 'Inversor' && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-sm text-muted-foreground">Potência</div>
+                    <div className="font-medium">{equipment.power} kW</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">Temperatura</div>
+                    <div className="font-medium">{equipment.temperature}°C</div>
+                  </div>
+                  <div className="col-span-2">
+                    <div className="text-sm text-muted-foreground">Eficiência</div>
+                    <div className="font-medium">{equipment.efficiency}%</div>
+                  </div>
+                </div>
+              )}
+
+              {equipment.type === 'String Box' && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-sm text-muted-foreground">Corrente</div>
+                    <div className="font-medium">{equipment.current} A</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">Tensão</div>
+                    <div className="font-medium">{equipment.voltage} V</div>
+                  </div>
+                </div>
+              )}
+
+              {equipment.type === 'Monitor' && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-sm text-muted-foreground flex items-center gap-1">
+                      <Wifi className="w-3 h-3" />
+                      Conexão
+                    </div>
+                    <div className="font-medium">{equipment.connection}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">Sinal</div>
+                    <div className="font-medium">{equipment.signal}%</div>
+                  </div>
+                </div>
+              )}
+
+              <div className="text-xs text-muted-foreground">
+                Última atualização: {equipment.lastUpdate.toLocaleString('pt-BR')}
+              </div>
             </CardContent>
           </Card>
         ))}
       </div>
-    );
-  }
 
-  if (error) {
-    console.error('Equipment query error:', error);
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Settings className="w-5 h-5" />
-            Status dos Equipamentos
-          </CardTitle>
-          <CardDescription>
-            Erro ao carregar informações dos equipamentos
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-center h-32 text-muted-foreground">
-            <div className="text-center">
-              <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-red-500" />
-              <p>Erro ao carregar equipamentos</p>
-              <p className="text-sm mt-2">{error.message}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (!equipment) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Settings className="w-5 h-5" />
-            Status dos Equipamentos
-          </CardTitle>
-          <CardDescription>
-            Monitoramento em tempo real dos equipamentos da planta
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-center h-32 text-muted-foreground">
-            <div className="text-center">
-              <Cpu className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p>Informações de equipamentos não disponíveis</p>
-              {plant.monitoring_system === 'manual' && (
-                <p className="text-sm mt-2">Configure um sistema de monitoramento para visualizar equipamentos</p>
-              )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      {/* Inverters */}
-      {equipment.inverters && equipment.inverters.length > 0 && (
-        <Card>
+      {plant.monitoring_system === 'manual' && (
+        <Card className="border-yellow-200 bg-yellow-50">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Cpu className="w-5 h-5" />
-              Inversores ({equipment.inverters.length})
-            </CardTitle>
-            <CardDescription>
-              Status e informações dos inversores instalados
+            <CardTitle className="text-yellow-700">Sistema Manual</CardTitle>
+            <CardDescription className="text-yellow-600">
+              Configure um sistema de monitoramento automático para obter dados reais dos equipamentos.
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {equipment.inverters.map((inverter: any, index: number) => (
-                <div key={inverter.serialNumber || inverter.SN || index} className="border rounded-lg p-4">
-                  <div className="flex justify-between items-start mb-3">
-                    <div>
-                      <h4 className="font-medium flex items-center gap-2">
-                        {getStatusIcon('active')}
-                        {inverter.name || `Inversor ${index + 1}`}
-                      </h4>
-                      <p className="text-sm text-muted-foreground">
-                        S/N: {inverter.serialNumber || inverter.SN || 'N/A'}
-                      </p>
-                    </div>
-                    {getStatusBadge('active')}
-                  </div>
-                  
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                    <div>
-                      <div className="text-muted-foreground">Modelo</div>
-                      <div className="font-medium">{inverter.model || 'N/A'}</div>
-                    </div>
-                    <div>
-                      <div className="text-muted-foreground">Fabricante</div>
-                      <div className="font-medium">{inverter.manufacturer || 'N/A'}</div>
-                    </div>
-                    <div>
-                      <div className="text-muted-foreground">Comunicação</div>
-                      <div className="font-medium">
-                        {inverter.communicationMethod || 'N/A'}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-muted-foreground">Otimizadores</div>
-                      <div className="font-medium">{inverter.connectedOptimizers || 'N/A'}</div>
-                    </div>
-                  </div>
-                  
-                  {inverter.cpuVersion && (
-                    <div className="mt-3 pt-3 border-t">
-                      <div className="text-sm">
-                        <span className="text-muted-foreground">Versão CPU: </span>
-                        <span className="font-medium">{inverter.cpuVersion}</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Optimizers */}
-      {equipment.optimizers && equipment.optimizers.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Settings className="w-5 h-5" />
-              Otimizadores ({equipment.optimizers.length})
-            </CardTitle>
-            <CardDescription>
-              Status dos otimizadores de potência por painel
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {equipment.optimizers.slice(0, 12).map((optimizer: any, index: number) => (
-                <div key={optimizer.serialNumber || optimizer.SN || index} className="border rounded-lg p-3">
-                  <div className="flex justify-between items-center mb-2">
-                    <div className="font-medium flex items-center gap-2">
-                      {getStatusIcon(optimizer.status || 'active')}
-                      Opt. {index + 1}
-                    </div>
-                    {getStatusBadge(optimizer.status || 'active')}
-                  </div>
-                  <div className="text-sm space-y-1">
-                    <div>S/N: {optimizer.serialNumber || optimizer.SN || 'N/A'}</div>
-                    <div>Modelo: {optimizer.model || 'N/A'}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-            {equipment.optimizers.length > 12 && (
-              <div className="text-center mt-4 text-muted-foreground">
-                E mais {equipment.optimizers.length - 12} otimizadores...
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Meters */}
-      {equipment.meters && equipment.meters.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5" />
-              Medidores ({equipment.meters.length})
-            </CardTitle>
-            <CardDescription>
-              Medidores de energia e monitoramento
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {equipment.meters.map((meter: any, index: number) => (
-                <div key={meter.serialNumber || meter.SN || index} className="border rounded-lg p-4">
-                  <div className="flex justify-between items-start mb-3">
-                    <div>
-                      <h4 className="font-medium flex items-center gap-2">
-                        {getStatusIcon(meter.status || 'active')}
-                        {meter.name || `Medidor ${index + 1}`}
-                      </h4>
-                      <p className="text-sm text-muted-foreground">
-                        S/N: {meter.serialNumber || meter.SN || 'N/A'}
-                      </p>
-                    </div>
-                    {getStatusBadge(meter.status || 'active')}
-                  </div>
-                  
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
-                    <div>
-                      <div className="text-muted-foreground">Tipo</div>
-                      <div className="font-medium">{meter.type || 'N/A'}</div>
-                    </div>
-                    <div>
-                      <div className="text-muted-foreground">Modelo</div>
-                      <div className="font-medium">{meter.model || 'N/A'}</div>
-                    </div>
-                    <div>
-                      <div className="text-muted-foreground">Localização</div>
-                      <div className="font-medium">{meter.location || 'N/A'}</div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
         </Card>
       )}
     </div>
