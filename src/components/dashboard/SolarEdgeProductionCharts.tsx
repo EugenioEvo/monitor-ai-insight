@@ -6,35 +6,22 @@ import { useLocalReadings } from '@/hooks/useLocalReadings';
 import { PeriodSelector } from './PeriodSelector';
 import { EnergyProductionChart } from './EnergyProductionChart';
 import { PowerChart } from './PowerChart';
-import { SungrowProductionCharts } from './SungrowProductionCharts';
-import { SolarEdgeProductionCharts } from './SolarEdgeProductionCharts';
-import { processChartData } from '@/utils/chartDataProcessor';
+import { solarEdgeDataAdapter } from '@/utils/dataAdapters';
 import type { Plant } from '@/types';
 
-interface ProductionChartsProps {
+interface SolarEdgeProductionChartsProps {
   plant: Plant;
 }
 
-export const ProductionCharts = ({ plant }: ProductionChartsProps) => {
-  // Se for planta Sungrow, usar componente específico
-  if (plant.monitoring_system === 'sungrow') {
-    return <SungrowProductionCharts plant={plant} />;
-  }
-
-  // Se for planta SolarEdge, usar componente específico
-  if (plant.monitoring_system === 'solaredge') {
-    return <SolarEdgeProductionCharts plant={plant} />;
-  }
-
-  // Fallback para plantas manuais ou outros sistemas
+export const SolarEdgeProductionCharts = ({ plant }: SolarEdgeProductionChartsProps) => {
   const [period, setPeriod] = useState<'DAY' | 'MONTH' | 'YEAR'>('DAY');
 
   const { data: energyData, isLoading } = useEnergyData(plant, period);
   const { data: localReadings } = useLocalReadings(plant);
 
   const chartData = React.useMemo(() => {
-    return processChartData(energyData, localReadings, period);
-  }, [energyData, localReadings, period]);
+    return solarEdgeDataAdapter.normalizeChartData(energyData, period);
+  }, [energyData, period]);
 
   if (isLoading) {
     return (

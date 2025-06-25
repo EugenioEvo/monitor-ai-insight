@@ -2,54 +2,45 @@
 import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { AlertTriangle, CheckCircle, Wifi, WifiOff } from 'lucide-react';
-import { SungrowEquipmentStatus } from './SungrowEquipmentStatus';
-import { SolarEdgeEquipmentStatus } from './SolarEdgeEquipmentStatus';
+import { CheckCircle, AlertTriangle, Zap, Wifi, Activity } from 'lucide-react';
 import type { Plant } from '@/types';
 
-interface EquipmentStatusProps {
+interface SolarEdgeEquipmentStatusProps {
   plant: Plant;
 }
 
-export const EquipmentStatus = ({ plant }: EquipmentStatusProps) => {
-  // Se for planta Sungrow, usar componente específico
-  if (plant.monitoring_system === 'sungrow') {
-    return <SungrowEquipmentStatus plant={plant} />;
-  }
-
-  // Se for planta SolarEdge, usar componente específico
-  if (plant.monitoring_system === 'solaredge') {
-    return <SolarEdgeEquipmentStatus plant={plant} />;
-  }
-
-  // Fallback para plantas manuais ou outros sistemas
+export const SolarEdgeEquipmentStatus = ({ plant }: SolarEdgeEquipmentStatusProps) => {
+  // Mock data for SolarEdge equipment - in real implementation, this would come from SolarEdge API
   const mockEquipment = [
     {
       id: 1,
-      name: 'Inversor Principal',
+      name: 'Inversor SolarEdge',
       type: 'Inversor',
       status: 'online',
       power: 5.2,
       temperature: 45,
       efficiency: 98.5,
+      serialNumber: 'SE-INV-001',
       lastUpdate: new Date()
     },
     {
       id: 2,
-      name: 'String Box 1',
-      type: 'String Box',
+      name: 'Otimizador String 1',
+      type: 'Otimizador',
       status: 'online',
-      current: 8.5,
       voltage: 380,
+      current: 8.5,
+      serialNumber: 'SE-OPT-001',
       lastUpdate: new Date()
     },
     {
       id: 3,
-      name: 'Monitoramento',
-      type: 'Monitor',
+      name: 'Gateway de Monitoramento',
+      type: 'Gateway',
       status: 'online',
-      connection: 'WiFi',
-      signal: 85,
+      connection: 'Ethernet',
+      signal: 95,
+      serialNumber: 'SE-GW-001',
       lastUpdate: new Date()
     }
   ];
@@ -70,9 +61,12 @@ export const EquipmentStatus = ({ plant }: EquipmentStatusProps) => {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Status dos Equipamentos</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Activity className="w-5 h-5" />
+            Status dos Equipamentos SolarEdge
+          </CardTitle>
           <CardDescription>
-            Monitoramento dos dispositivos da planta solar
+            Monitoramento dos dispositivos SolarEdge da planta
           </CardDescription>
         </CardHeader>
       </Card>
@@ -88,7 +82,9 @@ export const EquipmentStatus = ({ plant }: EquipmentStatusProps) => {
                 </CardTitle>
                 {getStatusBadge(equipment.status)}
               </div>
-              <CardDescription>{equipment.type}</CardDescription>
+              <CardDescription>
+                {equipment.type} | SN: {equipment.serialNumber}
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {equipment.type === 'Inversor' && (
@@ -108,24 +104,24 @@ export const EquipmentStatus = ({ plant }: EquipmentStatusProps) => {
                 </div>
               )}
 
-              {equipment.type === 'String Box' && (
+              {equipment.type === 'Otimizador' && (
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <div className="text-sm text-muted-foreground">Corrente</div>
-                    <div className="font-medium">{equipment.current} A</div>
-                  </div>
                   <div>
                     <div className="text-sm text-muted-foreground">Tensão</div>
                     <div className="font-medium">{equipment.voltage} V</div>
                   </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">Corrente</div>
+                    <div className="font-medium">{equipment.current} A</div>
+                  </div>
                 </div>
               )}
 
-              {equipment.type === 'Monitor' && (
+              {equipment.type === 'Gateway' && (
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <div className="text-sm text-muted-foreground flex items-center gap-1">
-                      <Wifi className="w-3 h-3" />
+                    <div className="flex items-center text-sm text-muted-foreground mb-1">
+                      <Wifi className="w-3 h-3 mr-1" />
                       Conexão
                     </div>
                     <div className="font-medium">{equipment.connection}</div>
@@ -145,16 +141,14 @@ export const EquipmentStatus = ({ plant }: EquipmentStatusProps) => {
         ))}
       </div>
 
-      {plant.monitoring_system === 'manual' && (
-        <Card className="border-yellow-200 bg-yellow-50">
-          <CardHeader>
-            <CardTitle className="text-yellow-700">Sistema Manual</CardTitle>
-            <CardDescription className="text-yellow-600">
-              Configure um sistema de monitoramento automático para obter dados reais dos equipamentos.
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      )}
+      <Card className="border-blue-200 bg-blue-50">
+        <CardHeader>
+          <CardTitle className="text-blue-700">Sistema SolarEdge</CardTitle>
+          <CardDescription className="text-blue-600">
+            Monitoramento através da API SolarEdge com dados de inversores e otimizadores.
+          </CardDescription>
+        </CardHeader>
+      </Card>
     </div>
   );
 };
