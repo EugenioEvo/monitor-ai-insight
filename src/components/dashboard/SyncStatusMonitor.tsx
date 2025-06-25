@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,6 +6,7 @@ import { RefreshCw, AlertCircle, CheckCircle, Clock, Activity, Settings, Databas
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
+import { syncService } from '@/services/syncService';
 import type { Plant } from '@/types';
 
 interface SyncStatusMonitorProps {
@@ -44,46 +44,25 @@ export const SyncStatusMonitor = ({ plant, onUpdate }: SyncStatusMonitorProps) =
     try {
       console.log('Iniciando sincronização manual para planta:', plant.id);
 
-      let functionName = '';
-      if (plant.monitoring_system === 'sungrow') {
-        functionName = 'sungrow-connector';
-      } else if (plant.monitoring_system === 'solaredge') {
-        functionName = 'solaredge-connector';
-      } else {
-        throw new Error('Sistema de monitoramento não suportado');
-      }
+      const result = await syncService.performSync(plant);
+      
+      // Log do resultado
+      await syncService.logSyncResult(plant, result);
 
-      const { data, error } = await supabase.functions.invoke(functionName, {
-        body: {
-          action: 'sync_data',
-          plantId: plant.id
-        }
-      });
-
-      if (error) {
-        console.error('Erro na function:', error);
-        throw new Error(`Erro na sincronização: ${error.message}`);
-      }
-
-      console.log('Resposta da sincronização:', data);
-
-      if (data.success) {
+      if (result.success) {
         toast({
           title: "Sincronização concluída!",
-          description: data.message || "Dados sincronizados com sucesso.",
+          description: result.message || "Dados sincronizados com sucesso.",
         });
         
-        // Atualizar timestamp da última sincronização na planta
-        await supabase
-          .from('plants')
-          .update({ last_sync: new Date().toISOString() })
-          .eq('id', plant.id);
+        // Atualizar timestamp da última sincronização
+        await syncService.updateLastSyncTimestamp(plant);
         
         // Recarregar logs
         refetchLogs();
         onUpdate?.();
       } else {
-        throw new Error(data.error || 'Erro desconhecido na sincronização');
+        throw new Error(result.error || 'Erro desconhecido na sincronização');
       }
     } catch (error: any) {
       console.error('Falha na sincronização manual:', error);

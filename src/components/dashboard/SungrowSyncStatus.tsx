@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,6 +6,7 @@ import { RefreshCw, CheckCircle, AlertCircle, Clock, Activity, Settings } from '
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAutoSync } from '@/hooks/useAutoSync';
+import { syncService } from '@/services/syncService';
 import type { Plant } from '@/types';
 
 interface SungrowSyncStatusProps {
@@ -25,26 +25,23 @@ export const SungrowSyncStatus = ({ plant, onUpdate }: SungrowSyncStatusProps) =
     try {
       console.log('Starting manual sync for plant:', plant.id);
 
-      const { data, error } = await supabase.functions.invoke('sungrow-connector', {
-        body: {
-          action: 'sync_data',
-          plantId: plant.id
-        }
-      });
+      const result = await syncService.performSync(plant);
+      
+      // Log do resultado
+      await syncService.logSyncResult(plant, result);
 
-      if (error) {
-        console.error('Sync error:', error);
-        throw new Error(`Erro na sincronização: ${error.message}`);
-      }
-
-      if (data.success) {
+      if (result.success) {
         toast({
           title: "Sincronização concluída!",
-          description: data.message || "Dados sincronizados com sucesso.",
+          description: result.message || "Dados sincronizados com sucesso.",
         });
+        
+        // Atualizar timestamp da última sincronização
+        await syncService.updateLastSyncTimestamp(plant);
+        
         onUpdate?.();
       } else {
-        throw new Error(data.error || 'Erro desconhecido na sincronização');
+        throw new Error(result.error || 'Erro desconhecido na sincronização');
       }
     } catch (error: any) {
       console.error('Manual sync failed:', error);
