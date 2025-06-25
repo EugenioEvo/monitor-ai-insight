@@ -23,6 +23,7 @@ interface DiscoveredPlant {
   installationDate?: string;
   latitude?: number;
   longitude?: number;
+  ps_id?: string; // Plant Station ID específico do Sungrow
 }
 
 interface PlantDiscoveryProps {
@@ -112,6 +113,11 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
       const config = systemType === 'solaredge' ? solarEdgeConfig : sungrowConfig;
       const functionName = systemType === 'solaredge' ? 'solaredge-connector' : 'sungrow-connector';
       
+      console.log('Discovering plants with config:', {
+        systemType,
+        username: config.username ? `${config.username.substring(0, 3)}***` : 'missing'
+      });
+      
       const { data, error } = await supabase.functions.invoke(functionName, {
         body: {
           action: 'discover_plants',
@@ -122,10 +128,18 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
       if (error) throw error;
 
       if (data.success) {
-        setDiscoveredPlants(data.plants || []);
+        // Para Sungrow, garantir que cada planta tenha o ps_id correto
+        const plantsWithPsId = data.plants.map((plant: any) => ({
+          ...plant,
+          ps_id: plant.ps_id || plant.id // Garantir que ps_id seja preservado
+        }));
+        
+        setDiscoveredPlants(plantsWithPsId);
+        console.log('Plants discovered:', plantsWithPsId);
+        
         toast({
           title: "Plantas descobertas!",
-          description: `Encontradas ${data.plants?.length || 0} plantas disponíveis.`,
+          description: `Encontradas ${plantsWithPsId.length} plantas disponíveis.`,
         });
       } else {
         throw new Error(data.message);
@@ -156,12 +170,14 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
       const config = systemType === 'solaredge' ? solarEdgeConfig : sungrowConfig;
       const plantsToImport = discoveredPlants.filter(plant => selectedPlants.includes(plant.id));
       
+      console.log('Importing plants:', plantsToImport);
+      
       for (const plant of plantsToImport) {
         // Verificar se a planta já existe
         const { data: existing } = await supabase
           .from('plants')
           .select('id')
-          .eq('api_site_id', plant.id)
+          .eq('api_site_id', plant.ps_id || plant.id)
           .single();
 
         if (existing) {
@@ -174,9 +190,15 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
         if (systemType === 'sungrow') {
           finalConfig = {
             ...config,
-            plantId: plant.id // Garantir que o plantId seja definido na importação
+            plantId: plant.ps_id || plant.id // Usar ps_id se disponível, senão usar id
           };
         }
+
+        console.log('Final config for plant:', {
+          plantName: plant.name,
+          plantId: finalConfig.plantId || 'not set',
+          api_site_id: plant.ps_id || plant.id
+        });
 
         // Criar nova planta
         const { data: newPlant, error: insertError } = await supabase
@@ -190,7 +212,7 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
             start_date: plant.installationDate || new Date().toISOString().split('T')[0],
             status: 'active' as const,
             monitoring_system: systemType,
-            api_site_id: plant.id,
+            api_site_id: plant.ps_id || plant.id, // Usar ps_id se disponível
             api_credentials: finalConfig as any,
             sync_enabled: true
           })
@@ -202,10 +224,12 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
           continue;
         }
 
+        console.log(`Planta ${plant.name} importada com sucesso. ID: ${newPlant.id}`);
+
         // Após importar, fazer sincronização inicial automática
         if (newPlant && systemType === 'sungrow') {
           try {
-            console.log(`Iniciando sincronização inicial para planta ${plant.name}`);
+            console.log(`Iniciando sincronização inicial para planta ${plant.name} (ID: ${newPlant.id})`);
             
             const { data: syncResult, error: syncError } = await supabase.functions.invoke('sungrow-connector', {
               body: {
@@ -217,7 +241,9 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
             if (syncError) {
               console.error(`Erro na sincronização inicial da planta ${plant.name}:`, syncError);
             } else if (syncResult?.success) {
-              console.log(`Sincronização inicial bem-sucedida para ${plant.name}`);
+              console.log(`Sincronização inicial bem-sucedida para ${plant.name}: ${syncResult.dataPointsSynced || 0} pontos`);
+            } else {
+              console.warn(`Sincronização inicial falhou para ${plant.name}:`, syncResult?.error);
             }
           } catch (syncError) {
             console.error(`Falha na sincronização inicial da planta ${plant.name}:`, syncError);
@@ -479,6 +505,9 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
                               )}
                             </div>
                             <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
+                              <span className="text-xs bg-gray-100 px-2 py-1 rounded">
+                                PS_ID: {plant.ps_id || plant.id}
+                              </span>
                               {plant.capacity && (
                                 <span className="flex items-center gap-1">
                                   <Zap className="w-3 h-3" />

@@ -8,6 +8,8 @@ import type { Plant } from '@/types';
 export const useAutoSync = (plant: Plant) => {
   const { toast } = useToast();
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const retryCountRef = useRef<number>(0);
+  const maxRetries = 3;
 
   // Query para verificar se a sincronização automática está habilitada
   const { data: syncEnabled } = useQuery({
@@ -22,7 +24,7 @@ export const useAutoSync = (plant: Plant) => {
     }
 
     try {
-      console.log(`Executando sincronização automática para planta ${plant.name}`);
+      console.log(`Executando sincronização automática para planta ${plant.name} (ID: ${plant.id})`);
       
       let functionName = '';
       if (plant.monitoring_system === 'sungrow') {
@@ -30,6 +32,7 @@ export const useAutoSync = (plant: Plant) => {
       } else if (plant.monitoring_system === 'solaredge') {
         functionName = 'solaredge-connector';
       } else {
+        console.log(`Sistema de monitoramento não suportado: ${plant.monitoring_system}`);
         return;
       }
 
@@ -43,22 +46,74 @@ export const useAutoSync = (plant: Plant) => {
       if (error) {
         console.error(`Erro na sincronização automática da planta ${plant.name}:`, error);
         
+        // Incrementar contador de retry
+        retryCountRef.current += 1;
+        
         // Log do erro no banco
         await supabase.from('sync_logs').insert({
           plant_id: plant.id,
           system_type: plant.monitoring_system,
           status: 'error',
-          message: `Sincronização automática falhou: ${error.message}`,
+          message: `Sincronização automática falhou (tentativa ${retryCountRef.current}/${maxRetries}): ${error.message}`,
           data_points_synced: 0
         });
+
+        // Se excedeu o número máximo de tentativas, mostrar toast de erro
+        if (retryCountRef.current >= maxRetries) {
+          toast({
+            title: "Erro na sincronização automática",
+            description: `Planta ${plant.name}: ${error.message}`,
+            variant: "destructive",
+          });
+          retryCountRef.current = 0; // Reset contador
+        }
       } else if (data?.success) {
         console.log(`Sincronização automática bem-sucedida para ${plant.name}: ${data.dataPointsSynced || 0} pontos`);
         
+        // Reset contador de retry em caso de sucesso
+        retryCountRef.current = 0;
+        
+        // Log de sucesso no banco
+        await supabase.from('sync_logs').insert({
+          plant_id: plant.id,
+          system_type: plant.monitoring_system,
+          status: 'success',
+          message: `Sincronização automática bem-sucedida: ${data.dataPointsSynced || 0} pontos de dados`,
+          data_points_synced: data.dataPointsSynced || 0,
+          sync_duration_ms: data.syncDuration || null
+        });
+        
+        // Atualizar timestamp da última sincronização
+        await supabase
+          .from('plants')
+          .update({ last_sync: new Date().toISOString() })
+          .eq('id', plant.id);
+        
         // Verificar se existem alertas críticos que precisam ser criados
         await checkAndCreateAlerts(plant);
+      } else {
+        console.error(`Resposta inválida da sincronização: ${data?.error || 'Erro desconhecido'}`);
+        
+        // Log de erro no banco
+        await supabase.from('sync_logs').insert({
+          plant_id: plant.id,
+          system_type: plant.monitoring_system,
+          status: 'error',
+          message: `Sincronização automática falhou: ${data?.error || 'Erro desconhecido'}`,
+          data_points_synced: 0
+        });
       }
     } catch (error: any) {
       console.error(`Falha na sincronização automática da planta ${plant.name}:`, error);
+      
+      // Log de erro no banco
+      await supabase.from('sync_logs').insert({
+        plant_id: plant.id,
+        system_type: plant.monitoring_system,
+        status: 'error',
+        message: `Falha na sincronização automática: ${error.message}`,
+        data_points_synced: 0
+      });
     }
   };
 
@@ -73,14 +128,18 @@ export const useAutoSync = (plant: Plant) => {
         .limit(1)
         .single();
 
-      if (!latestReading) return;
+      if (!latestReading) {
+        console.log(`Nenhuma leitura encontrada para planta ${plant.name}`);
+        return;
+      }
 
       const now = new Date();
       const readingTime = new Date(latestReading.timestamp);
       const hoursSinceReading = (now.getTime() - readingTime.getTime()) / (1000 * 60 * 60);
 
-      // Criar alerta se não há leituras há mais de 2 horas
-      if (hoursSinceReading > 2) {
+      // Criar alerta se não há leituras há mais de 2 horas durante o dia
+      const currentHour = now.getHours();
+      if (hoursSinceReading > 2 && currentHour >= 6 && currentHour <= 20) {
         const { data: existingAlert } = await supabase
           .from('alerts')
           .select('id')
@@ -88,7 +147,7 @@ export const useAutoSync = (plant: Plant) => {
           .eq('type', 'communication')
           .eq('severity', 'warning')
           .gte('created_at', new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString())
-          .single();
+          .maybeSingle();
 
         if (!existingAlert) {
           await supabase.from('alerts').insert({
@@ -98,12 +157,13 @@ export const useAutoSync = (plant: Plant) => {
             message: `Planta ${plant.name} sem dados há ${Math.round(hoursSinceReading)} horas`,
             timestamp: now.toISOString()
           });
+          
+          console.log(`Alerta de comunicação criado para planta ${plant.name}`);
         }
       }
 
       // Verificar se a potência está muito baixa durante o dia (entre 8h e 17h)
-      const currentHour = now.getHours();
-      if (currentHour >= 8 && currentHour <= 17 && latestReading.power_w < (plant.capacity_kwp * 100)) {
+      if (currentHour >= 8 && currentHour <= 17) {
         const expectedMinPower = plant.capacity_kwp * 100; // 10% da capacidade como mínimo esperado
         
         if (latestReading.power_w < expectedMinPower) {
@@ -114,7 +174,7 @@ export const useAutoSync = (plant: Plant) => {
             .eq('type', 'performance')
             .eq('severity', 'warning')
             .gte('created_at', new Date(now.getTime() - 60 * 60 * 1000).toISOString())
-            .single();
+            .maybeSingle();
 
           if (!existingAlert) {
             await supabase.from('alerts').insert({
@@ -124,6 +184,8 @@ export const useAutoSync = (plant: Plant) => {
               message: `Planta ${plant.name} com baixa geração: ${(latestReading.power_w / 1000).toFixed(2)} kW (esperado mínimo: ${(expectedMinPower / 1000).toFixed(2)} kW)`,
               timestamp: now.toISOString()
             });
+            
+            console.log(`Alerta de performance criado para planta ${plant.name}`);
           }
         }
       }
@@ -144,11 +206,17 @@ export const useAutoSync = (plant: Plant) => {
     // Configurar intervalo de sincronização (15 minutos)
     const syncInterval = 15 * 60 * 1000; // 15 minutos em ms
     
-    // Executar sincronização inicial após 30 segundos
-    const initialTimeout = setTimeout(performAutoSync, 30000);
+    // Executar sincronização inicial após 30 segundos para dar tempo do componente carregar
+    const initialTimeout = setTimeout(() => {
+      console.log(`Iniciando primeira sincronização automática para planta ${plant.name}`);
+      performAutoSync();
+    }, 30000);
     
     // Configurar sincronização periódica
-    intervalRef.current = setInterval(performAutoSync, syncInterval);
+    intervalRef.current = setInterval(() => {
+      console.log(`Executando sincronização periódica para planta ${plant.name}`);
+      performAutoSync();
+    }, syncInterval);
 
     console.log(`Sincronização automática configurada para planta ${plant.name} a cada 15 minutos`);
 
@@ -159,7 +227,7 @@ export const useAutoSync = (plant: Plant) => {
         intervalRef.current = null;
       }
     };
-  }, [syncEnabled, plant.id, plant.sync_enabled]);
+  }, [syncEnabled, plant.id, plant.sync_enabled, plant.name]);
 
   return {
     performAutoSync,

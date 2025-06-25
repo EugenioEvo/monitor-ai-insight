@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { SungrowPlantOverview } from './SungrowPlantOverview';
-import { SungrowManualSync } from './SungrowManualSync';
+import { SyncStatusMonitor } from './SyncStatusMonitor';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { MetricCard } from './MetricCard';
@@ -24,7 +24,7 @@ export const PlantOverview = ({ plant }: PlantOverviewProps) => {
     return (
       <div className="space-y-6">
         <SungrowPlantOverview plant={plant} />
-        <SungrowManualSync plant={plant} />
+        <SyncStatusMonitor plant={plant} />
         
         {/* Indicador de sincronização automática */}
         {syncEnabled && (
@@ -144,6 +144,11 @@ export const PlantOverview = ({ plant }: PlantOverviewProps) => {
           description="Atual"
         />
       </div>
+      
+      {/* Monitor de Sincronização para plantas não-Sungrow */}
+      {plant.monitoring_system !== 'manual' && (
+        <SyncStatusMonitor plant={plant} />
+      )}
     </div>
   );
 };
