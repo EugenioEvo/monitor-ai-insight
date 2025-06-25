@@ -14,7 +14,18 @@ export const useSungrowOverview = (plant: Plant) => {
 
       console.log('Fetching Sungrow overview for plant:', plant.id);
 
-      const config = plant.api_credentials as SungrowConfig;
+      let config = plant.api_credentials as SungrowConfig;
+      
+      // Ensure plantId is set from plant configuration
+      if (!config.plantId && plant.api_site_id) {
+        config = { ...config, plantId: plant.api_site_id };
+      }
+
+      console.log('Using config for overview:', {
+        username: config.username ? `${config.username.substring(0, 3)}***` : 'missing',
+        plantId: config.plantId || 'missing',
+        has_credentials: !!(config.appkey && config.accessKey)
+      });
 
       const { data, error } = await supabase.functions.invoke('sungrow-connector', {
         body: {
@@ -48,7 +59,18 @@ export const useSungrowEnergyData = (plant: Plant, period: 'day' | 'month' | 'ye
 
       console.log('Fetching Sungrow energy data for plant:', plant.id, 'period:', period);
 
-      const config = plant.api_credentials as SungrowConfig;
+      let config = plant.api_credentials as SungrowConfig;
+      
+      // Ensure plantId is set from plant configuration
+      if (!config.plantId && plant.api_site_id) {
+        config = { ...config, plantId: plant.api_site_id };
+      }
+
+      console.log('Using config for energy:', {
+        username: config.username ? `${config.username.substring(0, 3)}***` : 'missing',
+        plantId: config.plantId || 'missing',
+        period: period
+      });
 
       const { data, error } = await supabase.functions.invoke('sungrow-connector', {
         body: {
@@ -82,7 +104,17 @@ export const useSungrowDevices = (plant: Plant) => {
 
       console.log('Fetching Sungrow devices for plant:', plant.id);
 
-      const config = plant.api_credentials as SungrowConfig;
+      let config = plant.api_credentials as SungrowConfig;
+      
+      // Ensure plantId is set from plant configuration
+      if (!config.plantId && plant.api_site_id) {
+        config = { ...config, plantId: plant.api_site_id };
+      }
+
+      console.log('Using config for devices:', {
+        username: config.username ? `${config.username.substring(0, 3)}***` : 'missing',
+        plantId: config.plantId || 'missing'
+      });
 
       const { data, error } = await supabase.functions.invoke('sungrow-connector', {
         body: {
@@ -115,7 +147,18 @@ export const useSungrowRealtimeData = (plant: Plant, deviceType: string = '1') =
 
       console.log('Fetching Sungrow realtime data for plant:', plant.id, 'deviceType:', deviceType);
 
-      const config = plant.api_credentials as SungrowConfig;
+      let config = plant.api_credentials as SungrowConfig;
+      
+      // Ensure plantId is set from plant configuration
+      if (!config.plantId && plant.api_site_id) {
+        config = { ...config, plantId: plant.api_site_id };
+      }
+
+      console.log('Using config for realtime:', {
+        username: config.username ? `${config.username.substring(0, 3)}***` : 'missing',
+        plantId: config.plantId || 'missing',
+        deviceType: deviceType
+      });
 
       const { data, error } = await supabase.functions.invoke('sungrow-connector', {
         body: {

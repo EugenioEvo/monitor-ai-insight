@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.0';
@@ -75,15 +76,17 @@ serve(async (req) => {
     reqSerialNum = generateRequestId();
     
     console.log(`[${reqSerialNum}] Starting request: ${action}`);
+    console.log(`[${reqSerialNum}] Plant ID:`, plantId);
     console.log(`[${reqSerialNum}] Config validation:`, {
       username: config?.username ? `${config.username.substring(0, 3)}***` : 'missing',
       password: config?.password ? '***provided***' : 'missing',
       appkey: config?.appkey ? `${config.appkey.substring(0, 8)}***` : 'missing',
       accessKey: config?.accessKey ? `${config.accessKey.substring(0, 8)}***` : 'missing',
+      plantId: config?.plantId || 'missing',
       baseUrl: config?.baseUrl || 'default'
     });
     
-    // Validação robusta das credenciais
+    // Enhanced credential validation
     if (action !== 'test_connection' && action !== 'discover_plants' && action !== 'get_plant_list') {
       if (!config?.username || !config?.password || !config?.appkey || !config?.accessKey) {
         throw new Error('Credenciais incompletas. Verifique se todos os campos estão preenchidos: username, password, appkey e accessKey são obrigatórios.');
@@ -104,6 +107,7 @@ serve(async (req) => {
         result = await testConnection(config, reqSerialNum);
         break;
       case 'sync_data':
+        // Para sync_data, precisamos buscar as credenciais da planta no banco
         result = await syncData(plantId, reqSerialNum);
         break;
       case 'get_plant_list':
@@ -489,6 +493,11 @@ async function discoverPlants(config: SungrowConfig, reqSerialNum?: string) {
 async function getDeviceList(config: SungrowConfig, reqSerialNum: string) {
   try {
     console.log(`[${reqSerialNum}] Fetching device list via OpenAPI...`);
+    console.log(`[${reqSerialNum}] Using Plant ID: ${config.plantId}`);
+    
+    if (!config.plantId) {
+      throw new Error('Plant ID não configurado. Verifique as configurações da planta.');
+    }
     
     const cacheKey = getCacheKey('device_list', { accessKey: config.accessKey, plantId: config.plantId });
     const cached = getFromCache(cacheKey);
@@ -506,6 +515,12 @@ async function getDeviceList(config: SungrowConfig, reqSerialNum: string) {
       ps_id: config.plantId
     };
 
+    console.log(`[${reqSerialNum}] Payload for device list:`, {
+      appkey: `${config.appkey.substring(0, 8)}***`,
+      ps_id: config.plantId,
+      has_token: !!token
+    });
+
     const response = await fetchWithHeaders(`${baseUrl}/openapi/getDeviceList`, {
       method: 'POST',
       headers: {
@@ -519,9 +534,14 @@ async function getDeviceList(config: SungrowConfig, reqSerialNum: string) {
     }
 
     const data = await response.json();
+    console.log(`[${reqSerialNum}] Device list response:`, {
+      result_code: data.result_code,
+      result_msg: data.result_msg,
+      device_count: data.result_data?.length || 0
+    });
     
     if (data.result_code !== '1') {
-      throw new Error(`API Error: ${data.result_msg}`);
+      throw new Error(`API Error: ${data.result_msg} (Code: ${data.result_code})`);
     }
 
     // Cache for 10 minutes (devices don't change frequently)
@@ -542,6 +562,11 @@ async function getDeviceList(config: SungrowConfig, reqSerialNum: string) {
 async function getStationRealKpi(config: SungrowConfig, reqSerialNum: string, cacheKey?: string) {
   try {
     console.log(`[${reqSerialNum}] Fetching station real-time KPIs via OpenAPI...`);
+    console.log(`[${reqSerialNum}] Using Plant ID: ${config.plantId}`);
+    
+    if (!config.plantId) {
+      throw new Error('Plant ID não configurado. Verifique as configurações da planta.');
+    }
     
     const key = cacheKey || getCacheKey('station_real_kpi', { accessKey: config.accessKey, plantId: config.plantId });
     const cached = getFromCache(key);
@@ -559,6 +584,12 @@ async function getStationRealKpi(config: SungrowConfig, reqSerialNum: string, ca
       ps_id: config.plantId
     };
 
+    console.log(`[${reqSerialNum}] Payload for KPI:`, {
+      appkey: `${config.appkey.substring(0, 8)}***`,
+      ps_id: config.plantId,
+      has_token: !!token
+    });
+
     const response = await fetchWithHeaders(`${baseUrl}/openapi/getStationRealKpi`, {
       method: 'POST',
       headers: {
@@ -568,13 +599,20 @@ async function getStationRealKpi(config: SungrowConfig, reqSerialNum: string, ca
     });
 
     if (!response.ok) {
-      throw new Error(`API Error: ${response.status}`);
+      const errorText = await response.text();
+      console.error(`[${reqSerialNum}] KPI API Error ${response.status}:`, errorText);
+      throw new Error(`API Error ${response.status}: ${errorText}`);
     }
 
     const data = await response.json();
+    console.log(`[${reqSerialNum}] KPI response:`, {
+      result_code: data.result_code,
+      result_msg: data.result_msg,
+      has_data: !!data.result_data
+    });
     
     if (data.result_code !== '1') {
-      throw new Error(`API Error: ${data.result_msg}`);
+      throw new Error(`API Error: ${data.result_msg} (Code: ${data.result_code})`);
     }
 
     // Cache for 5 minutes (real-time data)
@@ -588,6 +626,7 @@ async function getStationRealKpi(config: SungrowConfig, reqSerialNum: string, ca
       reqSerialNum
     };
   } catch (error) {
+    console.error(`[${reqSerialNum}] KPI fetch error:`, error.message);
     throw new Error(`Failed to fetch station KPIs: ${error.message}`);
   }
 }
@@ -595,6 +634,11 @@ async function getStationRealKpi(config: SungrowConfig, reqSerialNum: string, ca
 async function getStationEnergy(config: SungrowConfig, period: string, reqSerialNum: string, cacheKey?: string) {
   try {
     console.log(`[${reqSerialNum}] Fetching station energy for period: ${period} via OpenAPI`);
+    console.log(`[${reqSerialNum}] Using Plant ID: ${config.plantId}`);
+    
+    if (!config.plantId) {
+      throw new Error('Plant ID não configurado. Verifique as configurações da planta.');
+    }
     
     const key = cacheKey || getCacheKey('station_energy', { accessKey: config.accessKey, plantId: config.plantId, period });
     const cached = getFromCache(key);
@@ -641,6 +685,15 @@ async function getStationEnergy(config: SungrowConfig, period: string, reqSerial
       date_type: dateType
     };
 
+    console.log(`[${reqSerialNum}] Energy payload:`, {
+      appkey: `${config.appkey.substring(0, 8)}***`,
+      ps_id: config.plantId,
+      start_time: startDate,
+      end_time: endDate,
+      date_type: dateType,
+      has_token: !!token
+    });
+
     const response = await fetchWithHeaders(`${baseUrl}/openapi/getStationEnergy`, {
       method: 'POST',
       headers: {
@@ -650,13 +703,20 @@ async function getStationEnergy(config: SungrowConfig, period: string, reqSerial
     });
 
     if (!response.ok) {
-      throw new Error(`API Error: ${response.status}`);
+      const errorText = await response.text();
+      console.error(`[${reqSerialNum}] Energy API Error ${response.status}:`, errorText);
+      throw new Error(`API Error ${response.status}: ${errorText}`);
     }
 
     const data = await response.json();
+    console.log(`[${reqSerialNum}] Energy response:`, {
+      result_code: data.result_code,
+      result_msg: data.result_msg,
+      data_count: data.result_data?.length || 0
+    });
     
     if (data.result_code !== '1') {
-      throw new Error(`API Error: ${data.result_msg}`);
+      throw new Error(`API Error: ${data.result_msg} (Code: ${data.result_code})`);
     }
 
     // Cache for different TTLs based on period
@@ -675,6 +735,7 @@ async function getStationEnergy(config: SungrowConfig, period: string, reqSerial
       reqSerialNum
     };
   } catch (error) {
+    console.error(`[${reqSerialNum}] Energy fetch error:`, error.message);
     throw new Error(`Failed to fetch station energy: ${error.message}`);
   }
 }
@@ -682,6 +743,11 @@ async function getStationEnergy(config: SungrowConfig, period: string, reqSerial
 async function getDeviceRealTimeData(config: SungrowConfig, deviceType: string, reqSerialNum: string, cacheKey?: string) {
   try {
     console.log(`[${reqSerialNum}] Fetching device real-time data for type: ${deviceType} via OpenAPI`);
+    console.log(`[${reqSerialNum}] Using Plant ID: ${config.plantId}`);
+    
+    if (!config.plantId) {
+      throw new Error('Plant ID não configurado. Verifique as configurações da planta.');
+    }
     
     const key = cacheKey || getCacheKey('device_realtime', { accessKey: config.accessKey, plantId: config.plantId, deviceType });
     const cached = getFromCache(key);
@@ -700,6 +766,13 @@ async function getDeviceRealTimeData(config: SungrowConfig, deviceType: string, 
       device_type: deviceType || 1 // 1 for inverter, 7 for optimizer, etc.
     };
 
+    console.log(`[${reqSerialNum}] Realtime payload:`, {
+      appkey: `${config.appkey.substring(0, 8)}***`,
+      ps_id: config.plantId,
+      device_type: deviceType || 1,
+      has_token: !!token
+    });
+
     const response = await fetchWithHeaders(`${baseUrl}/openapi/getDeviceRealTimeData`, {
       method: 'POST',
       headers: {
@@ -709,13 +782,20 @@ async function getDeviceRealTimeData(config: SungrowConfig, deviceType: string, 
     });
 
     if (!response.ok) {
-      throw new Error(`API Error: ${response.status}`);
+      const errorText = await response.text();
+      console.error(`[${reqSerialNum}] Realtime API Error ${response.status}:`, errorText);
+      throw new Error(`API Error ${response.status}: ${errorText}`);
     }
 
     const data = await response.json();
+    console.log(`[${reqSerialNum}] Realtime response:`, {
+      result_code: data.result_code,
+      result_msg: data.result_msg,
+      device_count: data.result_data?.length || 0
+    });
     
     if (data.result_code !== '1') {
-      throw new Error(`API Error: ${data.result_msg}`);
+      throw new Error(`API Error: ${data.result_msg} (Code: ${data.result_code})`);
     }
 
     // Cache for 2 minutes (very fresh real-time data)
@@ -730,6 +810,7 @@ async function getDeviceRealTimeData(config: SungrowConfig, deviceType: string, 
       reqSerialNum
     };
   } catch (error) {
+    console.error(`[${reqSerialNum}] Realtime fetch error:`, error.message);
     throw new Error(`Failed to fetch device real-time data: ${error.message}`);
   }
 }
@@ -739,6 +820,8 @@ async function syncData(plantId: string, reqSerialNum?: string) {
   let dataPointsSynced = 0;
 
   try {
+    console.log(`[${reqSerialNum || 'sync'}] Starting data sync for plant: ${plantId}`);
+
     const { data: plant, error: plantError } = await supabase
       .from('plants')
       .select('*')
@@ -746,13 +829,39 @@ async function syncData(plantId: string, reqSerialNum?: string) {
       .single();
 
     if (plantError || !plant) {
+      console.error(`[${reqSerialNum || 'sync'}] Plant not found:`, plantError);
       throw new Error('Plant not found');
     }
 
+    console.log(`[${reqSerialNum || 'sync'}] Plant data:`, {
+      id: plant.id,
+      name: plant.name,
+      monitoring_system: plant.monitoring_system,
+      has_api_credentials: !!plant.api_credentials
+    });
+
     const config = plant.api_credentials as SungrowConfig & { plantId: string };
+    
     if (!config?.username || !config?.password || !config?.appkey || !config.accessKey) {
-      throw new Error('API configuration not found');
+      throw new Error('API configuration not found or incomplete');
     }
+
+    // Ensure plantId is set from plant configuration
+    if (!config.plantId && plant.api_site_id) {
+      config.plantId = plant.api_site_id;
+    }
+
+    if (!config.plantId) {
+      throw new Error('Plant ID não configurado. Configure o Site ID nas configurações da planta.');
+    }
+
+    console.log(`[${reqSerialNum || 'sync'}] Using config:`, {
+      username: `${config.username.substring(0, 3)}***`,
+      has_password: !!config.password,
+      appkey: `${config.appkey.substring(0, 8)}***`,
+      accessKey: `${config.accessKey.substring(0, 8)}***`,
+      plantId: config.plantId
+    });
 
     const token = await authenticateWithRetry(config, reqSerialNum || 'sync');
 
@@ -767,6 +876,8 @@ async function syncData(plantId: string, reqSerialNum?: string) {
     const now = new Date().toISOString();
 
     if (kpiData.success && kpiData.data) {
+      console.log(`[${reqSerialNum || 'sync'}] Processing KPI data:`, kpiData.data);
+      
       readings.push({
         plant_id: plantId,
         timestamp: now,
@@ -777,6 +888,8 @@ async function syncData(plantId: string, reqSerialNum?: string) {
     }
 
     if (readings.length > 0) {
+      console.log(`[${reqSerialNum || 'sync'}] Inserting ${readings.length} readings`);
+      
       const { error: insertError } = await supabase
         .from('readings')
         .upsert(readings, { 
@@ -785,6 +898,7 @@ async function syncData(plantId: string, reqSerialNum?: string) {
         });
 
       if (insertError) {
+        console.error(`[${reqSerialNum || 'sync'}] Insert error:`, insertError);
         throw new Error(`Insert error: ${insertError.message}`);
       }
 
@@ -792,10 +906,14 @@ async function syncData(plantId: string, reqSerialNum?: string) {
     }
 
     // Update last sync timestamp
-    await supabase
+    const { error: updateError } = await supabase
       .from('plants')
       .update({ last_sync: now })
       .eq('id', plantId);
+
+    if (updateError) {
+      console.warn(`[${reqSerialNum || 'sync'}] Failed to update last_sync:`, updateError);
+    }
 
     // Log success
     await supabase
@@ -813,12 +931,14 @@ async function syncData(plantId: string, reqSerialNum?: string) {
 
     return {
       success: true,
-      message: `Synced ${dataPointsSynced} data points`,
+      message: `Sincronização concluída! ${dataPointsSynced} pontos de dados sincronizados com sucesso.`,
       dataPointsSynced,
       reqSerialNum: reqSerialNum || 'sync'
     };
 
   } catch (error) {
+    console.error(`[${reqSerialNum || 'sync'}] Sync failed:`, error.message);
+    
     // Log error
     await supabase
       .from('sync_logs')
