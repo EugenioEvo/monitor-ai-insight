@@ -15,6 +15,8 @@ import type { Plant } from '@/types';
 import type { SolarEdgeConfig, SungrowConfig } from '@/types/monitoring';
 import { SungrowConnectionTest } from './SungrowConnectionTest';
 import { SungrowPlantDiscovery } from './SungrowPlantDiscovery';
+import { PlantConfigurationValidator } from './PlantConfigurationValidator';
+import { getDetailedErrorMessage } from '@/utils/errorHandling';
 
 interface MonitoringSetupProps {
   plant: Plant;
@@ -218,6 +220,9 @@ export const MonitoringSetup = ({ plant, onUpdate }: MonitoringSetupProps) => {
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
+        {/* Validador de configuração */}
+        <PlantConfigurationValidator plant={plant} />
+        
         {/* Sistema de monitoramento */}
         <div className="space-y-2">
           <Label htmlFor="monitoring-system">Sistema de Monitoramento</Label>

@@ -17,8 +17,13 @@ export const useSungrowOverview = (plant: Plant) => {
       let config = plant.api_credentials as SungrowConfig;
       
       // Ensure plantId is set from plant configuration
-      if (!config.plantId && plant.api_site_id) {
-        config = { ...config, plantId: plant.api_site_id };
+      if (!config.plantId) {
+        if (plant.api_site_id) {
+          config = { ...config, plantId: plant.api_site_id };
+        } else {
+          console.error('Plant missing both plantId and api_site_id');
+          throw new Error('Configuração incompleta: Plant ID não encontrado');
+        }
       }
 
       console.log('Using config for overview:', {
@@ -62,8 +67,13 @@ export const useSungrowEnergyData = (plant: Plant, period: 'day' | 'month' | 'ye
       let config = plant.api_credentials as SungrowConfig;
       
       // Ensure plantId is set from plant configuration
-      if (!config.plantId && plant.api_site_id) {
-        config = { ...config, plantId: plant.api_site_id };
+      if (!config.plantId) {
+        if (plant.api_site_id) {
+          config = { ...config, plantId: plant.api_site_id };
+        } else {
+          console.error('Plant missing both plantId and api_site_id');
+          throw new Error('Configuração incompleta: Plant ID não encontrado');
+        }
       }
 
       console.log('Using config for energy:', {
@@ -107,8 +117,13 @@ export const useSungrowDevices = (plant: Plant) => {
       let config = plant.api_credentials as SungrowConfig;
       
       // Ensure plantId is set from plant configuration
-      if (!config.plantId && plant.api_site_id) {
-        config = { ...config, plantId: plant.api_site_id };
+      if (!config.plantId) {
+        if (plant.api_site_id) {
+          config = { ...config, plantId: plant.api_site_id };
+        } else {
+          console.error('Plant missing both plantId and api_site_id');
+          throw new Error('Configuração incompleta: Plant ID não encontrado');
+        }
       }
 
       console.log('Using config for devices:', {
@@ -150,8 +165,13 @@ export const useSungrowRealtimeData = (plant: Plant, deviceType: string = '1') =
       let config = plant.api_credentials as SungrowConfig;
       
       // Ensure plantId is set from plant configuration
-      if (!config.plantId && plant.api_site_id) {
-        config = { ...config, plantId: plant.api_site_id };
+      if (!config.plantId) {
+        if (plant.api_site_id) {
+          config = { ...config, plantId: plant.api_site_id };
+        } else {
+          console.error('Plant missing both plantId and api_site_id');
+          throw new Error('Configuração incompleta: Plant ID não encontrado');
+        }
       }
 
       console.log('Using config for realtime:', {
