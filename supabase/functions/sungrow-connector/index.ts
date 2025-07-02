@@ -66,6 +66,10 @@ const validatePlantId = (config: SungrowConfig): string => {
   throw new Error('Plant ID não configurado. Verifique as configurações da planta.');
 };
 
+const getPlantIdFromConfig = (config: SungrowConfig): string | null => {
+  return config.plantId || null;
+};
+
 const validateAuthConfig = (config: SungrowConfig, requirePlantId: boolean = false): void => {
   const missingFields = [];
   if (!config.username) missingFields.push('username');
@@ -77,6 +81,10 @@ const validateAuthConfig = (config: SungrowConfig, requirePlantId: boolean = fal
   if (missingFields.length > 0) {
     throw new Error(`Configuração incompleta. Campos obrigatórios: ${missingFields.join(', ')}`);
   }
+};
+
+const validateCredentialsOnly = (config: SungrowConfig): void => {
+  validateAuthConfig(config, false);
 };
 
 const logRequest = (requestId: string, level: string, message: string, data?: any) => {
@@ -214,7 +222,7 @@ async function testConnection(config: SungrowConfig, requestId: string) {
       hasCredentials: !!(config.appkey && config.accessKey)
     });
 
-    validateAuthConfig(config, false); // Não requer plantId para teste de conexão
+    validateCredentialsOnly(config); // Validar apenas credenciais
 
     await authenticate(config, requestId);
     
@@ -251,7 +259,7 @@ async function discoverPlants(config: SungrowConfig, requestId: string) {
     });
     
     // Validar apenas credenciais de autenticação, não plantId para descoberta
-    validateAuthConfig(config, false);
+    validateCredentialsOnly(config);
     
     await authenticate(config, requestId);
     const headers = createStandardHeaders(config.accessKey);
@@ -582,11 +590,14 @@ async function syncPlantData(supabase: any, plantId: string, requestId: string) 
         
         const { error: readingError } = await supabase
           .from('readings')
-          .insert({
+          .upsert({
             plant_id: plantId,
             timestamp: new Date().toISOString(),
             power_w: Math.round(currentPower * 1000),
             energy_kwh: todayEnergy
+          }, {
+            onConflict: 'plant_id,timestamp',
+            ignoreDuplicates: false
           });
 
         if (readingError) {

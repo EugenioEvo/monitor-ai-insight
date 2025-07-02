@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { Plant } from '@/types';
 import type { SungrowConfig } from '@/types/monitoring';
+import { plantConfigHelper } from '@/utils/plantConfigHelper';
 
 export const useSungrowOverview = (plant: Plant) => {
   return useQuery({
@@ -14,21 +15,14 @@ export const useSungrowOverview = (plant: Plant) => {
 
       console.log('Fetching Sungrow overview for plant:', plant.id);
 
-      let config = plant.api_credentials as SungrowConfig;
-      
-      // Ensure plantId is set from plant configuration
-      if (!config.plantId) {
-        if (plant.api_site_id) {
-          config = { ...config, plantId: plant.api_site_id };
-        } else {
-          console.error('Plant missing both plantId and api_site_id');
-          throw new Error('Configuração incompleta: Plant ID não encontrado');
-        }
+      const config = plantConfigHelper.prepareSungrowConfig(plant);
+      if (!config) {
+        throw new Error('Configuração incompleta: Plant ID não encontrado');
       }
 
       console.log('Using config for overview:', {
         username: config.username ? `${config.username.substring(0, 3)}***` : 'missing',
-        plantId: config.plantId || 'missing',
+        plantId: config.plantId,
         has_credentials: !!(config.appkey && config.accessKey)
       });
 
@@ -64,21 +58,14 @@ export const useSungrowEnergyData = (plant: Plant, period: 'day' | 'month' | 'ye
 
       console.log('Fetching Sungrow energy data for plant:', plant.id, 'period:', period);
 
-      let config = plant.api_credentials as SungrowConfig;
-      
-      // Ensure plantId is set from plant configuration
-      if (!config.plantId) {
-        if (plant.api_site_id) {
-          config = { ...config, plantId: plant.api_site_id };
-        } else {
-          console.error('Plant missing both plantId and api_site_id');
-          throw new Error('Configuração incompleta: Plant ID não encontrado');
-        }
+      const config = plantConfigHelper.prepareSungrowConfig(plant);
+      if (!config) {
+        throw new Error('Configuração incompleta: Plant ID não encontrado');
       }
 
       console.log('Using config for energy:', {
         username: config.username ? `${config.username.substring(0, 3)}***` : 'missing',
-        plantId: config.plantId || 'missing',
+        plantId: config.plantId,
         period: period
       });
 
@@ -114,21 +101,14 @@ export const useSungrowDevices = (plant: Plant) => {
 
       console.log('Fetching Sungrow devices for plant:', plant.id);
 
-      let config = plant.api_credentials as SungrowConfig;
-      
-      // Ensure plantId is set from plant configuration
-      if (!config.plantId) {
-        if (plant.api_site_id) {
-          config = { ...config, plantId: plant.api_site_id };
-        } else {
-          console.error('Plant missing both plantId and api_site_id');
-          throw new Error('Configuração incompleta: Plant ID não encontrado');
-        }
+      const config = plantConfigHelper.prepareSungrowConfig(plant);
+      if (!config) {
+        throw new Error('Configuração incompleta: Plant ID não encontrado');
       }
 
       console.log('Using config for devices:', {
         username: config.username ? `${config.username.substring(0, 3)}***` : 'missing',
-        plantId: config.plantId || 'missing'
+        plantId: config.plantId
       });
 
       const { data, error } = await supabase.functions.invoke('sungrow-connector', {
@@ -162,21 +142,14 @@ export const useSungrowRealtimeData = (plant: Plant, deviceType: string = '1') =
 
       console.log('Fetching Sungrow realtime data for plant:', plant.id, 'deviceType:', deviceType);
 
-      let config = plant.api_credentials as SungrowConfig;
-      
-      // Ensure plantId is set from plant configuration
-      if (!config.plantId) {
-        if (plant.api_site_id) {
-          config = { ...config, plantId: plant.api_site_id };
-        } else {
-          console.error('Plant missing both plantId and api_site_id');
-          throw new Error('Configuração incompleta: Plant ID não encontrado');
-        }
+      const config = plantConfigHelper.prepareSungrowConfig(plant);
+      if (!config) {
+        throw new Error('Configuração incompleta: Plant ID não encontrado');
       }
 
       console.log('Using config for realtime:', {
         username: config.username ? `${config.username.substring(0, 3)}***` : 'missing',
-        plantId: config.plantId || 'missing',
+        plantId: config.plantId,
         deviceType: deviceType
       });
 
