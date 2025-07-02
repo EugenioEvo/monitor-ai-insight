@@ -11,7 +11,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AlertCircle, CheckCircle, Loader2, Plus, MapPin, Zap, Download, Settings } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { getDetailedErrorMessage } from '@/utils/errorHandling';
 import type { SolarEdgeConfig, SungrowConfig } from '@/types/monitoring';
 import { SungrowConnectionTest } from './SungrowConnectionTest';
 

@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -15,15 +16,6 @@ interface SungrowConfig {
   baseUrl?: string;
 }
 
-interface AuthCache {
-  token?: string;
-  expiresAt?: number;
-  config?: SungrowConfig;
-}
-
-// Cache de autenticação global
-let authCache: AuthCache = {};
-
 // Configuração padrão para Sungrow
 const DEFAULT_CONFIG = {
   baseUrl: 'https://gateway.isolarcloud.com.hk',
@@ -37,117 +29,123 @@ const DEFAULT_CONFIG = {
   }
 };
 
-// Códigos de erro da Sungrow API
-const SUNGROW_ERROR_CODES = {
-  '1': 'Sucesso',
-  '0': 'Falha geral',
-  '401': 'Não autorizado - Token inválido',
-  '403': 'Acesso negado',
-  '500': 'Erro interno do servidor',
-  '1001': 'Parâmetros inválidos',
-  '1002': 'Token expirado'
-};
+serve(async (req) => {
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
 
-// Utility functions
-const createStandardHeaders = (accessKey: string) => ({
-  'Content-Type': 'application/json',
-  'x-access-key': accessKey,
-  'sys_code': '901',
-  'Accept': 'application/json',
-  'User-Agent': 'Monitor.ai/1.0',
+  const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  console.log(`[${requestId}] Starting request: ${req.method} ${req.url}`);
+
+  try {
+    const { action, config, plantId, period, deviceType } = await req.json();
+    console.log(`[${requestId}] Action: ${action}`);
+    
+    if (plantId) {
+      console.log(`[${requestId}] Plant ID: ${plantId}`);
+    }
+
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    switch (action) {
+      case 'test_connection':
+        return await testConnection(config, requestId);
+      
+      case 'discover_plants':
+        return await discoverPlants(config, requestId);
+      
+      case 'get_station_real_kpi':
+        return await getStationRealKpi(config, requestId);
+      
+      case 'get_station_energy':
+        return await getStationEnergy(config, period || 'day', requestId);
+      
+      case 'get_device_list':
+        return await getDeviceList(config, requestId);
+      
+      case 'get_device_real_time_data':
+        return await getDeviceRealTimeData(config, deviceType || '1', requestId);
+      
+      case 'sync_data':
+        return await syncPlantData(supabase, plantId, requestId);
+      
+      default:
+        throw new Error(`Ação não suportada: ${action}`);
+    }
+  } catch (error) {
+    console.error(`[${requestId}] Error:`, error);
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        error: error.message,
+        requestId 
+      }),
+      { 
+        status: 500, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    );
+  }
 });
 
-const validatePlantId = (config: SungrowConfig): string => {
-  if (config.plantId) return config.plantId;
-  throw new Error('Plant ID não configurado. Verifique as configurações da planta.');
-};
-
-const logRequest = (requestId: string, level: string, message: string, data?: any) => {
-  const timestamp = new Date().toISOString();
-  if (level === 'ERROR') {
-    console.error(`[${requestId}] ${timestamp} ${message}`, data);
-  } else {
-    console.log(`[${requestId}] ${timestamp} ${message}`, data);
-  }
-};
-
-const handleSungrowError = (resultCode: string, resultMsg: string) => {
-  const errorDescription = SUNGROW_ERROR_CODES[resultCode] || 'Erro desconhecido';
-  throw new Error(`${errorDescription}: ${resultMsg} (Código: ${resultCode})`);
-};
-
-const isTokenValid = (config: SungrowConfig): boolean => {
-  if (!authCache.token || !authCache.expiresAt) return false;
-  
-  // Verificar se é a mesma configuração
-  const sameConfig = authCache.config?.username === config.username && 
-                    authCache.config?.appkey === config.appkey;
-  
-  // Token válido por mais 5 minutos
-  const notExpired = authCache.expiresAt > Date.now() + (5 * 60 * 1000);
-  
-  return sameConfig && notExpired;
-};
-
-// Rate limiting
-let lastRequestTime = 0;
-const MIN_REQUEST_INTERVAL = 100; // 100ms entre requests
-
-const enforceRateLimit = async () => {
-  const now = Date.now();
-  const timeSinceLastRequest = now - lastRequestTime;
-  
-  if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
-    await new Promise(resolve => setTimeout(resolve, MIN_REQUEST_INTERVAL - timeSinceLastRequest));
-  }
-  
-  lastRequestTime = Date.now();
-};
-
 async function makeRequest(url: string, body: any, headers: any, requestId: string, retries = 3) {
-  await enforceRateLimit();
-  
   for (let attempt = 1; attempt <= retries; attempt++) {
+    console.log(`[${requestId}] Tentativa ${attempt}: ${url}`);
+    console.log(`[${requestId}] Headers: ${JSON.stringify({
+      ...headers,
+      'x-access-key': headers['x-access-key']?.substring(0, 8) + '***'
+    })}`);
+    console.log(`[${requestId}] Payload: ${JSON.stringify({
+      ...body,
+      appkey: body.appkey?.substring(0, 8) + '***',
+      user_password: body.user_password ? '***' : undefined
+    })}`);
+
     try {
-      logRequest(requestId, 'INFO', `Tentativa ${attempt}: ${url}`);
-      
+      console.log(`Making request to: ${url}`);
       const response = await fetch(url, {
         method: 'POST',
         headers,
         body: JSON.stringify(body),
       });
 
+      console.log(`Response status: ${response.status}`);
+      console.log(`[${requestId}] Response status: ${response.status}`);
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const data = await response.json();
-      logRequest(requestId, 'INFO', 'Response received', { status: response.status });
+      console.log(`[${requestId}] Response: ${JSON.stringify(data)}`);
       
       return data;
     } catch (error) {
-      logRequest(requestId, 'ERROR', `Tentativa ${attempt} falhou`, error);
-      
+      console.error(`[${requestId}] Tentativa ${attempt} falhou:`, error);
       if (attempt === retries) {
         throw error;
       }
-      
-      // Backoff exponencial
-      await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)));
+      // Aguardar antes da próxima tentativa
+      await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
     }
   }
 }
 
 async function authenticate(config: SungrowConfig, requestId: string) {
-  // Verificar cache primeiro
-  if (isTokenValid(config)) {
-    logRequest(requestId, 'INFO', 'Usando token em cache');
-    return { result_code: '1', token: authCache.token };
-  }
+  console.log(`[${requestId}] Authenticating with Sungrow OpenAPI...`);
   
-  logRequest(requestId, 'INFO', 'Autenticando com Sungrow OpenAPI');
-  
-  const headers = createStandardHeaders(config.accessKey);
+  const headers = {
+    'Content-Type': 'application/json',
+    'x-access-key': config.accessKey,
+    'sys_code': '901',
+    'Accept': 'application/json',
+    'User-Agent': 'Monitor.ai/1.0',
+  };
+
   const body = {
     appkey: config.appkey,
     user_account: config.username,
@@ -162,38 +160,35 @@ async function authenticate(config: SungrowConfig, requestId: string) {
   );
 
   if (response.result_code === '1') {
-    // Armazenar no cache (token válido por 1 hora)
-    authCache = {
-      token: response.token || 'authenticated',
-      expiresAt: Date.now() + (60 * 60 * 1000), // 1 hora
-      config: { ...config }
-    };
-    
-    logRequest(requestId, 'INFO', 'Autenticação bem-sucedida');
+    console.log(`[${requestId}] Autenticação bem-sucedida com: ${config.baseUrl || DEFAULT_CONFIG.baseUrl}${DEFAULT_CONFIG.endpoints.login}`);
     return response;
   } else {
-    handleSungrowError(response.result_code, response.result_msg);
+    throw new Error(`Falha na autenticação: ${response.result_msg}`);
   }
 }
 
 async function testConnection(config: SungrowConfig, requestId: string) {
+  console.log(`[${requestId}] Config validation: ${JSON.stringify({
+    username: config.username ? config.username.substring(0, 3) + '***' : 'missing',
+    password: config.password ? '***provided***' : 'missing',
+    appkey: config.appkey ? config.appkey.substring(0, 8) + '***' : 'missing',
+    accessKey: config.accessKey ? config.accessKey.substring(0, 8) + '***' : 'missing',
+    plantId: config.plantId || 'missing',
+    baseUrl: config.baseUrl || DEFAULT_CONFIG.baseUrl
+  })}`);
+
+  if (!config.username || !config.password || !config.appkey || !config.accessKey) {
+    throw new Error('Configuração incompleta. Verifique username, password, appkey e accessKey.');
+  }
+
   try {
-    logRequest(requestId, 'INFO', 'Testando conexão', {
-      username: config.username?.substring(0, 3) + '***',
-      hasCredentials: !!(config.appkey && config.accessKey)
-    });
-
-    if (!config.username || !config.password || !config.appkey || !config.accessKey) {
-      throw new Error('Configuração incompleta. Verifique username, password, appkey e accessKey.');
-    }
-
     await authenticate(config, requestId);
     return new Response(
       JSON.stringify({ success: true, message: 'Conexão estabelecida com sucesso' }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
-    logRequest(requestId, 'ERROR', 'Falha no teste de conexão', error);
+    console.error(`[${requestId}] Test connection error:`, error);
     return new Response(
       JSON.stringify({ 
         success: false, 
@@ -209,12 +204,25 @@ async function testConnection(config: SungrowConfig, requestId: string) {
 }
 
 async function discoverPlants(config: SungrowConfig, requestId: string) {
+  console.log(`[${requestId}] Discovering plants...`);
+  
   try {
-    logRequest(requestId, 'INFO', 'Descobrindo plantas');
-    
+    // Primeiro, autenticar
     await authenticate(config, requestId);
-    const headers = createStandardHeaders(config.accessKey);
-    const body = { appkey: config.appkey, has_token: true };
+
+    // Buscar lista de estações
+    const headers = {
+      'Content-Type': 'application/json',
+      'x-access-key': config.accessKey,
+      'sys_code': '901',
+      'Accept': 'application/json',
+      'User-Agent': 'Monitor.ai/1.0',
+    };
+
+    const body = {
+      appkey: config.appkey,
+      has_token: true,
+    };
 
     const response = await makeRequest(
       `${config.baseUrl || DEFAULT_CONFIG.baseUrl}${DEFAULT_CONFIG.endpoints.stationList}`,
@@ -226,7 +234,7 @@ async function discoverPlants(config: SungrowConfig, requestId: string) {
     if (response.result_code === '1' && response.result_data) {
       const plants = response.result_data.page_list.map((station: any) => ({
         id: station.ps_id,
-        ps_id: station.ps_id,
+        ps_id: station.ps_id, // Preservar ps_id
         name: station.ps_name,
         capacity: station.ps_capacity_kw,
         location: station.ps_location,
@@ -236,17 +244,17 @@ async function discoverPlants(config: SungrowConfig, requestId: string) {
         longitude: station.ps_longitude,
       }));
 
-      logRequest(requestId, 'INFO', `${plants.length} plantas encontradas`);
+      console.log(`[${requestId}] Found ${plants.length} plants`);
       
       return new Response(
         JSON.stringify({ success: true, plants }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     } else {
-      handleSungrowError(response.result_code, response.result_msg);
+      throw new Error(`Falha ao descobrir plantas: ${response.result_msg}`);
     }
   } catch (error) {
-    logRequest(requestId, 'ERROR', 'Erro ao descobrir plantas', error);
+    console.error(`[${requestId}] Discover plants error:`, error);
     return new Response(
       JSON.stringify({ 
         success: false, 
@@ -262,17 +270,31 @@ async function discoverPlants(config: SungrowConfig, requestId: string) {
 }
 
 async function getStationRealKpi(config: SungrowConfig, requestId: string) {
+  console.log(`[${requestId}] Fetching station real KPI via OpenAPI`);
+  console.log(`[${requestId}] Using Plant ID: ${config.plantId}`);
+  
   try {
-    const plantId = validatePlantId(config);
-    logRequest(requestId, 'INFO', `Buscando KPI real da estação: ${plantId}`);
-    
+    // Primeiro, autenticar
     await authenticate(config, requestId);
-    const headers = createStandardHeaders(config.accessKey);
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'x-access-key': config.accessKey,
+      'sys_code': '901',
+      'Accept': 'application/json',
+      'User-Agent': 'Monitor.ai/1.0',
+    };
+
     const body = {
       appkey: config.appkey,
-      ps_id: plantId,
+      ps_id: config.plantId,
       has_token: true,
     };
+
+    console.log(`[${requestId}] KPI payload: ${JSON.stringify({
+      ...body,
+      appkey: body.appkey?.substring(0, 8) + '***'
+    })}`);
 
     const response = await makeRequest(
       `${config.baseUrl || DEFAULT_CONFIG.baseUrl}${DEFAULT_CONFIG.endpoints.stationRealKpi}`,
@@ -281,26 +303,24 @@ async function getStationRealKpi(config: SungrowConfig, requestId: string) {
       requestId
     );
 
-    if (response.result_code === '1') {
-      // Validar dados essenciais
-      const data = response.result_data;
-      if (!data) {
-        throw new Error('Dados KPI não encontrados na resposta');
-      }
+    console.log(`[${requestId}] KPI response: ${JSON.stringify(response)}`);
 
+    if (response.result_code === '1') {
       return new Response(
-        JSON.stringify({ success: true, data }),
+        JSON.stringify({ success: true, data: response.result_data }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     } else {
-      handleSungrowError(response.result_code, response.result_msg);
+      console.error(`[${requestId}] KPI fetch error: ${response.result_msg}`);
+      throw new Error(`API Error: ${response.result_msg} (Code: ${response.result_code})`);
     }
   } catch (error) {
-    logRequest(requestId, 'ERROR', 'Erro ao buscar KPI', error);
+    console.error(`[${requestId}] Error: ${error.message}, duration: ${Date.now() - parseInt(requestId.split('_')[1])}ms`);
+    console.error(`[${requestId}] Stack trace:`, error.stack);
     return new Response(
       JSON.stringify({ 
         success: false, 
-        error: `Falha ao buscar KPI da estação: ${error.message}`,
+        error: `Failed to fetch station KPI: ${error.message}`,
         requestId 
       }),
       { 
@@ -312,10 +332,11 @@ async function getStationRealKpi(config: SungrowConfig, requestId: string) {
 }
 
 async function getStationEnergy(config: SungrowConfig, period: string, requestId: string) {
+  console.log(`[${requestId}] Fetching station energy for period: ${period} via OpenAPI`);
+  console.log(`[${requestId}] Using Plant ID: ${config.plantId}`);
+  
   try {
-    const plantId = validatePlantId(config);
-    logRequest(requestId, 'INFO', `Buscando energia da estação: ${plantId}, período: ${period}`);
-    
+    // Primeiro, autenticar
     await authenticate(config, requestId);
 
     // Definir parâmetros de data baseado no período
@@ -328,31 +349,43 @@ async function getStationEnergy(config: SungrowConfig, period: string, requestId
       case 'day':
         startTime = now.toISOString().slice(0, 10).replace(/-/g, '');
         endTime = startTime;
-        dateType = 1;
+        dateType = 1; // Daily data
         break;
       case 'month':
         startTime = now.toISOString().slice(0, 7).replace(/-/g, '');
         endTime = startTime;
-        dateType = 2;
+        dateType = 2; // Monthly data
         break;
       case 'year':
         startTime = now.getFullYear().toString();
         endTime = startTime;
-        dateType = 3;
+        dateType = 3; // Yearly data
         break;
       default:
         throw new Error(`Período não suportado: ${period}`);
     }
 
-    const headers = createStandardHeaders(config.accessKey);
+    const headers = {
+      'Content-Type': 'application/json',
+      'x-access-key': config.accessKey,
+      'sys_code': '901',
+      'Accept': 'application/json',
+      'User-Agent': 'Monitor.ai/1.0',
+    };
+
     const body = {
       appkey: config.appkey,
-      ps_id: plantId,
+      ps_id: config.plantId,
       start_time: startTime,
       end_time: endTime,
       date_type: dateType,
       has_token: true,
     };
+
+    console.log(`[${requestId}] Energy payload: ${JSON.stringify({
+      ...body,
+      appkey: body.appkey?.substring(0, 8) + '***'
+    })}`);
 
     const response = await makeRequest(
       `${config.baseUrl || DEFAULT_CONFIG.baseUrl}${DEFAULT_CONFIG.endpoints.stationEnergy}`,
@@ -361,20 +394,24 @@ async function getStationEnergy(config: SungrowConfig, period: string, requestId
       requestId
     );
 
+    console.log(`[${requestId}] Energy response: ${JSON.stringify(response)}`);
+
     if (response.result_code === '1') {
       return new Response(
         JSON.stringify({ success: true, data: response.result_data }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     } else {
-      handleSungrowError(response.result_code, response.result_msg);
+      console.error(`[${requestId}] Energy fetch error: ${response.result_msg}`);
+      throw new Error(`API Error: ${response.result_msg} (Code: ${response.result_code})`);
     }
   } catch (error) {
-    logRequest(requestId, 'ERROR', 'Erro ao buscar energia', error);
+    console.error(`[${requestId}] Error: ${error.message}, duration: ${Date.now() - parseInt(requestId.split('_')[1])}ms`);
+    console.error(`[${requestId}] Stack trace:`, error.stack);
     return new Response(
       JSON.stringify({ 
         success: false, 
-        error: `Falha ao buscar energia da estação: ${error.message}`,
+        error: `Failed to fetch station energy: ${error.message}`,
         requestId 
       }),
       { 
@@ -386,15 +423,23 @@ async function getStationEnergy(config: SungrowConfig, period: string, requestId
 }
 
 async function getDeviceList(config: SungrowConfig, requestId: string) {
+  console.log(`[${requestId}] Fetching device list via OpenAPI`);
+  
   try {
-    const plantId = validatePlantId(config);
-    logRequest(requestId, 'INFO', `Buscando lista de dispositivos: ${plantId}`);
-    
+    // Primeiro, autenticar
     await authenticate(config, requestId);
-    const headers = createStandardHeaders(config.accessKey);
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'x-access-key': config.accessKey,
+      'sys_code': '901',
+      'Accept': 'application/json',
+      'User-Agent': 'Monitor.ai/1.0',
+    };
+
     const body = {
       appkey: config.appkey,
-      ps_id: plantId,
+      ps_id: config.plantId,
       has_token: true,
     };
 
@@ -411,14 +456,14 @@ async function getDeviceList(config: SungrowConfig, requestId: string) {
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     } else {
-      handleSungrowError(response.result_code, response.result_msg);
+      throw new Error(`API Error: ${response.result_msg} (Code: ${response.result_code})`);
     }
   } catch (error) {
-    logRequest(requestId, 'ERROR', 'Erro ao buscar dispositivos', error);
+    console.error(`[${requestId}] Error: ${error.message}, duration: ${Date.now() - parseInt(requestId.split('_')[1])}ms`);
     return new Response(
       JSON.stringify({ 
         success: false, 
-        error: `Falha ao buscar lista de dispositivos: ${error.message}`,
+        error: `Failed to fetch device list: ${error.message}`,
         requestId 
       }),
       { 
@@ -430,15 +475,23 @@ async function getDeviceList(config: SungrowConfig, requestId: string) {
 }
 
 async function getDeviceRealTimeData(config: SungrowConfig, deviceType: string, requestId: string) {
+  console.log(`[${requestId}] Fetching device real-time data via OpenAPI`);
+  
   try {
-    const plantId = validatePlantId(config);
-    logRequest(requestId, 'INFO', `Buscando dados em tempo real: ${plantId}, tipo: ${deviceType}`);
-    
+    // Primeiro, autenticar
     await authenticate(config, requestId);
-    const headers = createStandardHeaders(config.accessKey);
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'x-access-key': config.accessKey,
+      'sys_code': '901',
+      'Accept': 'application/json',
+      'User-Agent': 'Monitor.ai/1.0',
+    };
+
     const body = {
       appkey: config.appkey,
-      ps_id: plantId,
+      ps_id: config.plantId,
       device_type: deviceType,
       has_token: true,
     };
@@ -456,14 +509,14 @@ async function getDeviceRealTimeData(config: SungrowConfig, deviceType: string, 
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     } else {
-      handleSungrowError(response.result_code, response.result_msg);
+      throw new Error(`API Error: ${response.result_msg} (Code: ${response.result_code})`);
     }
   } catch (error) {
-    logRequest(requestId, 'ERROR', 'Erro ao buscar dados em tempo real', error);
+    console.error(`[${requestId}] Error: ${error.message}, duration: ${Date.now() - parseInt(requestId.split('_')[1])}ms`);
     return new Response(
       JSON.stringify({ 
         success: false, 
-        error: `Falha ao buscar dados em tempo real: ${error.message}`,
+        error: `Failed to fetch device real-time data: ${error.message}`,
         requestId 
       }),
       { 
@@ -475,12 +528,11 @@ async function getDeviceRealTimeData(config: SungrowConfig, deviceType: string, 
 }
 
 async function syncPlantData(supabase: any, plantId: string, requestId: string) {
+  console.log(`[${requestId}] Starting data sync for plant: ${plantId}`);
   const startTime = Date.now();
   let dataPointsSynced = 0;
   
   try {
-    logRequest(requestId, 'INFO', `Iniciando sincronização: ${plantId}`);
-
     // Buscar dados da planta
     const { data: plant, error: plantError } = await supabase
       .from('plants')
@@ -491,6 +543,8 @@ async function syncPlantData(supabase: any, plantId: string, requestId: string) 
     if (plantError || !plant) {
       throw new Error(`Planta não encontrada: ${plantError?.message}`);
     }
+
+    console.log(`[${requestId}] Plant found: ${plant.name}`);
 
     if (plant.monitoring_system !== 'sungrow') {
       throw new Error('Planta não é do tipo Sungrow');
@@ -505,42 +559,50 @@ async function syncPlantData(supabase: any, plantId: string, requestId: string) 
     // Garantir que plantId seja definido
     if (!config.plantId && plant.api_site_id) {
       config = { ...config, plantId: plant.api_site_id };
+      console.log(`[${requestId}] Using api_site_id as plantId: ${plant.api_site_id}`);
     }
 
-    const plantConfigId = validatePlantId(config);
-    logRequest(requestId, 'INFO', `Sincronizando planta: ${plant.name} (${plantConfigId})`);
+    if (!config.plantId) {
+      throw new Error('Plant ID não configurado. Verifique as configurações da planta.');
+    }
+
+    console.log(`[${requestId}] Syncing data for plant: ${plant.name} (plantId: ${config.plantId})`);
 
     // Buscar dados em tempo real
     try {
+      console.log(`[${requestId}] Fetching real-time KPI data...`);
       const kpiResponse = await getStationRealKpi(config, requestId);
       const kpiData = await kpiResponse.json();
       
       if (kpiData.success && kpiData.data) {
-        const currentPower = kpiData.data.p83022 || 0;
-        const todayEnergy = kpiData.data.p83025 || 0;
+        console.log(`[${requestId}] KPI data received:`, kpiData.data);
+        
+        // Inserir leitura na tabela readings
+        const currentPower = kpiData.data.p83022 || 0; // Potência atual (kW)
+        const todayEnergy = kpiData.data.p83025 || 0; // Energia hoje (kWh)
         
         const { error: readingError } = await supabase
           .from('readings')
           .insert({
             plant_id: plantId,
             timestamp: new Date().toISOString(),
-            power_w: Math.round(currentPower * 1000),
+            power_w: Math.round(currentPower * 1000), // Converter kW para W
             energy_kwh: todayEnergy
           });
 
         if (readingError) {
-          logRequest(requestId, 'ERROR', 'Erro ao inserir leitura', readingError);
+          console.error(`[${requestId}] Error inserting reading:`, readingError);
         } else {
           dataPointsSynced++;
-          logRequest(requestId, 'INFO', 'Leitura inserida com sucesso');
+          console.log(`[${requestId}] Reading inserted successfully`);
         }
       }
     } catch (error) {
-      logRequest(requestId, 'ERROR', 'Erro ao buscar dados KPI', error);
+      console.error(`[${requestId}] Error fetching KPI data:`, error);
     }
 
     const syncDuration = Date.now() - startTime;
-    logRequest(requestId, 'INFO', `Sincronização concluída em ${syncDuration}ms. Pontos: ${dataPointsSynced}`);
+    console.log(`[${requestId}] Sync completed in ${syncDuration}ms. Data points: ${dataPointsSynced}`);
 
     return new Response(
       JSON.stringify({ 
@@ -555,7 +617,8 @@ async function syncPlantData(supabase: any, plantId: string, requestId: string) 
 
   } catch (error) {
     const syncDuration = Date.now() - startTime;
-    logRequest(requestId, 'ERROR', 'Falha na sincronização', error);
+    console.error(`[${requestId}] Sync failed after ${syncDuration}ms:`, error);
+    console.error(`[${requestId}] Stack trace:`, error.stack);
     
     return new Response(
       JSON.stringify({ 
@@ -572,54 +635,3 @@ async function syncPlantData(supabase: any, plantId: string, requestId: string) 
     );
   }
 }
-
-serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
-
-  const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  logRequest(requestId, 'INFO', `Request: ${req.method} ${req.url}`);
-
-  try {
-    const { action, config, plantId, period, deviceType } = await req.json();
-    logRequest(requestId, 'INFO', `Action: ${action}`);
-
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
-
-    switch (action) {
-      case 'test_connection':
-        return await testConnection(config, requestId);
-      case 'discover_plants':
-        return await discoverPlants(config, requestId);
-      case 'get_station_real_kpi':
-        return await getStationRealKpi(config, requestId);
-      case 'get_station_energy':
-        return await getStationEnergy(config, period || 'day', requestId);
-      case 'get_device_list':
-        return await getDeviceList(config, requestId);
-      case 'get_device_real_time_data':
-        return await getDeviceRealTimeData(config, deviceType || '1', requestId);
-      case 'sync_data':
-        return await syncPlantData(supabase, plantId, requestId);
-      default:
-        throw new Error(`Ação não suportada: ${action}`);
-    }
-  } catch (error) {
-    logRequest(requestId, 'ERROR', 'Request failed', error);
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: error.message,
-        requestId 
-      }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    );
-  }
-});

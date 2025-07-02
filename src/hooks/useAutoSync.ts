@@ -26,49 +26,30 @@ export const useAutoSync = (plant: Plant) => {
 
   const performAutoSync = async () => {
     if (!plant.sync_enabled || plant.monitoring_system === 'manual') {
-      console.log(`Auto-sync skipped for ${plant.name}: ${!plant.sync_enabled ? 'disabled' : 'manual system'}`);
       return;
     }
 
-    // Validar configurações mínimas antes de tentar sincronizar
-    if (!plant.api_credentials) {
-      console.error(`Auto-sync failed for ${plant.name}: no API credentials configured`);
-      return;
-    }
-
-    console.log(`Starting auto-sync for plant ${plant.name} (${plant.monitoring_system})`);
+    const result = await syncService.performSync(plant);
     
-    try {
-      const result = await syncService.performSync(plant);
-      
-      // Log do resultado
-      await syncService.logSyncResult(plant, result);
+    // Log do resultado
+    await syncService.logSyncResult(plant, result);
 
-      if (result.success) {
-        console.log(`Auto-sync successful for ${plant.name}: ${result.dataPointsSynced || 0} data points synced`);
-        
-        // Reset contador de retry em caso de sucesso
-        retryHandlerRef.current?.handleSyncSuccess();
-        
-        // Atualizar timestamp da última sincronização
-        await syncService.updateLastSyncTimestamp(plant);
-        
-        // Verificar se existem alertas críticos que precisam ser criados
-        await alertsService.checkAndCreateAlerts(plant);
-      } else {
-        console.error(`Auto-sync failed for ${plant.name}:`, result.error);
-        
-        // Incrementar contador de retry e mostrar toast se necessário
-        retryHandlerRef.current?.handleSyncError(plant, result.error || 'Unknown error during auto-sync');
-      }
-    } catch (error) {
-      console.error(`Critical error during auto-sync for ${plant.name}:`, error);
+    if (result.success) {
+      console.log(`Sincronização automática bem-sucedida para ${plant.name}: ${result.dataPointsSynced || 0} pontos`);
       
-      // Log erro crítico
-      await syncService.logSyncResult(plant, {
-        success: false,
-        error: `Critical sync error: ${error instanceof Error ? error.message : String(error)}`
-      });
+      // Reset contador de retry em caso de sucesso
+      retryHandlerRef.current?.handleSyncSuccess();
+      
+      // Atualizar timestamp da última sincronização
+      await syncService.updateLastSyncTimestamp(plant);
+      
+      // Verificar se existem alertas críticos que precisam ser criados
+      await alertsService.checkAndCreateAlerts(plant);
+    } else {
+      console.error(`Erro na sincronização automática da planta ${plant.name}:`, result.error);
+      
+      // Incrementar contador de retry e mostrar toast se necessário
+      retryHandlerRef.current?.handleSyncError(plant, result.error || 'Erro desconhecido');
     }
   };
 
