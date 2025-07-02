@@ -1,1 +1,4 @@
 project_id = "znsctgihxeuhjqcofgsi"
+
+[functions.sungrow-connector]
+verify_jwt = false

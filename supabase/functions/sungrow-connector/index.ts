@@ -62,6 +62,12 @@ const validatePlantId = (config: SungrowConfig): string => {
   throw new Error('Plant ID não configurado. Verifique as configurações da planta.');
 };
 
+const validateAuthConfig = (config: SungrowConfig): void => {
+  if (!config.username || !config.password || !config.appkey || !config.accessKey) {
+    throw new Error('Configuração incompleta. Verifique username, password, appkey e accessKey.');
+  }
+};
+
 const logRequest = (requestId: string, level: string, message: string, data?: any) => {
   const timestamp = new Date().toISOString();
   if (level === 'ERROR') {
@@ -91,7 +97,7 @@ const isTokenValid = (config: SungrowConfig): boolean => {
 
 // Rate limiting
 let lastRequestTime = 0;
-const MIN_REQUEST_INTERVAL = 100; // 100ms entre requests
+const MIN_REQUEST_INTERVAL = 50; // 50ms entre requests (menos restritivo)
 
 const enforceRateLimit = async () => {
   const now = Date.now();
@@ -183,17 +189,21 @@ async function testConnection(config: SungrowConfig, requestId: string) {
       hasCredentials: !!(config.appkey && config.accessKey)
     });
 
-    if (!config.username || !config.password || !config.appkey || !config.accessKey) {
-      throw new Error('Configuração incompleta. Verifique username, password, appkey e accessKey.');
-    }
+    validateAuthConfig(config);
 
     await authenticate(config, requestId);
+    
+    logRequest(requestId, 'INFO', 'Conexão estabelecida com sucesso');
+    
     return new Response(
       JSON.stringify({ success: true, message: 'Conexão estabelecida com sucesso' }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
-    logRequest(requestId, 'ERROR', 'Falha no teste de conexão', error);
+    logRequest(requestId, 'ERROR', 'Falha no teste de conexão', {
+      error: error.message,
+      stack: error.stack
+    });
     return new Response(
       JSON.stringify({ 
         success: false, 
@@ -210,11 +220,19 @@ async function testConnection(config: SungrowConfig, requestId: string) {
 
 async function discoverPlants(config: SungrowConfig, requestId: string) {
   try {
-    logRequest(requestId, 'INFO', 'Descobrindo plantas');
+    logRequest(requestId, 'INFO', 'Descobrindo plantas', {
+      username: config.username?.substring(0, 3) + '***',
+      hasCredentials: !!(config.appkey && config.accessKey)
+    });
+    
+    // Validar apenas credenciais de autenticação, não plantId
+    validateAuthConfig(config);
     
     await authenticate(config, requestId);
     const headers = createStandardHeaders(config.accessKey);
     const body = { appkey: config.appkey, has_token: true };
+
+    logRequest(requestId, 'INFO', 'Fazendo request para getStationList');
 
     const response = await makeRequest(
       `${config.baseUrl || DEFAULT_CONFIG.baseUrl}${DEFAULT_CONFIG.endpoints.stationList}`,
@@ -223,30 +241,43 @@ async function discoverPlants(config: SungrowConfig, requestId: string) {
       requestId
     );
 
+    logRequest(requestId, 'INFO', 'Response recebida do getStationList', {
+      result_code: response.result_code,
+      has_data: !!response.result_data,
+      page_list_length: response.result_data?.page_list?.length || 0
+    });
+
     if (response.result_code === '1' && response.result_data) {
       const plants = response.result_data.page_list.map((station: any) => ({
-        id: station.ps_id,
+        id: station.ps_id.toString(), // Garantir que seja string
         ps_id: station.ps_id,
         name: station.ps_name,
-        capacity: station.ps_capacity_kw,
+        capacity: parseFloat(station.ps_capacity_kw) || 0,
         location: station.ps_location,
-        status: station.ps_status_text,
+        status: station.ps_status_text || 'Unknown',
         installationDate: station.create_date,
-        latitude: station.ps_latitude,
-        longitude: station.ps_longitude,
+        latitude: parseFloat(station.ps_latitude) || 0,
+        longitude: parseFloat(station.ps_longitude) || 0,
       }));
 
-      logRequest(requestId, 'INFO', `${plants.length} plantas encontradas`);
+      logRequest(requestId, 'INFO', `${plants.length} plantas encontradas e processadas`);
       
       return new Response(
         JSON.stringify({ success: true, plants }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     } else {
+      logRequest(requestId, 'ERROR', 'API retornou erro', {
+        result_code: response.result_code,
+        result_msg: response.result_msg
+      });
       handleSungrowError(response.result_code, response.result_msg);
     }
   } catch (error) {
-    logRequest(requestId, 'ERROR', 'Erro ao descobrir plantas', error);
+    logRequest(requestId, 'ERROR', 'Erro ao descobrir plantas', {
+      error: error.message,
+      stack: error.stack
+    });
     return new Response(
       JSON.stringify({ 
         success: false, 
