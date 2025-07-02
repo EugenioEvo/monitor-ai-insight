@@ -8,6 +8,10 @@ import { AlertCircle, CheckCircle, Loader2, Search, MapPin, Zap } from 'lucide-r
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import type { SungrowConfig } from '@/types/monitoring';
+import { useLogger } from '@/services/logger';
+import { useErrorHandler } from '@/services/errorHandler';
+import { useDebouncedCallback } from '@/hooks/useDebounce';
+import { LoadingSpinner } from '@/components/ui/loading-states';
 
 interface DiscoveredPlant {
   id: string;
@@ -27,78 +31,74 @@ interface SungrowPlantDiscoveryProps {
 
 export const SungrowPlantDiscovery = ({ config, onPlantsSelected }: SungrowPlantDiscoveryProps) => {
   const { toast } = useToast();
+  const logger = useLogger('SungrowPlantDiscovery');
+  const errorHandler = useErrorHandler('SungrowPlantDiscovery');
+  
   const [loading, setLoading] = useState(false);
   const [discovering, setDiscovering] = useState(false);
   const [discoveredPlants, setDiscoveredPlants] = useState<DiscoveredPlant[]>([]);
   const [selectedPlants, setSelectedPlants] = useState<string[]>([]);
 
+  // Debounce da seleção de plantas para otimizar performance
+  const debouncedOnPlantsSelected = useDebouncedCallback((plants: DiscoveredPlant[]) => {
+    onPlantsSelected?.(plants);
+  }, 300);
+
   const discoverPlants = async () => {
-    setDiscovering(true);
-    try {
-      const requestId = `discovery_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      console.log(`[${requestId}] Iniciando descoberta de plantas Sungrow...`, {
-        username: config.username?.substring(0, 3) + '***',
-        hasCredentials: !!(config.appkey && config.accessKey)
-      });
-      
-      // Remover plantId da config para descoberta
-      const discoveryConfig = { ...config };
-      delete discoveryConfig.plantId;
-      
-      const { data, error } = await supabase.functions.invoke('sungrow-connector', {
-        body: {
-          action: 'discover_plants',
-          config: discoveryConfig
-        }
-      });
-
-      if (error) {
-        console.error(`[${requestId}] Erro na função Supabase:`, error);
-        throw new Error(`Erro na descoberta: ${error.message}`);
-      }
-
-      console.log(`[${requestId}] Resposta da descoberta:`, {
-        success: data?.success,
-        plantsCount: data?.plants?.length || 0,
-        error: data?.error
-      });
-
-      if (data.success && data.plants) {
-        setDiscoveredPlants(data.plants);
-        toast({
-          title: "Plantas descobertas!",
-          description: `Encontradas ${data.plants.length} plantas disponíveis.`,
+    const context = logger.createContext({ action: 'discover_plants' });
+    
+    await errorHandler.executeWithRetry(
+      async () => {
+        setDiscovering(true);
+        
+        logger.info('Iniciando descoberta de plantas Sungrow', {
+          ...context,
+          hasCredentials: !!(config.appkey && config.accessKey)
         });
-        console.log(`[${requestId}] Descoberta concluída com sucesso: ${data.plants.length} plantas`);
-      } else {
-        throw new Error(data.error || 'Nenhuma planta encontrada');
+        
+        // Remover plantId da config para descoberta
+        const discoveryConfig = { ...config };
+        delete discoveryConfig.plantId;
+        
+        const { data, error } = await supabase.functions.invoke('sungrow-connector', {
+          body: {
+            action: 'discover_plants',
+            config: discoveryConfig
+          }
+        });
+
+        if (error) {
+          logger.error('Erro na função Supabase', error, context);
+          throw new Error(`Erro na descoberta: ${error.message}`);
+        }
+
+        logger.info('Resposta da descoberta recebida', {
+          ...context,
+          success: data?.success,
+          plantsCount: data?.plants?.length || 0
+        });
+
+        if (data.success && data.plants) {
+          setDiscoveredPlants(data.plants);
+          toast({
+            title: "Plantas descobertas!",
+            description: `Encontradas ${data.plants.length} plantas disponíveis.`,
+          });
+          logger.info(`Descoberta concluída: ${data.plants.length} plantas`, context);
+        } else {
+          throw new Error(data.error || 'Nenhuma planta encontrada');
+        }
+      },
+      'discover_plants',
+      {
+        maxAttempts: 2,
+        baseDelay: 2000
       }
-    } catch (error: any) {
-      console.error('Falha na descoberta de plantas:', error);
-      
-      // Melhor tratamento de erros
-      let errorMessage = error.message;
-      let errorDescription = '';
-      
-      if (error.message.includes('credenciais') || error.message.includes('401')) {
-        errorMessage = 'Credenciais inválidas';
-        errorDescription = 'Verifique se o usuário, senha, App Key e Access Key estão corretos.';
-      } else if (error.message.includes('timeout') || error.message.includes('ECONNRESET')) {
-        errorMessage = 'Timeout na conexão';
-        errorDescription = 'A API Sungrow demorou para responder. Tente novamente em alguns minutos.';
-      } else if (error.message.includes('Rate limit') || error.message.includes('429')) {
-        errorMessage = 'Limite de requisições excedido';
-        errorDescription = 'Aguarde alguns minutos antes de tentar descobrir plantas novamente.';
-      }
-      
-      toast({
-        title: errorMessage,
-        description: errorDescription || error.message,
-        variant: "destructive",
-      });
-    } finally {
+    ).catch((error) => {
+      errorHandler.handleError(error, 'discover_plants');
+    }).finally(() => {
       setDiscovering(false);
-    }
+    });
   };
 
   const togglePlantSelection = (plantId: string) => {
@@ -119,7 +119,12 @@ export const SungrowPlantDiscovery = ({ config, onPlantsSelected }: SungrowPlant
 
   const handlePlantsSelected = () => {
     const selected = discoveredPlants.filter(plant => selectedPlants.includes(plant.id));
-    onPlantsSelected?.(selected);
+    logger.info('Plantas selecionadas para uso', { 
+      action: 'plants_selected',
+      count: selected.length,
+      plantIds: selected.map(p => p.id)
+    });
+    debouncedOnPlantsSelected(selected);
   };
 
   return (
@@ -137,9 +142,14 @@ export const SungrowPlantDiscovery = ({ config, onPlantsSelected }: SungrowPlant
         {discoveredPlants.length === 0 ? (
           <div className="text-center py-8">
             <Button onClick={discoverPlants} disabled={discovering} size="lg">
-              {discovering && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              <Search className="w-4 h-4 mr-2" />
-              Descobrir Plantas
+              {discovering ? (
+                <LoadingSpinner size="sm" message="Descobrindo..." />
+              ) : (
+                <>
+                  <Search className="w-4 h-4 mr-2" />
+                  Descobrir Plantas
+                </>
+              )}
             </Button>
             <p className="text-sm text-muted-foreground mt-2">
               Clique para buscar plantas disponíveis em sua conta
@@ -238,7 +248,11 @@ export const SungrowPlantDiscovery = ({ config, onPlantsSelected }: SungrowPlant
                 onClick={discoverPlants}
                 disabled={discovering}
               >
-                {discovering && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                {discovering ? (
+                  <LoadingSpinner size="sm" />
+                ) : (
+                  <Search className="w-4 h-4 mr-2" />
+                )}
                 Atualizar
               </Button>
             </div>
