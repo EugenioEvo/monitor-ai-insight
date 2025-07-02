@@ -53,10 +53,11 @@ const SUNGROW_ERROR_CODES = {
 };
 
 // Utility functions
-const createStandardHeaders = (accessKey: string) => ({
+const createStandardHeaders = (accessKey: string, token?: string) => ({
   'Content-Type': 'application/json',
   'x-access-key': accessKey,
   'sys_code': '901',
+  ...(token && { token }),
   'Accept': 'application/json',
   'User-Agent': 'Monitor.ai/1.0',
 });
@@ -196,11 +197,11 @@ async function authenticate(config: SungrowConfig, requestId: string) {
     config
   );
 
-  if (response.result_code === '1') {
-    // Armazenar no cache por usuário (token válido por 1 hora)
+  if (response.result_code === '1' && response.token) {
+    // Armazenar no cache por usuário (token válido por 55 minutos para margem)
     authCaches.set(cacheKey, {
-      token: response.token || 'authenticated',
-      expiresAt: Date.now() + (60 * 60 * 1000), // 1 hora
+      token: response.token,
+      expiresAt: Date.now() + (55 * 60 * 1000), // 55 min para margem
       config: { ...config }
     });
     
@@ -261,9 +262,9 @@ async function discoverPlants(config: SungrowConfig, requestId: string) {
     // Validar apenas credenciais de autenticação, não plantId para descoberta
     validateCredentialsOnly(config);
     
-    await authenticate(config, requestId);
-    const headers = createStandardHeaders(config.accessKey);
-    const body = { appkey: config.appkey, has_token: true };
+    const { token } = await authenticate(config, requestId);
+    const headers = createStandardHeaders(config.accessKey, token);
+    const body = { appkey: config.appkey, token, has_token: true };
 
     logRequest(requestId, 'INFO', 'Fazendo request para getStationList');
 
@@ -331,11 +332,12 @@ async function getStationRealKpi(config: SungrowConfig, requestId: string) {
     const plantId = validatePlantId(config);
     logRequest(requestId, 'INFO', `Buscando KPI real da estação: ${plantId}`);
     
-    await authenticate(config, requestId);
-    const headers = createStandardHeaders(config.accessKey);
+    const { token } = await authenticate(config, requestId);
+    const headers = createStandardHeaders(config.accessKey, token);
     const body = {
       appkey: config.appkey,
       ps_id: plantId,
+      token,
       has_token: true,
     };
 
@@ -382,7 +384,7 @@ async function getStationEnergy(config: SungrowConfig, period: string, requestId
     const plantId = validatePlantId(config);
     logRequest(requestId, 'INFO', `Buscando energia da estação: ${plantId}, período: ${period}`);
     
-    await authenticate(config, requestId);
+    const { token } = await authenticate(config, requestId);
 
     // Definir parâmetros de data baseado no período
     const now = new Date();
@@ -410,13 +412,14 @@ async function getStationEnergy(config: SungrowConfig, period: string, requestId
         throw new Error(`Período não suportado: ${period}`);
     }
 
-    const headers = createStandardHeaders(config.accessKey);
+    const headers = createStandardHeaders(config.accessKey, token);
     const body = {
       appkey: config.appkey,
       ps_id: plantId,
       start_time: startTime,
       end_time: endTime,
       date_type: dateType,
+      token,
       has_token: true,
     };
 
@@ -457,11 +460,12 @@ async function getDeviceList(config: SungrowConfig, requestId: string) {
     const plantId = validatePlantId(config);
     logRequest(requestId, 'INFO', `Buscando lista de dispositivos: ${plantId}`);
     
-    await authenticate(config, requestId);
-    const headers = createStandardHeaders(config.accessKey);
+    const { token } = await authenticate(config, requestId);
+    const headers = createStandardHeaders(config.accessKey, token);
     const body = {
       appkey: config.appkey,
       ps_id: plantId,
+      token,
       has_token: true,
     };
 
@@ -502,12 +506,13 @@ async function getDeviceRealTimeData(config: SungrowConfig, deviceType: string, 
     const plantId = validatePlantId(config);
     logRequest(requestId, 'INFO', `Buscando dados em tempo real: ${plantId}, tipo: ${deviceType}`);
     
-    await authenticate(config, requestId);
-    const headers = createStandardHeaders(config.accessKey);
+    const { token } = await authenticate(config, requestId);
+    const headers = createStandardHeaders(config.accessKey, token);
     const body = {
       appkey: config.appkey,
       ps_id: plantId,
       device_type: deviceType,
+      token,
       has_token: true,
     };
 
