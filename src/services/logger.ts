@@ -1,9 +1,10 @@
+
 /**
- * Sistema de Logging Estruturado
+ * Sistema de Logging Estruturado Avançado
  * Centraliza todos os logs da aplicação com contexto e request IDs
  */
 
-export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
+export type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'CRITICAL';
 
 export interface LogContext {
   requestId?: string;
@@ -11,7 +12,10 @@ export interface LogContext {
   plantId?: string;
   component?: string;
   action?: string;
-  [key: string]: any; // Permitir propriedades adicionais
+  connector?: 'sungrow' | 'solaredge' | 'manual';
+  duration?: number;
+  status?: 'success' | 'error' | 'pending';
+  metadata?: Record<string, any>;
 }
 
 export interface LogEntry {
@@ -20,15 +24,39 @@ export interface LogEntry {
   message: string;
   context: LogContext;
   error?: Error;
+  masked?: boolean;
 }
 
-class Logger {
+class AdvancedLogger {
   private isDevelopment = import.meta.env.DEV;
   private logs: LogEntry[] = [];
-  private maxLogs = 1000; // Manter apenas os últimos 1000 logs
+  private maxLogs = 2000;
+  private sensitiveFields = ['password', 'token', 'apiKey', 'secret', 'key', 'appkey', 'accessKey'];
 
   private generateRequestId(): string {
     return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  private maskSensitiveData(data: any): any {
+    if (typeof data === 'string') {
+      // Mask tokens and keys in strings
+      return data.replace(/([a-zA-Z0-9]{8})[a-zA-Z0-9]+/g, '$1***');
+    }
+    
+    if (typeof data === 'object' && data !== null) {
+      const masked = { ...data };
+      this.sensitiveFields.forEach(field => {
+        if (masked[field]) {
+          const value = String(masked[field]);
+          masked[field] = value.length > 8 
+            ? value.substring(0, 4) + '***' + value.substring(value.length - 4)
+            : '***';
+        }
+      });
+      return masked;
+    }
+    
+    return data;
   }
 
   private createLogEntry(
@@ -37,15 +65,18 @@ class Logger {
     context: LogContext = {},
     error?: Error
   ): LogEntry {
+    const maskedContext = this.maskSensitiveData(context);
+    
     const entry: LogEntry = {
       timestamp: new Date().toISOString(),
       level,
       message,
       context: {
         requestId: context.requestId || this.generateRequestId(),
-        ...context
+        ...maskedContext
       },
-      error
+      error,
+      masked: true
     };
 
     // Adicionar à lista de logs
@@ -60,8 +91,9 @@ class Logger {
   private shouldLog(level: LogLevel): boolean {
     if (this.isDevelopment) return true;
     
-    // Em produção, log apenas WARN e ERROR
-    return level === 'WARN' || level === 'ERROR';
+    // Em produção, log apenas WARN, ERROR e CRITICAL
+    const productionLevels: LogLevel[] = ['WARN', 'ERROR', 'CRITICAL'];
+    return productionLevels.includes(level);
   }
 
   private formatLogMessage(entry: LogEntry): string {
@@ -104,14 +136,52 @@ class Logger {
     }
   }
 
+  critical(message: string, error?: Error, context?: LogContext): void {
+    const entry = this.createLogEntry('CRITICAL', message, context, error);
+    console.error(`🚨 CRÍTICO: ${this.formatLogMessage(entry)}`, error);
+    
+    // SEMPRE enviar críticos para monitoramento
+    this.sendToMonitoring(entry);
+  }
+
   private async sendToMonitoring(entry: LogEntry): Promise<void> {
     try {
-      // Implementar envio para serviço de monitoramento (ex: Sentry, LogRocket)
-      // Por enquanto apenas armazenar localmente
-      localStorage.setItem('last_error', JSON.stringify(entry));
+      // TODO: Integrar com Sentry quando disponível
+      localStorage.setItem('last_critical_error', JSON.stringify(entry));
+      
+      // Opcionalmente, enviar para endpoint de monitoramento
+      if (typeof window !== 'undefined') {
+        fetch('/api/monitoring/error', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(entry)
+        }).catch(() => {
+          // Falhou silenciosamente - não queremos criar loop de erros
+        });
+      }
     } catch (err) {
-      console.error('Failed to send log to monitoring:', err);
+      // Falha silenciosa para evitar loops de erro
     }
+  }
+
+  /**
+   * Performance tracking para operações
+   */
+  startTimer(operation: string, context?: LogContext): () => void {
+    const startTime = performance.now();
+    const requestId = context?.requestId || this.generateRequestId();
+    
+    this.debug(`⏱️  Iniciando ${operation}`, { ...context, requestId });
+    
+    return () => {
+      const duration = Math.round(performance.now() - startTime);
+      this.info(`✅ ${operation} concluído`, { 
+        ...context, 
+        requestId, 
+        duration,
+        status: 'success'
+      });
+    };
   }
 
   /**
@@ -120,8 +190,10 @@ class Logger {
   getLogs(filter?: {
     level?: LogLevel;
     component?: string;
+    connector?: string;
     startTime?: Date;
     endTime?: Date;
+    limit?: number;
   }): LogEntry[] {
     let filteredLogs = [...this.logs];
 
@@ -132,6 +204,12 @@ class Logger {
     if (filter?.component) {
       filteredLogs = filteredLogs.filter(log => 
         log.context.component === filter.component
+      );
+    }
+
+    if (filter?.connector) {
+      filteredLogs = filteredLogs.filter(log => 
+        log.context.connector === filter.connector
       );
     }
 
@@ -147,7 +225,40 @@ class Logger {
       );
     }
 
-    return filteredLogs;
+    if (filter?.limit) {
+      filteredLogs = filteredLogs.slice(-filter.limit);
+    }
+
+    return filteredLogs.reverse(); // Mais recentes primeiro
+  }
+
+  /**
+   * Métricas de sistema
+   */
+  getMetrics(): {
+    totalLogs: number;
+    errorRate: number;
+    warningRate: number;
+    averageRequestTime?: number;
+  } {
+    const recentLogs = this.logs.slice(-100); // Últimos 100 logs
+    const errors = recentLogs.filter(l => l.level === 'ERROR' || l.level === 'CRITICAL').length;
+    const warnings = recentLogs.filter(l => l.level === 'WARN').length;
+    
+    const requestTimes = recentLogs
+      .filter(l => l.context.duration)
+      .map(l => l.context.duration!);
+    
+    const averageRequestTime = requestTimes.length > 0
+      ? requestTimes.reduce((a, b) => a + b, 0) / requestTimes.length
+      : undefined;
+
+    return {
+      totalLogs: this.logs.length,
+      errorRate: (errors / recentLogs.length) * 100,
+      warningRate: (warnings / recentLogs.length) * 100,
+      averageRequestTime
+    };
   }
 
   /**
@@ -163,13 +274,17 @@ class Logger {
   /**
    * Limpar logs antigos
    */
-  clearLogs(): void {
-    this.logs = [];
+  clearLogs(olderThan?: Date): void {
+    if (olderThan) {
+      this.logs = this.logs.filter(log => new Date(log.timestamp) >= olderThan);
+    } else {
+      this.logs = [];
+    }
   }
 }
 
-// Instância singleton do logger
-export const logger = new Logger();
+// Instância singleton do logger avançado
+export const logger = new AdvancedLogger();
 
 // Hook para usar o logger em componentes React
 export const useLogger = (component: string) => {
@@ -182,7 +297,32 @@ export const useLogger = (component: string) => {
       logger.warn(message, { ...context, component }),
     error: (message: string, error?: Error, context?: Omit<LogContext, 'component'>) => 
       logger.error(message, error, { ...context, component }),
+    critical: (message: string, error?: Error, context?: Omit<LogContext, 'component'>) => 
+      logger.critical(message, error, { ...context, component }),
+    startTimer: (operation: string, context?: Omit<LogContext, 'component'>) =>
+      logger.startTimer(operation, { ...context, component }),
     createContext: (extra?: Omit<LogContext, 'component'>) => 
       logger.createContext({ ...extra, component })
   };
+};
+
+// Utilidades para migração gradual dos console.log existentes
+export const logMigrationHelper = {
+  // Substituir console.log por logger.info
+  migrateConsoleLog: (message: any, context?: LogContext) => {
+    if (typeof message === 'string') {
+      logger.info(message, context);
+    } else {
+      logger.info('Data logged', { ...context, data: message });
+    }
+  },
+  
+  // Substituir console.error por logger.error
+  migrateConsoleError: (message: any, error?: Error, context?: LogContext) => {
+    if (typeof message === 'string') {
+      logger.error(message, error, context);
+    } else {
+      logger.error('Error logged', error, { ...context, data: message });
+    }
+  }
 };
