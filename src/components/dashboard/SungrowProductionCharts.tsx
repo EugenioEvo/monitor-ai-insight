@@ -20,8 +20,8 @@ export const SungrowProductionCharts = ({ plant }: SungrowProductionChartsProps)
 
   const chartData = React.useMemo(() => {
     if (!sungrowData || !Array.isArray(sungrowData)) return [];
-
-    return sungrowData.map((item: any) => {
+    
+    return sungrowData.map((item: SungrowEnergyData) => {
       let dateKey = 'time_str';
       let energyKey = 'energy_yield';
       

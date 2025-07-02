@@ -6,11 +6,11 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer } fro
 import { Zap } from 'lucide-react';
 
 interface PowerChartProps {
-  chartData: any[];
-  localReadings: any[] | undefined;
+  chartData: ProcessedChartData[];
+  localReadings: ChartDataPoint[] | undefined;
 }
 
-export const PowerChart = ({ chartData, localReadings }: PowerChartProps) => {
+export const PowerChart = React.memo(({ chartData, localReadings }: PowerChartProps) => {
   const chartConfig = {
     power: {
       label: "Potência (W)",
@@ -54,4 +54,6 @@ export const PowerChart = ({ chartData, localReadings }: PowerChartProps) => {
       </CardContent>
     </Card>
   );
-};
+});
+
+PowerChart.displayName = 'PowerChart';

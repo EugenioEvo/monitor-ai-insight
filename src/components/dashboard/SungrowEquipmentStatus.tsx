@@ -127,7 +127,7 @@ export const SungrowEquipmentStatus = ({ plant }: SungrowEquipmentStatusProps) =
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {realtimeData.slice(0, 4).map((data: any, index: number) => (
+                {realtimeData.slice(0, 4).map((data: SungrowRealtimeData, index: number) => (
                   <div key={index} className="text-center">
                     <div className="text-sm text-muted-foreground">
                       {data.device_name || `Inversor ${index + 1}`}

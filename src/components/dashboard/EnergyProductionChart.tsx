@@ -7,7 +7,7 @@ import { TrendingUp, Calendar } from 'lucide-react';
 import type { Plant } from '@/types';
 
 interface EnergyProductionChartProps {
-  chartData: any[];
+  chartData: ProcessedChartData[];
   period: 'DAY' | 'MONTH' | 'YEAR';
   plant: Plant;
 }
@@ -126,4 +126,6 @@ export const EnergyProductionChart = ({ chartData, period, plant }: EnergyProduc
       </CardContent>
     </Card>
   );
-};
+});
+
+EnergyProductionChart.displayName = 'EnergyProductionChart';
