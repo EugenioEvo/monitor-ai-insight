@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { AlertTriangle, CheckCircle, Zap, Thermometer, Activity } from 'lucide-react';
 import { useSungrowDevices, useSungrowRealtimeData } from '@/hooks/useSungrowData';
 import type { Plant } from '@/types';
+import type { SungrowRealtimeData } from '@/types/api';
 
 interface SungrowEquipmentStatusProps {
   plant: Plant;
@@ -129,18 +130,18 @@ export const SungrowEquipmentStatus = ({ plant }: SungrowEquipmentStatusProps) =
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {realtimeData.slice(0, 4).map((data: SungrowRealtimeData, index: number) => (
                   <div key={index} className="text-center">
-                    <div className="text-sm text-muted-foreground">
-                      {data.device_name || `Inversor ${index + 1}`}
-                    </div>
-                    <div className="font-medium">
-                      {data.power ? `${data.power} kW` : 'N/A'}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {data.last_update_time ? 
-                        new Date(data.last_update_time).toLocaleTimeString('pt-BR') : 
-                        'N/A'
-                      }
-                    </div>
+                     <div className="text-sm text-muted-foreground">
+                       {data.deviceSn || `Inversor ${index + 1}`}
+                     </div>
+                     <div className="font-medium">
+                       {data.parameters?.power?.value ? `${data.parameters.power.value} ${data.parameters.power.unit}` : 'N/A'}
+                     </div>
+                     <div className="text-xs text-muted-foreground">
+                       {data.timestamp ? 
+                         new Date(data.timestamp).toLocaleTimeString('pt-BR') : 
+                         'N/A'
+                       }
+                     </div>
                   </div>
                 ))}
               </div>

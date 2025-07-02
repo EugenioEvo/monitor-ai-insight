@@ -112,7 +112,7 @@ export const useOptimizedQueries = <T extends Record<string, any>>(
 
 // Hook para prefetch inteligente
 export const usePrefetchOptimized = () => {
-  const { queryClient } = useQuery({ queryKey: ['dummy'], queryFn: () => null, enabled: false });
+  const { queryClient } = {} as any; // TODO: Get from QueryClient context
 
   const prefetchQuery = useCallback(async <TData>(
     queryKey: unknown[],

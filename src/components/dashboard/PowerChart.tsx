@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts';
 import { Zap } from 'lucide-react';
+import type { ProcessedChartData, ChartDataPoint } from '@/types/api';
 
 interface PowerChartProps {
   chartData: ProcessedChartData[];

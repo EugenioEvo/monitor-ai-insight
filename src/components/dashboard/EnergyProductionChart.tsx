@@ -5,6 +5,7 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from 'recharts';
 import { TrendingUp, Calendar } from 'lucide-react';
 import type { Plant } from '@/types';
+import type { ProcessedChartData } from '@/types/api';
 
 interface EnergyProductionChartProps {
   chartData: ProcessedChartData[];
@@ -12,7 +13,7 @@ interface EnergyProductionChartProps {
   plant: Plant;
 }
 
-export const EnergyProductionChart = ({ chartData, period, plant }: EnergyProductionChartProps) => {
+export const EnergyProductionChart = React.memo(({ chartData, period, plant }: EnergyProductionChartProps) => {
   const chartConfig = {
     energy: {
       label: "Energia (kWh)",

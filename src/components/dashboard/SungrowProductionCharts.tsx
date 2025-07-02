@@ -5,6 +5,7 @@ import { useSungrowEnergyData } from '@/hooks/useSungrowData';
 import { PeriodSelector } from './PeriodSelector';
 import { EnergyProductionChart } from './EnergyProductionChart';
 import type { Plant } from '@/types';
+import type { SungrowEnergyData } from '@/types/api';
 
 interface SungrowProductionChartsProps {
   plant: Plant;
@@ -38,9 +39,10 @@ export const SungrowProductionCharts = ({ plant }: SungrowProductionChartsProps)
       }
 
       return {
-        date: item[dateKey] || item.time_str || 'N/A',
-        energy: parseFloat(item[energyKey] || item.energy_yield || 0),
-        time: item.time_str
+        date: item.timestamp || 'N/A',
+        energy: parseFloat(String(item.energy || 0)),
+        timestamp: item.timestamp,
+        time: item.timestamp
       };
     }).filter(item => item.energy > 0);
   }, [sungrowData, period]);

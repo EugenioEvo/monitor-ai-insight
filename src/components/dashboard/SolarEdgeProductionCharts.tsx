@@ -40,8 +40,8 @@ export const SolarEdgeProductionCharts = ({ plant }: SolarEdgeProductionChartsPr
   return (
     <div className="space-y-6">
       <PeriodSelector period={period} onPeriodChange={setPeriod} />
-      <EnergyProductionChart chartData={chartData} period={period} plant={plant} />
-      <PowerChart chartData={chartData} localReadings={localReadings} />
+      <EnergyProductionChart chartData={chartData?.map(d => ({ ...d, timestamp: d.date }))} period={period} plant={plant} />
+      <PowerChart chartData={chartData?.map(d => ({ ...d, timestamp: d.date }))} localReadings={localReadings?.map(r => ({ ...r, energy: r.energy_kwh, timestamp: r.timestamp }))} />
     </div>
   );
 };

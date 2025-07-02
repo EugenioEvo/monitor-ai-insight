@@ -39,7 +39,7 @@ export const PerformanceTracker: React.FC<PerformanceTrackerProps> = React.memo(
         const metrics: PerformanceMetrics = {
           renderTime,
           componentName,
-          propsCount: Object.keys(children?.props || {}).length,
+          propsCount: React.isValidElement(children) ? Object.keys(children.props || {}).length : 0,
           memoryUsage: (performance as any).memory?.usedJSHeapSize
         };
 
