@@ -3,15 +3,16 @@ import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { MetricCard } from '@/components/dashboard/MetricCard';
-import { Zap, Sun, TrendingUp, Calendar, MapPin, Activity } from 'lucide-react';
+import { Zap, Sun, TrendingUp, Calendar, MapPin, Activity, AlertTriangle } from 'lucide-react';
 import { useSungrowOverview } from '@/hooks/useSungrowData';
+import { ErrorBoundary } from '@/components/ui/error-boundary';
 import type { Plant } from '@/types';
 
 interface SungrowPlantOverviewProps {
   plant: Plant;
 }
 
-export const SungrowPlantOverview = ({ plant }: SungrowPlantOverviewProps) => {
+const SungrowPlantOverviewContent = ({ plant }: SungrowPlantOverviewProps) => {
   const { data: overview, isLoading, error } = useSungrowOverview(plant);
 
   const getStatusBadge = () => {
@@ -47,7 +48,10 @@ export const SungrowPlantOverview = ({ plant }: SungrowPlantOverviewProps) => {
       {error && (
         <Card className="border-red-200 bg-red-50">
           <CardHeader>
-            <CardTitle className="text-red-700">Erro na Conexão</CardTitle>
+            <CardTitle className="text-red-700 flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5" />
+              Erro na Conexão Sungrow
+            </CardTitle>
             <CardDescription className="text-red-600">
               Não foi possível conectar com o Sungrow. Verifique as configurações de API.
             </CardDescription>
@@ -145,5 +149,22 @@ export const SungrowPlantOverview = ({ plant }: SungrowPlantOverviewProps) => {
         </Card>
       )}
     </div>
+  );
+};
+
+export const SungrowPlantOverview = ({ plant }: SungrowPlantOverviewProps) => {
+  return (
+    <ErrorBoundary fallback={
+      <Card className="border-red-200 bg-red-50">
+        <CardHeader>
+          <CardTitle className="text-red-700">Erro no Dashboard Sungrow</CardTitle>
+          <CardDescription className="text-red-600">
+            Ocorreu um erro ao carregar os dados da planta. Tente recarregar a página.
+          </CardDescription>
+        </CardHeader>
+      </Card>
+    }>
+      <SungrowPlantOverviewContent plant={plant} />
+    </ErrorBoundary>
   );
 };
