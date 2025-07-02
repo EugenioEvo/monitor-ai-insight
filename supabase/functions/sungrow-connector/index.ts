@@ -21,8 +21,12 @@ interface AuthCache {
   config?: SungrowConfig;
 }
 
-// Cache de autenticação global
-let authCache: AuthCache = {};
+// Cache de autenticação por usuário/sessão
+const authCaches = new Map<string, AuthCache>();
+
+const getUserCacheKey = (config: SungrowConfig): string => {
+  return `${config.username}_${config.appkey}`;
+};
 
 // Configuração padrão para Sungrow
 const DEFAULT_CONFIG = {
@@ -62,9 +66,16 @@ const validatePlantId = (config: SungrowConfig): string => {
   throw new Error('Plant ID não configurado. Verifique as configurações da planta.');
 };
 
-const validateAuthConfig = (config: SungrowConfig): void => {
-  if (!config.username || !config.password || !config.appkey || !config.accessKey) {
-    throw new Error('Configuração incompleta. Verifique username, password, appkey e accessKey.');
+const validateAuthConfig = (config: SungrowConfig, requirePlantId: boolean = false): void => {
+  const missingFields = [];
+  if (!config.username) missingFields.push('username');
+  if (!config.password) missingFields.push('password');
+  if (!config.appkey) missingFields.push('appkey');
+  if (!config.accessKey) missingFields.push('accessKey');
+  if (requirePlantId && !config.plantId) missingFields.push('plantId');
+  
+  if (missingFields.length > 0) {
+    throw new Error(`Configuração incompleta. Campos obrigatórios: ${missingFields.join(', ')}`);
   }
 };
 
@@ -83,35 +94,37 @@ const handleSungrowError = (resultCode: string, resultMsg: string) => {
 };
 
 const isTokenValid = (config: SungrowConfig): boolean => {
-  if (!authCache.token || !authCache.expiresAt) return false;
+  const cacheKey = getUserCacheKey(config);
+  const cache = authCaches.get(cacheKey);
   
-  // Verificar se é a mesma configuração
-  const sameConfig = authCache.config?.username === config.username && 
-                    authCache.config?.appkey === config.appkey;
+  if (!cache?.token || !cache?.expiresAt) return false;
   
   // Token válido por mais 5 minutos
-  const notExpired = authCache.expiresAt > Date.now() + (5 * 60 * 1000);
+  const notExpired = cache.expiresAt > Date.now() + (5 * 60 * 1000);
   
-  return sameConfig && notExpired;
+  return notExpired;
 };
 
-// Rate limiting
-let lastRequestTime = 0;
-const MIN_REQUEST_INTERVAL = 50; // 50ms entre requests (menos restritivo)
+// Rate limiting melhorado
+const requestTimes = new Map<string, number>();
+const MIN_REQUEST_INTERVAL = 200; // 200ms entre requests (mais estável)
 
-const enforceRateLimit = async () => {
+const enforceRateLimit = async (config: SungrowConfig) => {
+  const userKey = getUserCacheKey(config);
   const now = Date.now();
+  const lastRequestTime = requestTimes.get(userKey) || 0;
   const timeSinceLastRequest = now - lastRequestTime;
   
   if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
-    await new Promise(resolve => setTimeout(resolve, MIN_REQUEST_INTERVAL - timeSinceLastRequest));
+    const waitTime = MIN_REQUEST_INTERVAL - timeSinceLastRequest;
+    await new Promise(resolve => setTimeout(resolve, waitTime));
   }
   
-  lastRequestTime = Date.now();
+  requestTimes.set(userKey, Date.now());
 };
 
-async function makeRequest(url: string, body: any, headers: any, requestId: string, retries = 3) {
-  await enforceRateLimit();
+async function makeRequest(url: string, body: any, headers: any, requestId: string, config: SungrowConfig, retries = 3) {
+  await enforceRateLimit(config);
   
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
@@ -145,13 +158,20 @@ async function makeRequest(url: string, body: any, headers: any, requestId: stri
 }
 
 async function authenticate(config: SungrowConfig, requestId: string) {
+  const cacheKey = getUserCacheKey(config);
+  
   // Verificar cache primeiro
   if (isTokenValid(config)) {
+    const cache = authCaches.get(cacheKey);
     logRequest(requestId, 'INFO', 'Usando token em cache');
-    return { result_code: '1', token: authCache.token };
+    return { result_code: '1', token: cache?.token };
   }
   
-  logRequest(requestId, 'INFO', 'Autenticando com Sungrow OpenAPI');
+  logRequest(requestId, 'INFO', 'Autenticando com Sungrow OpenAPI', {
+    username: config.username?.substring(0, 3) + '***',
+    appkey: config.appkey?.substring(0, 8) + '***',
+    baseUrl: config.baseUrl || DEFAULT_CONFIG.baseUrl
+  });
   
   const headers = createStandardHeaders(config.accessKey);
   const body = {
@@ -164,20 +184,25 @@ async function authenticate(config: SungrowConfig, requestId: string) {
     `${config.baseUrl || DEFAULT_CONFIG.baseUrl}${DEFAULT_CONFIG.endpoints.login}`,
     body,
     headers,
-    requestId
+    requestId,
+    config
   );
 
   if (response.result_code === '1') {
-    // Armazenar no cache (token válido por 1 hora)
-    authCache = {
+    // Armazenar no cache por usuário (token válido por 1 hora)
+    authCaches.set(cacheKey, {
       token: response.token || 'authenticated',
       expiresAt: Date.now() + (60 * 60 * 1000), // 1 hora
       config: { ...config }
-    };
+    });
     
     logRequest(requestId, 'INFO', 'Autenticação bem-sucedida');
     return response;
   } else {
+    logRequest(requestId, 'ERROR', 'Falha na autenticação', {
+      result_code: response.result_code,
+      result_msg: response.result_msg
+    });
     handleSungrowError(response.result_code, response.result_msg);
   }
 }
@@ -189,7 +214,7 @@ async function testConnection(config: SungrowConfig, requestId: string) {
       hasCredentials: !!(config.appkey && config.accessKey)
     });
 
-    validateAuthConfig(config);
+    validateAuthConfig(config, false); // Não requer plantId para teste de conexão
 
     await authenticate(config, requestId);
     
@@ -225,8 +250,8 @@ async function discoverPlants(config: SungrowConfig, requestId: string) {
       hasCredentials: !!(config.appkey && config.accessKey)
     });
     
-    // Validar apenas credenciais de autenticação, não plantId
-    validateAuthConfig(config);
+    // Validar apenas credenciais de autenticação, não plantId para descoberta
+    validateAuthConfig(config, false);
     
     await authenticate(config, requestId);
     const headers = createStandardHeaders(config.accessKey);
@@ -238,7 +263,8 @@ async function discoverPlants(config: SungrowConfig, requestId: string) {
       `${config.baseUrl || DEFAULT_CONFIG.baseUrl}${DEFAULT_CONFIG.endpoints.stationList}`,
       body,
       headers,
-      requestId
+      requestId,
+      config
     );
 
     logRequest(requestId, 'INFO', 'Response recebida do getStationList', {
@@ -309,7 +335,8 @@ async function getStationRealKpi(config: SungrowConfig, requestId: string) {
       `${config.baseUrl || DEFAULT_CONFIG.baseUrl}${DEFAULT_CONFIG.endpoints.stationRealKpi}`,
       body,
       headers,
-      requestId
+      requestId,
+      config
     );
 
     if (response.result_code === '1') {
@@ -389,7 +416,8 @@ async function getStationEnergy(config: SungrowConfig, period: string, requestId
       `${config.baseUrl || DEFAULT_CONFIG.baseUrl}${DEFAULT_CONFIG.endpoints.stationEnergy}`,
       body,
       headers,
-      requestId
+      requestId,
+      config
     );
 
     if (response.result_code === '1') {
@@ -433,7 +461,8 @@ async function getDeviceList(config: SungrowConfig, requestId: string) {
       `${config.baseUrl || DEFAULT_CONFIG.baseUrl}${DEFAULT_CONFIG.endpoints.deviceList}`,
       body,
       headers,
-      requestId
+      requestId,
+      config
     );
 
     if (response.result_code === '1') {
@@ -478,7 +507,8 @@ async function getDeviceRealTimeData(config: SungrowConfig, deviceType: string, 
       `${config.baseUrl || DEFAULT_CONFIG.baseUrl}${DEFAULT_CONFIG.endpoints.deviceRealTimeData}`,
       body,
       headers,
-      requestId
+      requestId,
+      config
     );
 
     if (response.result_code === '1') {

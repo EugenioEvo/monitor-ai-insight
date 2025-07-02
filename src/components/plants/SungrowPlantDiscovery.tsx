@@ -35,21 +35,33 @@ export const SungrowPlantDiscovery = ({ config, onPlantsSelected }: SungrowPlant
   const discoverPlants = async () => {
     setDiscovering(true);
     try {
-      console.log('Discovering Sungrow plants...');
+      const requestId = `discovery_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      console.log(`[${requestId}] Iniciando descoberta de plantas Sungrow...`, {
+        username: config.username?.substring(0, 3) + '***',
+        hasCredentials: !!(config.appkey && config.accessKey)
+      });
+      
+      // Remover plantId da config para descoberta
+      const discoveryConfig = { ...config };
+      delete discoveryConfig.plantId;
       
       const { data, error } = await supabase.functions.invoke('sungrow-connector', {
         body: {
           action: 'discover_plants',
-          config: config
+          config: discoveryConfig
         }
       });
 
       if (error) {
-        console.error('Plant discovery error:', error);
+        console.error(`[${requestId}] Erro na função Supabase:`, error);
         throw new Error(`Erro na descoberta: ${error.message}`);
       }
 
-      console.log('Plant discovery response:', data);
+      console.log(`[${requestId}] Resposta da descoberta:`, {
+        success: data?.success,
+        plantsCount: data?.plants?.length || 0,
+        error: data?.error
+      });
 
       if (data.success && data.plants) {
         setDiscoveredPlants(data.plants);
@@ -57,14 +69,31 @@ export const SungrowPlantDiscovery = ({ config, onPlantsSelected }: SungrowPlant
           title: "Plantas descobertas!",
           description: `Encontradas ${data.plants.length} plantas disponíveis.`,
         });
+        console.log(`[${requestId}] Descoberta concluída com sucesso: ${data.plants.length} plantas`);
       } else {
         throw new Error(data.error || 'Nenhuma planta encontrada');
       }
     } catch (error: any) {
-      console.error('Plant discovery failed:', error);
+      console.error('Falha na descoberta de plantas:', error);
+      
+      // Melhor tratamento de erros
+      let errorMessage = error.message;
+      let errorDescription = '';
+      
+      if (error.message.includes('credenciais') || error.message.includes('401')) {
+        errorMessage = 'Credenciais inválidas';
+        errorDescription = 'Verifique se o usuário, senha, App Key e Access Key estão corretos.';
+      } else if (error.message.includes('timeout') || error.message.includes('ECONNRESET')) {
+        errorMessage = 'Timeout na conexão';
+        errorDescription = 'A API Sungrow demorou para responder. Tente novamente em alguns minutos.';
+      } else if (error.message.includes('Rate limit') || error.message.includes('429')) {
+        errorMessage = 'Limite de requisições excedido';
+        errorDescription = 'Aguarde alguns minutos antes de tentar descobrir plantas novamente.';
+      }
+      
       toast({
-        title: "Erro na descoberta de plantas",
-        description: error.message,
+        title: errorMessage,
+        description: errorDescription || error.message,
         variant: "destructive",
       });
     } finally {

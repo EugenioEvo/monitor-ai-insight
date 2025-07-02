@@ -55,26 +55,35 @@ export const SungrowConnectionTest = ({ onConnectionSuccess }: SungrowConnection
     setErrorDetails('');
     
     try {
-      console.log('Testing Sungrow connection with config:', {
-        username: config.username,
+      const requestId = `test_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      console.log(`[${requestId}] Testando conexão Sungrow...`, {
+        username: config.username?.substring(0, 3) + '***',
         appkey: config.appkey ? `${config.appkey.substring(0, 8)}***` : 'missing',
         accessKey: config.accessKey ? `${config.accessKey.substring(0, 8)}***` : 'missing',
         baseUrl: config.baseUrl
       });
 
+      // Remover plantId da config para teste de conexão
+      const testConfig = { ...config };
+      delete testConfig.plantId;
+
       const { data, error } = await supabase.functions.invoke('sungrow-connector', {
         body: {
           action: 'test_connection',
-          config: config
+          config: testConfig
         }
       });
 
       if (error) {
-        console.error('Supabase function error:', error);
+        console.error(`[${requestId}] Erro na função Supabase:`, error);
         throw new Error(`Erro na função: ${error.message}`);
       }
 
-      console.log('Sungrow test response:', data);
+      console.log(`[${requestId}] Resposta do teste:`, {
+        success: data?.success,
+        message: data?.message,
+        error: data?.error
+      });
 
       if (data.success) {
         setConnectionStatus('success');
@@ -83,11 +92,12 @@ export const SungrowConnectionTest = ({ onConnectionSuccess }: SungrowConnection
           description: data.message || "Credenciais validadas com sucesso.",
         });
         onConnectionSuccess?.(config);
+        console.log(`[${requestId}] Teste de conexão bem-sucedido`);
       } else {
         throw new Error(data.error || data.message || 'Erro desconhecido');
       }
     } catch (error: any) {
-      console.error('Connection test failed:', error);
+      console.error('Falha no teste de conexão:', error);
       setConnectionStatus('error');
       setErrorDetails(error.message);
       
@@ -95,15 +105,18 @@ export const SungrowConnectionTest = ({ onConnectionSuccess }: SungrowConnection
       let errorMessage = error.message;
       let errorDescription = '';
       
-      if (error.message.includes('credenciais')) {
+      if (error.message.includes('Configuração incompleta') || error.message.includes('credenciais')) {
+        errorMessage = 'Credenciais incompletas ou inválidas';
+        errorDescription = 'Verifique se todos os campos obrigatórios estão preenchidos corretamente.';
+      } else if (error.message.includes('401') || error.message.includes('Não autorizado')) {
         errorMessage = 'Credenciais inválidas';
-        errorDescription = 'Verifique se o usuário, senha, App Key e Access Key estão corretos.';
+        errorDescription = 'Usuário, senha, App Key ou Access Key incorretos.';
       } else if (error.message.includes('429') || error.message.includes('Rate limit')) {
         errorMessage = 'Limite de requisições excedido';
         errorDescription = 'Aguarde alguns minutos antes de tentar novamente.';
-      } else if (error.message.includes('timeout')) {
-        errorMessage = 'Tempo limite excedido';
-        errorDescription = 'Verifique sua conexão com a internet e tente novamente.';
+      } else if (error.message.includes('timeout') || error.message.includes('ECONNRESET')) {
+        errorMessage = 'Timeout na conexão';
+        errorDescription = 'A API Sungrow demorou para responder. Tente novamente.';
       } else if (error.message.includes('appkey') || error.message.includes('App Key')) {
         errorMessage = 'App Key inválida';
         errorDescription = 'Verifique se a App Key foi obtida corretamente no portal Sungrow.';
