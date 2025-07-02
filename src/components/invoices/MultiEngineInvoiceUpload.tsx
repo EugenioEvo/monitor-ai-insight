@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useSettings } from "@/hooks/useSettings";
 import { supabase } from "@/integrations/supabase/client";
+import { logger } from "@/services/logger";
 
 export function MultiEngineInvoiceUpload() {
   const [uploading, setUploading] = useState(false);
@@ -24,7 +25,12 @@ export function MultiEngineInvoiceUpload() {
     try {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        console.log(`Processando arquivo ${i + 1}/${files.length}: ${file.name}`);
+        logger.info('Processing invoice file', {
+          component: 'MultiEngineInvoiceUpload',
+          fileName: file.name,
+          fileIndex: i + 1,
+          totalFiles: files.length
+        });
 
         // Upload do arquivo para o Storage
         const fileName = `${Date.now()}-${file.name}`;

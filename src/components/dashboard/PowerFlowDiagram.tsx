@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Zap, Sun, Home, Battery, ArrowRight } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { logger } from '@/services/logger';
 import type { Plant } from '@/types';
 import type { SolarEdgeConfig } from '@/types/monitoring';
 
@@ -19,11 +20,13 @@ export const PowerFlowDiagram = ({ plant }: PowerFlowDiagramProps) => {
         return null;
       }
 
-      console.log('Fetching power flow for plant:', plant.id);
-      console.log('Plant config:', {
-        monitoring_system: plant.monitoring_system,
-        api_site_id: plant.api_site_id,
-        has_credentials: !!plant.api_credentials
+      logger.info('Fetching power flow data', {
+        component: 'PowerFlowDiagram',
+        plantId: plant.id,
+        plantName: plant.name,
+        monitoringSystem: plant.monitoring_system,
+        apiSiteId: plant.api_site_id,
+        hasCredentials: !!plant.api_credentials
       });
 
       // Use api_site_id from plant if siteId is empty in credentials
@@ -32,9 +35,11 @@ export const PowerFlowDiagram = ({ plant }: PowerFlowDiagramProps) => {
         siteId: plant.api_site_id || (plant.api_credentials as SolarEdgeConfig)?.siteId
       };
 
-      console.log('Using config for power flow:', {
+      logger.debug('Using config for power flow request', {
+        component: 'PowerFlowDiagram',
         hasApiKey: !!config.apiKey,
-        siteId: config.siteId
+        siteId: config.siteId,
+        plantId: plant.id
       });
 
       const { data, error } = await supabase.functions.invoke('solaredge-connector', {
@@ -45,11 +50,20 @@ export const PowerFlowDiagram = ({ plant }: PowerFlowDiagramProps) => {
       });
 
       if (error) {
-        console.error('Supabase function error:', error);
+        logger.error('Supabase function error on power flow', error as Error, {
+          component: 'PowerFlowDiagram',
+          plantId: plant.id,
+          action: 'get_power_flow'
+        });
         throw error;
       }
 
-      console.log('Power flow response from SolarEdge:', data);
+      logger.info('Power flow response received', {
+        component: 'PowerFlowDiagram',
+        plantId: plant.id,
+        success: data?.success,
+        hasData: !!data?.data
+      });
       return data.success ? data.data : null;
     },
     enabled: plant.monitoring_system === 'solaredge' && !!plant.api_credentials && (!!plant.api_site_id || !!(plant.api_credentials as SolarEdgeConfig)?.siteId),

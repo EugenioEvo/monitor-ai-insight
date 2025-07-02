@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { logger } from "@/services/logger";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -37,7 +38,12 @@ export function SeparateEngineUpload() {
       const arrayBuffer = await file.arrayBuffer();
       const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
       
-      console.log(`[${selectedEngine.toUpperCase()} OCR] Processing file: ${file.name}`);
+      logger.info('Processing file with OCR engine', {
+        component: 'SeparateEngineUpload',
+        engine: selectedEngine.toUpperCase(),
+        fileName: file.name,
+        fileSize: file.size
+      });
 
       // Call the selected OCR engine
       const functionName = selectedEngine === 'openai' ? 'openai-vision-ocr' : 'google-vision-ocr';

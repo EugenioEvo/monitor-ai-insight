@@ -7,6 +7,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery } from '@tanstack/react-query';
 import { syncService } from '@/services/syncService';
+import { logger } from '@/services/logger';
 import type { Plant } from '@/types';
 
 interface SyncStatusMonitorProps {
@@ -42,7 +43,11 @@ export const SyncStatusMonitor = ({ plant, onUpdate }: SyncStatusMonitorProps) =
   const handleManualSync = async () => {
     setSyncing(true);
     try {
-      console.log('Iniciando sincronização manual para planta:', plant.id);
+      logger.info('Iniciando sincronização manual', { 
+        component: 'SyncStatusMonitor',
+        plantId: plant.id,
+        plantName: plant.name 
+      });
 
       const result = await syncService.performSync(plant);
       

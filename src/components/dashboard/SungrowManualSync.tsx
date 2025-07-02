@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { RefreshCw, AlertCircle, CheckCircle, Clock } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { logger } from '@/services/logger';
 import type { Plant } from '@/types';
 
 interface SungrowManualSyncProps {
@@ -25,7 +26,11 @@ export const SungrowManualSync = ({ plant, onSyncComplete }: SungrowManualSyncPr
   const handleManualSync = async () => {
     setSyncing(true);
     try {
-      console.log('Iniciando sincronização manual para planta:', plant.id);
+      logger.info('Iniciando sincronização manual', { 
+        component: 'SungrowManualSync',
+        plantId: plant.id,
+        plantName: plant.name 
+      });
 
       const { data, error } = await supabase.functions.invoke('sungrow-connector', {
         body: {
@@ -39,7 +44,12 @@ export const SungrowManualSync = ({ plant, onSyncComplete }: SungrowManualSyncPr
         throw new Error(`Erro na sincronização: ${error.message}`);
       }
 
-      console.log('Resposta da sincronização:', data);
+      logger.info('Resposta da sincronização recebida', { 
+        component: 'SungrowManualSync',
+        plantId: plant.id,
+        success: data?.success,
+        dataPointsSynced: data?.dataPointsSynced 
+      });
 
       if (data.success) {
         const result = {

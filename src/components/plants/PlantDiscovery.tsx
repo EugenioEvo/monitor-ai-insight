@@ -12,6 +12,7 @@ import { AlertCircle, CheckCircle, Loader2, Plus, MapPin, Zap, Download, Setting
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { getDetailedErrorMessage } from '@/utils/errorHandling';
+import { logger } from '@/services/logger';
 import type { SolarEdgeConfig, SungrowConfig } from '@/types/monitoring';
 import { SungrowConnectionTest } from './SungrowConnectionTest';
 
@@ -114,7 +115,8 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
       const config = systemType === 'solaredge' ? solarEdgeConfig : sungrowConfig;
       const functionName = systemType === 'solaredge' ? 'solaredge-connector' : 'sungrow-connector';
       
-      console.log('Discovering plants with config:', {
+      logger.info('Discovering plants', {
+        component: 'PlantDiscovery',
         systemType,
         username: config.username ? `${config.username.substring(0, 3)}***` : 'missing'
       });
@@ -136,7 +138,12 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
         }));
         
         setDiscoveredPlants(plantsWithPsId);
-        console.log('Plants discovered:', plantsWithPsId);
+        logger.info('Plants discovered successfully', {
+          component: 'PlantDiscovery',
+          systemType,
+          plantsCount: plantsWithPsId.length,
+          plants: plantsWithPsId.map(p => ({ name: p.name, id: p.id, ps_id: p.ps_id }))
+        });
         
         toast({
           title: "Plantas descobertas!",
@@ -171,7 +178,11 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
       const config = systemType === 'solaredge' ? solarEdgeConfig : sungrowConfig;
       const plantsToImport = discoveredPlants.filter(plant => selectedPlants.includes(plant.id));
       
-      console.log('Importing plants:', plantsToImport);
+      logger.info('Starting plant import process', {
+        component: 'PlantDiscovery',
+        systemType,
+        plantsToImport: plantsToImport.map(p => ({ name: p.name, id: p.id }))
+      });
       
       for (const plant of plantsToImport) {
         // Verificar se a planta já existe
@@ -182,7 +193,11 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
           .single();
 
         if (existing) {
-          console.log(`Planta ${plant.name} já existe, pulando...`);
+          logger.warn('Plant already exists, skipping', {
+            component: 'PlantDiscovery',
+            plantName: plant.name,
+            apiSiteId: plant.ps_id || plant.id
+          });
           continue;
         }
 
@@ -195,10 +210,12 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
           };
         }
 
-        console.log('Final config for plant:', {
+        logger.debug('Final config for plant import', {
+          component: 'PlantDiscovery',
           plantName: plant.name,
           plantId: finalConfig.plantId || 'not set',
-          api_site_id: plant.ps_id || plant.id
+          apiSiteId: plant.ps_id || plant.id,
+          systemType
         });
 
         // Criar nova planta
@@ -221,16 +238,30 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
           .single();
 
         if (insertError) {
-          console.error(`Erro ao importar ${plant.name}:`, insertError);
+          logger.error('Erro ao importar planta', insertError as Error, {
+            component: 'PlantDiscovery',
+            plantName: plant.name,
+            systemType
+          });
           continue;
         }
 
-        console.log(`Planta ${plant.name} importada com sucesso. ID: ${newPlant.id}`);
+        logger.info('Plant imported successfully', {
+          component: 'PlantDiscovery',
+          plantName: plant.name,
+          plantId: newPlant.id,
+          systemType
+        });
 
         // Após importar, fazer sincronização inicial automática
         if (newPlant && systemType === 'sungrow') {
           try {
-            console.log(`Iniciando sincronização inicial para planta ${plant.name} (ID: ${newPlant.id})`);
+            logger.info('Starting initial sync for imported plant', {
+              component: 'PlantDiscovery',
+              plantName: plant.name,
+              plantId: newPlant.id,
+              systemType: 'sungrow'
+            });
             
             const { data: syncResult, error: syncError } = await supabase.functions.invoke('sungrow-connector', {
               body: {
@@ -240,14 +271,32 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
             });
 
             if (syncError) {
-              console.error(`Erro na sincronização inicial da planta ${plant.name}:`, syncError);
+              logger.error('Erro na sincronização inicial', syncError, {
+                component: 'PlantDiscovery',
+                plantName: plant.name,
+                plantId: newPlant.id
+              });
             } else if (syncResult?.success) {
-              console.log(`Sincronização inicial bem-sucedida para ${plant.name}: ${syncResult.dataPointsSynced || 0} pontos`);
+              logger.info('Sincronização inicial bem-sucedida', {
+                component: 'PlantDiscovery',
+                plantName: plant.name,
+                plantId: newPlant.id,
+                dataPointsSynced: syncResult.dataPointsSynced || 0
+              });
             } else {
-              console.warn(`Sincronização inicial falhou para ${plant.name}:`, syncResult?.error);
+              logger.warn('Sincronização inicial falhou', {
+                component: 'PlantDiscovery',
+                plantName: plant.name,
+                plantId: newPlant.id,
+                error: syncResult?.error
+              });
             }
           } catch (syncError) {
-            console.error(`Falha na sincronização inicial da planta ${plant.name}:`, syncError);
+            logger.error('Falha na sincronização inicial', syncError as Error, {
+              component: 'PlantDiscovery',
+              plantName: plant.name,
+              plantId: newPlant.id
+            });
           }
         }
       }

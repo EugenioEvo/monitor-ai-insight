@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useSettings } from "@/hooks/useSettings";
 import { supabase } from "@/integrations/supabase/client";
+import { logger } from "@/services/logger";
 
 interface InvoiceUploadProps {
   onUploadComplete?: (results: any[]) => void;
@@ -65,7 +66,12 @@ export const InvoiceUpload = memo(function InvoiceUpload({
       const ocrEngine = settings.invoices.ocrEngine;
       const autoValidation = settings.invoices.autoValidation;
       
-      console.log(`Processando ${files.length} arquivo(s) com engine: ${ocrEngine}, validação automática: ${autoValidation}`);
+      logger.info('Starting invoice upload processing', {
+        component: 'InvoiceUpload',
+        filesCount: files.length,
+        ocrEngine,
+        autoValidation
+      });
       
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
@@ -86,7 +92,13 @@ export const InvoiceUpload = memo(function InvoiceUpload({
             throw new Error(`Erro no upload de ${file.name}: ${uploadError.message}`);
           }
 
-          console.log(`Arquivo ${file.name} enviado com sucesso:`, uploadData.path);
+          logger.info('Invoice file uploaded successfully', {
+            component: 'InvoiceUpload',
+            fileName: file.name,
+            uploadPath: uploadData.path,
+            fileIndex: i + 1,
+            totalFiles: files.length
+          });
           
           results.push({
             fileName: file.name,

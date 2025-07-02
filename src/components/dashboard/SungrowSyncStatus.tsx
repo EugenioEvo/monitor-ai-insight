@@ -7,6 +7,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAutoSync } from '@/hooks/useAutoSync';
 import { syncService } from '@/services/syncService';
+import { logger } from '@/services/logger';
 import type { Plant } from '@/types';
 
 interface SungrowSyncStatusProps {
@@ -23,7 +24,11 @@ export const SungrowSyncStatus = ({ plant, onUpdate }: SungrowSyncStatusProps) =
   const handleManualSync = async () => {
     setSyncing(true);
     try {
-      console.log('Starting manual sync for plant:', plant.id);
+      logger.info('Starting manual sync', { 
+        component: 'SungrowSyncStatus',
+        plantId: plant.id,
+        plantName: plant.name 
+      });
 
       const result = await syncService.performSync(plant);
       
