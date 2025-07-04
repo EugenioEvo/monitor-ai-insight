@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CheckCircle, AlertTriangle, Zap, Wifi, Activity, Monitor, Square, Loader2, RefreshCw } from 'lucide-react';
 import { SolarEdgeDigitalTwin } from './SolarEdgeDigitalTwin';
-import { useSolarEdgeEquipment } from '@/hooks/useSolarEdgeData';
+import { SolarEdgeEquipmentList } from './SolarEdgeEquipmentList';
+import { useSolarEdgeEquipment, useSolarEdgeAlerts } from '@/hooks/useSolarEdgeData';
 import { useLogger } from '@/services/logger';
 import type { Plant } from '@/types';
 
@@ -17,61 +18,93 @@ interface SolarEdgeEquipmentStatusProps {
 export const SolarEdgeEquipmentStatus = ({ plant }: SolarEdgeEquipmentStatusProps) => {
   const logger = useLogger('SolarEdgeEquipmentStatus');
   const { data: equipmentData, isLoading, error, refetch } = useSolarEdgeEquipment(plant);
+  const { data: alertsData } = useSolarEdgeAlerts(plant);
 
   // Normalizar dados da API SolarEdge para o formato esperado
   const normalizeEquipment = (apiData: any) => {
-    if (!apiData || !apiData.inverters) {
+    if (!apiData) {
       logger.warn('Dados de equipamentos não encontrados', { plantId: plant.id });
       return [];
     }
 
     const equipment = [];
     
-    // Adicionar inversores
+    // Adicionar inversores - usar dados reais
     if (apiData.inverters && Array.isArray(apiData.inverters)) {
       apiData.inverters.forEach((inverter: any, index: number) => {
+        // Verificar se há alertas para este inversor
+        const inverterAlerts = alertsData?.filter((alert: any) => 
+          alert.equipmentId === inverter.serialNumber
+        ) || [];
+        
         equipment.push({
-          id: `inv-${index}`,
+          id: inverter.serialNumber || `inv-${index}`,
           name: inverter.name || `Inversor ${index + 1}`,
           type: 'Inversor',
-          status: 'online', // SolarEdge geralmente reporta apenas equipamentos online
-          power: Math.random() * 6 + 4, // Mock para demonstração
-          temperature: Math.random() * 20 + 35, // Mock
-          efficiency: Math.random() * 5 + 95, // Mock
-          serialNumber: inverter.serialNumber || `SE-INV-${index + 1}`,
+          status: inverterAlerts.length > 0 ? 'warning' : 'online',
+          serialNumber: inverter.serialNumber,
           manufacturer: inverter.manufacturer || 'SolarEdge',
-          model: inverter.model || 'SE',
+          model: inverter.model,
+          communicationMethod: inverter.communicationMethod,
+          connectedOptimizers: inverter.connectedOptimizers || 0,
+          alerts: inverterAlerts,
           lastUpdate: new Date()
         });
       });
     }
 
-    // Adicionar otimizadores mock baseado no número de inversores
-    const optimizerCount = equipment.length * 2;
-    for (let i = 0; i < optimizerCount; i++) {
-      equipment.push({
-        id: `opt-${i}`,
-        name: `Otimizador ${i + 1}`,
-        type: 'Otimizador',
-        status: Math.random() > 0.1 ? 'online' : 'warning', // 90% online
-        voltage: Math.random() * 50 + 350,
-        current: Math.random() * 3 + 7,
-        serialNumber: `SE-OPT-${String(i + 1).padStart(3, '0')}`,
-        lastUpdate: new Date()
+    // Adicionar otimizadores reais se disponíveis
+    if (apiData.optimizers && Array.isArray(apiData.optimizers)) {
+      apiData.optimizers.forEach((optimizer: any, index: number) => {
+        const optimizerAlerts = alertsData?.filter((alert: any) => 
+          alert.equipmentId === optimizer.serialNumber
+        ) || [];
+        
+        equipment.push({
+          id: optimizer.serialNumber || `opt-${index}`,
+          name: optimizer.name || `Otimizador ${index + 1}`,
+          type: 'Otimizador',
+          status: optimizerAlerts.length > 0 ? 'warning' : 'online',
+          serialNumber: optimizer.serialNumber,
+          manufacturer: optimizer.manufacturer || 'SolarEdge',
+          model: optimizer.model,
+          alerts: optimizerAlerts,
+          lastUpdate: new Date()
+        });
       });
     }
 
     // Adicionar gateway de monitoramento
-    equipment.push({
-      id: 'gw-1',
-      name: 'Gateway SolarEdge',
-      type: 'Gateway',
-      status: 'online',
-      connection: 'Ethernet',
-      signal: Math.random() * 20 + 80,
-      serialNumber: 'SE-GW-001',
-      lastUpdate: new Date()
-    });
+    if (apiData.gateways && Array.isArray(apiData.gateways)) {
+      apiData.gateways.forEach((gateway: any, index: number) => {
+        const gatewayAlerts = alertsData?.filter((alert: any) => 
+          alert.equipmentId === gateway.serialNumber
+        ) || [];
+        
+        equipment.push({
+          id: gateway.serialNumber || `gw-${index}`,
+          name: gateway.name || 'Gateway SolarEdge',
+          type: 'Gateway',
+          status: gatewayAlerts.length > 0 ? 'warning' : 'online',
+          connection: gateway.connectionType || 'Ethernet',
+          serialNumber: gateway.serialNumber,
+          alerts: gatewayAlerts,
+          lastUpdate: new Date()
+        });
+      });
+    } else {
+      // Fallback para gateway padrão se não existir na API
+      equipment.push({
+        id: 'gw-default',
+        name: 'Gateway SolarEdge',
+        type: 'Gateway',
+        status: 'online',
+        connection: 'Ethernet',
+        serialNumber: 'SE-GW-001',
+        alerts: [],
+        lastUpdate: new Date()
+      });
+    }
 
     return equipment;
   };
@@ -163,75 +196,7 @@ export const SolarEdgeEquipmentStatus = ({ plant }: SolarEdgeEquipmentStatusProp
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {equipmentList.map((equipment) => (
-          <Card key={equipment.id}>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  {getStatusIcon(equipment.status)}
-                  {equipment.name}
-                </CardTitle>
-                {getStatusBadge(equipment.status)}
-              </div>
-              <CardDescription>
-                {equipment.type} | SN: {equipment.serialNumber}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {equipment.type === 'Inversor' && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <div className="text-sm text-muted-foreground">Potência</div>
-                    <div className="font-medium">{equipment.power} kW</div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-muted-foreground">Temperatura</div>
-                    <div className="font-medium">{equipment.temperature}°C</div>
-                  </div>
-                  <div className="col-span-2">
-                    <div className="text-sm text-muted-foreground">Eficiência</div>
-                    <div className="font-medium">{equipment.efficiency}%</div>
-                  </div>
-                </div>
-              )}
-
-              {equipment.type === 'Otimizador' && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <div className="text-sm text-muted-foreground">Tensão</div>
-                    <div className="font-medium">{equipment.voltage} V</div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-muted-foreground">Corrente</div>
-                    <div className="font-medium">{equipment.current} A</div>
-                  </div>
-                </div>
-              )}
-
-              {equipment.type === 'Gateway' && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <div className="flex items-center text-sm text-muted-foreground mb-1">
-                      <Wifi className="w-3 h-3 mr-1" />
-                      Conexão
-                    </div>
-                    <div className="font-medium">{equipment.connection}</div>
-                  </div>
-                  <div>
-                    <div className="text-sm text-muted-foreground">Sinal</div>
-                    <div className="font-medium">{equipment.signal}%</div>
-                  </div>
-                </div>
-              )}
-
-              <div className="text-xs text-muted-foreground">
-                Última atualização: {equipment.lastUpdate.toLocaleString('pt-BR')}
-              </div>
-            </CardContent>
-          </Card>
-              ))}
-            </div>
+            <SolarEdgeEquipmentList equipmentList={equipmentList} />
           )}
 
           <Card className="border-blue-200 bg-blue-50">

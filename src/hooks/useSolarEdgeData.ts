@@ -196,3 +196,49 @@ export const useSolarEdgePowerFlow = (plant: Plant) => {
     retry: 2
   });
 };
+
+export const useSolarEdgeAlerts = (plant: Plant) => {
+  const logger = useLogger('useSolarEdgeAlerts');
+
+  return useQuery({
+    queryKey: ['solaredge-alerts', plant.id],
+    queryFn: async () => {
+      if (plant.monitoring_system !== 'solaredge' || !plant.api_credentials) {
+        return [];
+      }
+
+      logger.info('Fetching SolarEdge alerts for plant:', {
+        plantId: plant.id,
+        siteId: plant.api_site_id
+      });
+
+      const config = plant.api_credentials as SolarEdgeConfig;
+      const siteId = plant.api_site_id || config.siteId;
+
+      if (!config.apiKey || !siteId) {
+        throw new Error('Configuração incompleta: API Key ou Site ID não encontrado');
+      }
+
+      const { data, error } = await supabase.functions.invoke('solaredge-connector', {
+        body: {
+          action: 'get_site_alerts',
+          config: {
+            ...config,
+            siteId: siteId
+          }
+        }
+      });
+
+      if (error) {
+        logger.error('Supabase function error:', error);
+        throw error;
+      }
+
+      logger.info('SolarEdge alerts response:', data);
+      return data.success ? data.data : [];
+    },
+    enabled: plant.monitoring_system === 'solaredge' && !!plant.api_credentials,
+    refetchInterval: 10 * 60 * 1000, // Atualizar a cada 10 minutos
+    retry: 2
+  });
+};

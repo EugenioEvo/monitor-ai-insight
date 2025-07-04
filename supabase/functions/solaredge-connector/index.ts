@@ -62,6 +62,8 @@ serve(async (req) => {
         return await getEnergyDetails(config, period);
       case 'get_environmental_benefits':
         return await getEnvironmentalBenefits(config);
+      case 'get_site_alerts':
+        return await getSiteAlerts(config);
       default:
         throw new Error('Ação não suportada');
     }
@@ -708,6 +710,49 @@ async function getEnvironmentalBenefits(config: SolarEdgeConfig) {
       JSON.stringify({ 
         success: false, 
         message: `Erro ao buscar benefícios ambientais: ${error.message}` 
+      }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+}
+
+async function getSiteAlerts(config: SolarEdgeConfig) {
+  try {
+    console.log('Buscando alertas do site...');
+    
+    const response = await fetch(
+      `https://monitoringapi.solaredge.com/site/${config.siteId}/alerts?api_key=${config.apiKey}`,
+      { 
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Monitor.ai/1.0',
+          ...(config.username && config.password ? {
+            'Authorization': `Basic ${btoa(`${config.username}:${config.password}`)}`
+          } : {})
+        }
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`API Error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    return new Response(
+      JSON.stringify({ 
+        success: true,
+        data: data.alerts || [] 
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    console.error('Erro ao buscar alertas:', error);
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        message: `Erro ao buscar alertas: ${error.message}` 
       }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
