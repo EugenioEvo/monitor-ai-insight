@@ -10,6 +10,7 @@ import { MapPin, Zap, Calendar, Settings, Activity, AlertCircle, BarChart3 } fro
 import { supabase } from '@/integrations/supabase/client';
 import { MonitoringSetup } from '@/components/plants/MonitoringSetup';
 import { PlantDiscovery } from '@/components/plants/PlantDiscovery';
+import { SungrowDebugPanel } from '@/components/plants/SungrowDebugPanel';
 import type { Plant } from '@/types';
 
 export default function Plants() {
@@ -162,6 +163,10 @@ export default function Plants() {
                   <Activity className="w-4 h-4 mr-2" />
                   Logs de Sincronização
                 </TabsTrigger>
+                <TabsTrigger value="debug">
+                  <AlertCircle className="w-4 h-4 mr-2" />
+                  Debug Sungrow
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="monitoring">
@@ -219,6 +224,10 @@ export default function Plants() {
                     </div>
                   </CardContent>
                 </Card>
+              </TabsContent>
+
+              <TabsContent value="debug">
+                <SungrowDebugPanel />
               </TabsContent>
             </Tabs>
           ) : (
