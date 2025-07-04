@@ -149,9 +149,9 @@ const isTokenValid = (config: SungrowConfig): boolean => {
   return notExpired;
 };
 
-// Rate limiting melhorado
+// Rate limiting melhorado e menos agressivo
 const requestTimes = new Map<string, number>();
-const MIN_REQUEST_INTERVAL = 200; // 200ms entre requests (mais estável)
+const MIN_REQUEST_INTERVAL = 100; // 100ms entre requests (menos agressivo)
 
 const enforceRateLimit = async (config: SungrowConfig) => {
   const userKey = getUserCacheKey(config);
@@ -206,7 +206,8 @@ async function authenticateOAuth2(config: SungrowConfig, requestId: string): Pro
   logRequest(requestId, 'INFO', 'Iniciando autenticação OAuth2', {
     hasAuthCode: !!config.authorizationCode,
     hasAccessToken: !!config.accessToken,
-    redirectUri: config.redirectUri
+    redirectUri: config.redirectUri,
+    authMode: config.authMode
   });
 
   // Se já temos access token válido, usar ele
@@ -242,12 +243,14 @@ async function authenticateOAuth2(config: SungrowConfig, requestId: string): Pro
     throw new Error('Authorization code e redirect URI são obrigatórios para OAuth2');
   }
 
+  // Headers corretos para OAuth2 baseado na documentação
   const headers = {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
     'User-Agent': 'Monitor.ai/1.0'
   };
 
+  // Body exato da documentação
   const body = {
     grant_type: 'authorization_code',
     code: config.authorizationCode,
@@ -255,13 +258,17 @@ async function authenticateOAuth2(config: SungrowConfig, requestId: string): Pro
     appkey: config.appkey
   };
 
-  logRequest(requestId, 'INFO', 'Fazendo request OAuth2 token', {
+  logRequest(requestId, 'INFO', 'OAuth2 token request', {
+    url: `${config.baseUrl || DEFAULT_CONFIG.baseUrl}/openapi/token`,
+    grant_type: body.grant_type,
     redirect_uri: config.redirectUri,
-    appkey: config.appkey?.substring(0, 8) + '***'
+    appkey: config.appkey?.substring(0, 8) + '***',
+    code_length: config.authorizationCode?.length
   });
 
+  // Endpoint correto baseado na documentação: /openapi/token (não /openapi/apiManage/token)
   const response = await makeRequest(
-    `${config.baseUrl || DEFAULT_CONFIG.baseUrl}/openapi/apiManage/token`,
+    `${config.baseUrl || DEFAULT_CONFIG.baseUrl}/openapi/token`,
     body,
     headers,
     requestId,
@@ -270,7 +277,9 @@ async function authenticateOAuth2(config: SungrowConfig, requestId: string): Pro
 
   logRequest(requestId, 'INFO', 'OAuth2 token response', {
     result_code: response.result_code,
-    has_data: !!response.result_data
+    result_msg: response.result_msg,
+    has_data: !!response.result_data,
+    auth_ps_list_count: response.result_data?.auth_ps_list?.length || 0
   });
 
   if (response.result_code !== '1') {
@@ -299,8 +308,9 @@ async function refreshAccessToken(config: SungrowConfig, requestId: string): Pro
     appkey: config.appkey
   };
 
+  // Endpoint correto para refresh token
   const response = await makeRequest(
-    `${config.baseUrl || DEFAULT_CONFIG.baseUrl}/openapi/apiManage/token`,
+    `${config.baseUrl || DEFAULT_CONFIG.baseUrl}/openapi/token`,
     body,
     headers,
     requestId,
@@ -316,18 +326,31 @@ async function refreshAccessToken(config: SungrowConfig, requestId: string): Pro
 }
 
 async function authenticate(config: SungrowConfig, requestId: string) {
+  logRequest(requestId, 'INFO', 'Iniciando autenticação', {
+    authMode: config.authMode,
+    hasAccessToken: !!config.accessToken,
+    hasRefreshToken: !!config.refreshToken,
+    hasAuthCode: !!config.authorizationCode
+  });
+
   // Decidir qual método de autenticação usar
   if (config.authMode === 'oauth2') {
     const oauthResponse = await authenticateOAuth2(config, requestId);
     
     if (oauthResponse.result_data) {
+      logRequest(requestId, 'INFO', 'OAuth2 authentication successful', {
+        token_type: oauthResponse.result_data.token_type,
+        expires_in: oauthResponse.result_data.expires_in,
+        auth_ps_list_count: oauthResponse.result_data.auth_ps_list?.length || 0
+      });
+      
       return {
         result_code: '1',
         token: oauthResponse.result_data.access_token,
         oauth_data: oauthResponse.result_data
       };
     } else {
-      throw new Error('Falha na autenticação OAuth2');
+      throw new Error('Falha na autenticação OAuth2: result_data não encontrado');
     }
   }
 
@@ -341,11 +364,17 @@ async function authenticate(config: SungrowConfig, requestId: string) {
     return { result_code: '1', token: cache?.token };
   }
   
-  logRequest(requestId, 'INFO', 'Autenticando com Sungrow OpenAPI', {
+  logRequest(requestId, 'INFO', 'Autenticando com Sungrow OpenAPI (método direto)', {
     username: config.username?.substring(0, 3) + '***',
     appkey: config.appkey?.substring(0, 8) + '***',
-    baseUrl: config.baseUrl || DEFAULT_CONFIG.baseUrl
+    baseUrl: config.baseUrl || DEFAULT_CONFIG.baseUrl,
+    hasAccessKey: !!config.accessKey
   });
+  
+  // Validar credenciais para método direto
+  if (!config.accessKey) {
+    throw new Error('Access Key é obrigatório para autenticação direta');
+  }
   
   const headers = createStandardHeaders(config.accessKey);
   const body = {
@@ -362,6 +391,12 @@ async function authenticate(config: SungrowConfig, requestId: string) {
     config
   );
 
+  logRequest(requestId, 'INFO', 'Direct auth response', {
+    result_code: response.result_code,
+    result_msg: response.result_msg,
+    has_token: !!response.token
+  });
+
   if (response.result_code === '1' && response.token) {
     // Armazenar no cache por usuário (token válido por 55 minutos para margem)
     authCaches.set(cacheKey, {
@@ -370,10 +405,10 @@ async function authenticate(config: SungrowConfig, requestId: string) {
       config: { ...config }
     });
     
-    logRequest(requestId, 'INFO', 'Autenticação bem-sucedida');
+    logRequest(requestId, 'INFO', 'Autenticação direta bem-sucedida');
     return response;
   } else {
-    logRequest(requestId, 'ERROR', 'Falha na autenticação', {
+    logRequest(requestId, 'ERROR', 'Falha na autenticação direta', {
       result_code: response.result_code,
       result_msg: response.result_msg
     });
@@ -420,18 +455,70 @@ async function testConnection(config: SungrowConfig, requestId: string) {
 async function discoverPlants(config: SungrowConfig, requestId: string) {
   try {
     logRequest(requestId, 'INFO', 'Descobrindo plantas', {
+      authMode: config.authMode,
       username: config.username?.substring(0, 3) + '***',
-      hasCredentials: !!(config.appkey && config.accessKey)
+      hasCredentials: !!(config.appkey && (config.accessKey || config.accessToken))
     });
     
     // Validar apenas credenciais de autenticação, não plantId para descoberta
     validateCredentialsOnly(config);
     
-    const { token } = await authenticate(config, requestId);
-    const headers = createStandardHeaders(config.accessKey, token);
-    const body = { appkey: config.appkey, token, has_token: true };
+    const authResult = await authenticate(config, requestId);
+    
+    // Para OAuth2, usar auth_ps_list se disponível
+    if (config.authMode === 'oauth2' && authResult.oauth_data?.auth_ps_list) {
+      logRequest(requestId, 'INFO', 'Usando auth_ps_list do OAuth2', {
+        plant_count: authResult.oauth_data.auth_ps_list.length
+      });
+      
+      // Retornar plantas autorizadas do OAuth2
+      const plants = authResult.oauth_data.auth_ps_list.map((plantId: string, index: number) => ({
+        id: plantId,
+        ps_id: parseInt(plantId),
+        name: `Planta ${plantId}`,
+        capacity: 0, // Não temos esta informação no OAuth2
+        location: 'OAuth2 Authorized Plant',
+        status: 'Active',
+        installationDate: '',
+        latitude: 0,
+        longitude: 0,
+      }));
 
-    logRequest(requestId, 'INFO', 'Fazendo request para getStationList');
+      return new Response(
+        JSON.stringify({ success: true, plants }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    // Para método direto, usar getStationList
+    const token = authResult.token;
+    
+    // Headers corretos para o método direto
+    const headers = config.authMode === 'oauth2' 
+      ? {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${token}`,
+          'User-Agent': 'Monitor.ai/1.0'
+        }
+      : createStandardHeaders(config.accessKey, token);
+    
+    // Body correto baseado no modo de autenticação
+    const body = config.authMode === 'oauth2'
+      ? {
+          appkey: config.appkey
+        }
+      : {
+          appkey: config.appkey, 
+          token, 
+          has_token: true
+        };
+
+    logRequest(requestId, 'INFO', 'Fazendo request para getStationList', {
+      authMode: config.authMode,
+      url: `${config.baseUrl || DEFAULT_CONFIG.baseUrl}${DEFAULT_CONFIG.endpoints.stationList}`,
+      hasToken: !!token
+    });
 
     const response = await makeRequest(
       `${config.baseUrl || DEFAULT_CONFIG.baseUrl}${DEFAULT_CONFIG.endpoints.stationList}`,
@@ -443,11 +530,21 @@ async function discoverPlants(config: SungrowConfig, requestId: string) {
 
     logRequest(requestId, 'INFO', 'Response recebida do getStationList', {
       result_code: response.result_code,
+      result_msg: response.result_msg,
       has_data: !!response.result_data,
-      page_list_length: response.result_data?.page_list?.length || 0
+      page_list_length: response.result_data?.page_list?.length || 0,
+      response_keys: response.result_data ? Object.keys(response.result_data) : []
     });
 
     if (response.result_code === '1' && response.result_data) {
+      // Verificar se temos page_list
+      if (!response.result_data.page_list || !Array.isArray(response.result_data.page_list)) {
+        logRequest(requestId, 'WARN', 'Formato de resposta inesperado', {
+          result_data: response.result_data
+        });
+        throw new Error('Formato de resposta inválido: page_list não encontrado');
+      }
+
       const plants = response.result_data.page_list.map((station: any) => ({
         id: station.ps_id.toString(), // Garantir que seja string
         ps_id: station.ps_id,
@@ -467,9 +564,10 @@ async function discoverPlants(config: SungrowConfig, requestId: string) {
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     } else {
-      logRequest(requestId, 'ERROR', 'API retornou erro', {
+      logRequest(requestId, 'ERROR', 'API retornou erro para getStationList', {
         result_code: response.result_code,
-        result_msg: response.result_msg
+        result_msg: response.result_msg,
+        full_response: response
       });
       handleSungrowError(response.result_code, response.result_msg);
     }
