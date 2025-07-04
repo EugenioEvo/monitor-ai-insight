@@ -27,36 +27,12 @@ export const EquipmentStatus = ({ plant }: EquipmentStatusProps) => {
 
   // Se for planta Sungrow, usar componente específico
   if (plant.monitoring_system === 'sungrow') {
-    return (
-      <ContextualErrorBoundary
-        context={{
-          component: 'EquipmentStatus',
-          feature: 'SungrowEquipment',
-          page: 'PlantDashboard'
-        }}
-        allowRetry={true}
-        showReportBug={true}
-      >
-        <SungrowEquipmentStatus plant={plant} />
-      </ContextualErrorBoundary>
-    );
+    return <SungrowEquipmentStatus plant={plant} />;
   }
 
   // Se for planta SolarEdge, usar componente específico
   if (plant.monitoring_system === 'solaredge') {
-    return (
-      <ContextualErrorBoundary
-        context={{
-          component: 'EquipmentStatus',
-          feature: 'SolarEdgeEquipment',
-          page: 'PlantDashboard'
-        }}
-        allowRetry={true}
-        showReportBug={true}
-      >
-        <SolarEdgeEquipmentStatus plant={plant} />
-      </ContextualErrorBoundary>
-    );
+    return <SolarEdgeEquipmentStatus plant={plant} />;
   }
 
   // Fallback para plantas manuais ou outros sistemas
@@ -111,16 +87,7 @@ export const EquipmentStatus = ({ plant }: EquipmentStatusProps) => {
   };
 
   return (
-    <ContextualErrorBoundary
-      context={{
-        component: 'EquipmentStatus',
-        feature: 'ManualEquipment',
-        page: 'PlantDashboard'
-      }}
-      allowRetry={true}
-      showReportBug={false}
-    >
-      <div className="space-y-6">
+    <div className="space-y-6">
         <Card>
           <CardHeader>
             <CardTitle>Status dos Equipamentos</CardTitle>
@@ -208,7 +175,6 @@ export const EquipmentStatus = ({ plant }: EquipmentStatusProps) => {
             </CardHeader>
           </Card>
         )}
-      </div>
-    </ContextualErrorBoundary>
+    </div>
   );
 };

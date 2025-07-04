@@ -196,12 +196,17 @@ class AdvancedLogger {
   }
 
   error(message: string, error?: Error, context?: LogContext): void {
-    const entry = this.createLogEntry('ERROR', message, context, error);
-    console.error(this.formatLogMessage(entry), error);
-    
-    // Em produção, enviar erros para serviço de monitoramento
-    if (!this.isDevelopment) {
-      this.sendToMonitoring(entry);
+    try {
+      const entry = this.createLogEntry('ERROR', message, context, error);
+      console.error(this.formatLogMessage(entry), error);
+      
+      // Em produção, enviar erros para serviço de monitoramento
+      if (!this.isDevelopment) {
+        this.sendToMonitoring(entry);
+      }
+    } catch (logError) {
+      // Fallback seguro para evitar crash do logger
+      console.error(`[LOGGER ERROR] ${message}`, error);
     }
   }
 

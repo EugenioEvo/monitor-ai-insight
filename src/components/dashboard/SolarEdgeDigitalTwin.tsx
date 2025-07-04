@@ -1,9 +1,11 @@
-import React, { Suspense, useRef, useMemo } from 'react';
+import React, { Suspense, useRef, useMemo, useState, useEffect } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Text, Box, Sphere, Cylinder, Html } from '@react-three/drei';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Activity, Zap, Thermometer, Wifi } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Activity, Zap, Thermometer, Wifi, AlertTriangle } from 'lucide-react';
+import { DigitalTwinErrorBoundary } from '@/components/ui/digital-twin-error-boundary';
 import type { Plant } from '@/types';
 import * as THREE from 'three';
 
@@ -189,7 +191,33 @@ const Scene3D = ({ equipmentData }: { equipmentData: EquipmentData[] }) => {
   );
 };
 
+// Verificação de suporte WebGL
+const checkWebGLSupport = (): boolean => {
+  try {
+    const canvas = document.createElement('canvas');
+    return !!(window.WebGLRenderingContext && canvas.getContext('webgl'));
+  } catch (e) {
+    return false;
+  }
+};
+
+// Componente de fallback para quando 3D não funcionar
+const FallbackView = ({ equipmentData }: { equipmentData: EquipmentData[] }) => (
+  <Alert>
+    <AlertTriangle className="h-4 w-4" />
+    <AlertDescription>
+      Visualização 3D não disponível. Mostrando dados dos equipamentos em formato tradicional.
+    </AlertDescription>
+  </Alert>
+);
+
 export const SolarEdgeDigitalTwin = ({ plant }: SolarEdgeDigitalTwinProps) => {
+  const [webglSupported, setWebglSupported] = useState(true);
+
+  useEffect(() => {
+    setWebglSupported(checkWebGLSupport());
+  }, []);
+
   // Mock data para demonstração - em implementação real viria da API SolarEdge
   const equipmentData = useMemo<EquipmentData[]>(() => [
     {
@@ -283,17 +311,33 @@ export const SolarEdgeDigitalTwin = ({ plant }: SolarEdgeDigitalTwinProps) => {
         <CardHeader>
           <CardTitle>Visualização 3D dos Equipamentos</CardTitle>
           <CardDescription>
-            Interaja com a cena: clique e arraste para rotacionar, scroll para zoom
+            {webglSupported ? 
+              'Interaja com a cena: clique e arraste para rotacionar, scroll para zoom' :
+              'WebGL não suportado pelo navegador'
+            }
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="h-[500px] bg-gradient-to-b from-slate-900 to-slate-800 rounded-lg overflow-hidden">
-            <Canvas shadows camera={{ position: [8, 8, 8], fov: 60 }}>
-              <Suspense fallback={null}>
-                <Scene3D equipmentData={equipmentData} />
-              </Suspense>
-            </Canvas>
-          </div>
+          {webglSupported ? (
+            <DigitalTwinErrorBoundary>
+              <div className="h-[500px] bg-gradient-to-b from-slate-900 to-slate-800 rounded-lg overflow-hidden">
+                <Canvas 
+                  shadows 
+                  camera={{ position: [8, 8, 8], fov: 60 }}
+                  onCreated={({ gl }) => {
+                    gl.setSize(gl.domElement.clientWidth, gl.domElement.clientHeight, false);
+                  }}
+                  fallback={<FallbackView equipmentData={equipmentData} />}
+                >
+                  <Suspense fallback={null}>
+                    <Scene3D equipmentData={equipmentData} />
+                  </Suspense>
+                </Canvas>
+              </div>
+            </DigitalTwinErrorBoundary>
+          ) : (
+            <FallbackView equipmentData={equipmentData} />
+          )}
         </CardContent>
       </Card>
 
