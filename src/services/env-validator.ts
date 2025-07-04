@@ -46,7 +46,7 @@ class EnvironmentValidator {
   private isEdgeRuntime = false;
 
   constructor() {
-    this.isEdgeRuntime = typeof Deno !== 'undefined';
+    this.isEdgeRuntime = typeof globalThis !== 'undefined' && 'Deno' in globalThis;
   }
 
   /**
@@ -101,10 +101,10 @@ class EnvironmentValidator {
 
     try {
       const env = {
-        SUPABASE_URL: Deno.env.get('SUPABASE_URL'),
-        SUPABASE_SERVICE_ROLE_KEY: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
-        OPENAI_API_KEY: Deno.env.get('OPENAI_API_KEY'),
-        GOOGLE_CLOUD_API_KEY: Deno.env.get('GOOGLE_CLOUD_API_KEY'),
+        SUPABASE_URL: (globalThis as any).Deno?.env.get('SUPABASE_URL'),
+        SUPABASE_SERVICE_ROLE_KEY: (globalThis as any).Deno?.env.get('SUPABASE_SERVICE_ROLE_KEY'),
+        OPENAI_API_KEY: (globalThis as any).Deno?.env.get('OPENAI_API_KEY'),
+        GOOGLE_CLOUD_API_KEY: (globalThis as any).Deno?.env.get('GOOGLE_CLOUD_API_KEY'),
       };
 
       return edgeEnvSchema.parse(env);
@@ -127,7 +127,7 @@ class EnvironmentValidator {
       return false;
     }
     
-    const value = Deno.env.get(secretName);
+    const value = (globalThis as any).Deno?.env.get(secretName);
     return Boolean(value && value.length > 0);
   }
 

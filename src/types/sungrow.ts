@@ -202,7 +202,7 @@ export const normalizeSungrowKpi = (kpi: SungrowStationRealKpi['result_data']) =
   temperature: kpi.p83106,
   irradiation: kpi.p83097,
   dcVoltage: kpi.p83080,
-  dcCurrent: kki.p83081,
+  dcCurrent: kpi.p83081,
   acFrequency: kpi.p83074,
   acVoltage: kpi.p83075,
   acCurrent: kpi.p83076,

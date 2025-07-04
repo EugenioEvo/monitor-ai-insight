@@ -55,7 +55,13 @@ export interface CircuitBreakerState {
 }
 
 class ApiClient {
-  private config: Required<ApiClientConfig>;
+  private config: ApiClientConfig & {
+    timeout: number;
+    retryAttempts: number;
+    retryDelay: number;
+    rateLimit: { requests: number; windowMs: number };
+    cache: { enabled: boolean; ttlMs: number };
+  };
   private cache = new Map<string, CacheEntry>();
   private rateLimitQueue = new Map<string, number[]>();
   private circuitBreakers = new Map<string, CircuitBreakerState>();
@@ -357,14 +363,14 @@ class ApiClient {
         requestId: this.requestId,
         method,
         url,
-        status: response.status,
+        status: 'success' as const,
         duration
       });
       
       return {
         ...response,
         duration
-      };
+      } as ApiResponse<T>;
       
     } catch (error) {
       const duration = Math.round(performance.now() - startTime);
