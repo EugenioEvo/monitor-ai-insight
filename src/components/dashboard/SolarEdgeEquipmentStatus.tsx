@@ -1,8 +1,11 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle, AlertTriangle, Zap, Wifi, Activity } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { CheckCircle, AlertTriangle, Zap, Wifi, Activity, Monitor, Square } from 'lucide-react';
+import { SolarEdgeDigitalTwin } from './SolarEdgeDigitalTwin';
 import type { Plant } from '@/types';
 
 interface SolarEdgeEquipmentStatusProps {
@@ -66,10 +69,24 @@ export const SolarEdgeEquipmentStatus = ({ plant }: SolarEdgeEquipmentStatusProp
             Status dos Equipamentos SolarEdge
           </CardTitle>
           <CardDescription>
-            Monitoramento dos dispositivos SolarEdge da planta
+            Monitoramento dos dispositivos SolarEdge da planta com Digital Twin 3D
           </CardDescription>
         </CardHeader>
       </Card>
+
+      <Tabs defaultValue="traditional" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="traditional" className="flex items-center gap-2">
+            <Monitor className="w-4 h-4" />
+            Vista Tradicional
+          </TabsTrigger>
+          <TabsTrigger value="digital-twin" className="flex items-center gap-2">
+            <Square className="w-4 h-4" />
+            Digital Twin 3D
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="traditional" className="space-y-6">
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {mockEquipment.map((equipment) => (
@@ -141,14 +158,20 @@ export const SolarEdgeEquipmentStatus = ({ plant }: SolarEdgeEquipmentStatusProp
         ))}
       </div>
 
-      <Card className="border-blue-200 bg-blue-50">
-        <CardHeader>
-          <CardTitle className="text-blue-700">Sistema SolarEdge</CardTitle>
-          <CardDescription className="text-blue-600">
-            Monitoramento através da API SolarEdge com dados de inversores e otimizadores.
-          </CardDescription>
-        </CardHeader>
-      </Card>
+        <Card className="border-blue-200 bg-blue-50">
+          <CardHeader>
+            <CardTitle className="text-blue-700">Sistema SolarEdge</CardTitle>
+            <CardDescription className="text-blue-600">
+              Monitoramento através da API SolarEdge com dados de inversores e otimizadores.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+        </TabsContent>
+
+        <TabsContent value="digital-twin">
+          <SolarEdgeDigitalTwin plant={plant} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
