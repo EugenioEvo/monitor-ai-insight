@@ -28,11 +28,12 @@ import NotFound from "./pages/NotFound";
 const queryClient = new QueryClient();
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <AuthProvider>
-      <PlantProvider>
-        <TooltipProvider>
-          <ThemeManager />
+  <EnhancedErrorBoundary level="page" showDetails={true}>
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <PlantProvider>
+          <TooltipProvider>
+            <ThemeManager />
           <Toaster />
           <Sonner />
           <BrowserRouter>
@@ -97,6 +98,7 @@ const App = () => (
       </PlantProvider>
     </AuthProvider>
   </QueryClientProvider>
+  </EnhancedErrorBoundary>
 );
 
 export default App;

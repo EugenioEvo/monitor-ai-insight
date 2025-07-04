@@ -167,14 +167,12 @@ class ErrorHandler {
       : error.message;
   }
 
-  showErrorToast(error: Error, context?: ErrorContext): void {
-    const { toast } = useToast();
+  // Esta função não pode usar useToast diretamente pois pode ser chamada fora de componentes
+  logError(error: Error, context?: ErrorContext): void {
     const message = this.getErrorMessage(error, context);
-    
-    toast({
-      title: "Erro",
-      description: message,
-      variant: "destructive",
+    logger.error('Error handler called', error, { 
+      ...context, 
+      userFriendlyMessage: message 
     });
   }
 
@@ -202,7 +200,7 @@ export const useErrorHandler = (component: string) => {
     handleError: (error: Error, action?: string) => {
       const context = { component, action };
       logger.error(`Erro em ${component}`, error, context);
-      errorHandler.showErrorToast(error, context);
+      errorHandler.logError(error, context);
     },
 
     getErrorMessage: (error: Error) => 

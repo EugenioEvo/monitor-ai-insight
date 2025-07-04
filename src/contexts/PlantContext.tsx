@@ -79,9 +79,9 @@ export const PlantProvider = ({ children }: PlantProviderProps) => {
     setError(error ? (error as Error).message : null);
     
     if (error) {
-      errorHandler.showErrorToast(error as Error, { component: 'PlantProvider' });
+      logger.error('Failed to fetch plants', error as Error, { component: 'PlantProvider' });
     }
-  }, [isLoading, error, setLoading, setError]);
+  }, [isLoading, error]); // Removido setLoading e setError das dependências
 
   // Invalidar queries relacionadas a plantas
   const invalidateQueries = () => {
