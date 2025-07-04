@@ -11,6 +11,7 @@ import * as THREE from 'three';
 
 interface SolarEdgeDigitalTwinProps {
   plant: Plant;
+  equipmentData?: any[];
 }
 
 interface EquipmentData {
@@ -27,8 +28,12 @@ interface EquipmentData {
   signal?: number;
 }
 
-// Componente do Inversor 3D
-const Inverter3D = ({ position, status, data }: { position: [number, number, number], status: string, data: EquipmentData }) => {
+// Componente do Inversor 3D - simplificado para evitar erros
+const Inverter3D = ({ position, status, data }: { 
+  position: [number, number, number]; 
+  status: string; 
+  data: EquipmentData;
+}) => {
   const meshRef = useRef<THREE.Mesh>(null);
   
   useFrame((state) => {
@@ -51,26 +56,33 @@ const Inverter3D = ({ position, status, data }: { position: [number, number, num
         anchorX="center"
         anchorY="middle"
       >
-        {data.name}
+        {data.name || 'Inversor'}
       </Text>
-      <Html position={[0, 1.5, 0]} center>
-        <div className="bg-background/80 backdrop-blur-sm border rounded-lg p-2 text-xs min-w-[120px]">
-          <div className="font-medium">{data.power?.toFixed(1)} kW</div>
-          <div className="text-muted-foreground">{data.temperature}°C</div>
-          <div className="text-muted-foreground">{data.efficiency}% eff</div>
-        </div>
-      </Html>
+      {data.power && (
+        <Html position={[0, 1.5, 0]} center>
+          <div className="bg-background/80 backdrop-blur-sm border rounded-lg p-2 text-xs min-w-[120px]">
+            <div className="font-medium">{data.power.toFixed(1)} kW</div>
+            {data.temperature && <div className="text-muted-foreground">{data.temperature.toFixed(0)}°C</div>}
+            {data.efficiency && <div className="text-muted-foreground">{data.efficiency.toFixed(1)}% eff</div>}
+          </div>
+        </Html>
+      )}
     </group>
   );
 };
 
-// Componente do Otimizador 3D
-const Optimizer3D = ({ position, status, data }: { position: [number, number, number], status: string, data: EquipmentData }) => {
+// Componente do Otimizador 3D - simplificado
+const Optimizer3D = ({ position, status, data }: { 
+  position: [number, number, number]; 
+  status: string; 
+  data: EquipmentData;
+}) => {
   const meshRef = useRef<THREE.Mesh>(null);
   
   useFrame((state) => {
     if (meshRef.current && status === 'online') {
-      meshRef.current.position.y = position[1] + Math.sin(state.clock.elapsedTime * 2) * 0.1;
+      const baseY = position[1];
+      meshRef.current.position.y = baseY + 0.4 + Math.sin(state.clock.elapsedTime * 2) * 0.1;
     }
   });
 
@@ -88,25 +100,32 @@ const Optimizer3D = ({ position, status, data }: { position: [number, number, nu
         anchorX="center"
         anchorY="middle"
       >
-        {data.name}
+        {data.name || 'Otimizador'}
       </Text>
-      <Html position={[0, 1, 0]} center>
-        <div className="bg-background/80 backdrop-blur-sm border rounded-lg p-1 text-xs min-w-[100px]">
-          <div className="text-muted-foreground">{data.voltage}V</div>
-          <div className="text-muted-foreground">{data.current}A</div>
-        </div>
-      </Html>
+      {(data.voltage || data.current) && (
+        <Html position={[0, 1, 0]} center>
+          <div className="bg-background/80 backdrop-blur-sm border rounded-lg p-1 text-xs min-w-[100px]">
+            {data.voltage && <div className="text-muted-foreground">{data.voltage.toFixed(0)}V</div>}
+            {data.current && <div className="text-muted-foreground">{data.current.toFixed(1)}A</div>}
+          </div>
+        </Html>
+      )}
     </group>
   );
 };
 
-// Componente do Gateway 3D
-const Gateway3D = ({ position, status, data }: { position: [number, number, number], status: string, data: EquipmentData }) => {
+// Componente do Gateway 3D - simplificado
+const Gateway3D = ({ position, status, data }: { 
+  position: [number, number, number]; 
+  status: string; 
+  data: EquipmentData;
+}) => {
   const meshRef = useRef<THREE.Mesh>(null);
   
   useFrame((state) => {
     if (meshRef.current && status === 'online') {
-      meshRef.current.scale.setScalar(1 + Math.sin(state.clock.elapsedTime * 3) * 0.05);
+      const scale = 1 + Math.sin(state.clock.elapsedTime * 3) * 0.05;
+      meshRef.current.scale.setScalar(scale);
     }
   });
 
@@ -124,16 +143,18 @@ const Gateway3D = ({ position, status, data }: { position: [number, number, numb
         anchorX="center"
         anchorY="middle"
       >
-        {data.name}
+        {data.name || 'Gateway'}
       </Text>
-      <Html position={[0, 1, 0]} center>
-        <div className="bg-background/80 backdrop-blur-sm border rounded-lg p-1 text-xs min-w-[80px]">
-          <div className="flex items-center gap-1">
-            <Wifi className="w-3 h-3" />
-            {data.signal}%
+      {data.signal && (
+        <Html position={[0, 1, 0]} center>
+          <div className="bg-background/80 backdrop-blur-sm border rounded-lg p-1 text-xs min-w-[80px]">
+            <div className="flex items-center gap-1">
+              <Wifi className="w-3 h-3" />
+              {data.signal.toFixed(0)}%
+            </div>
           </div>
-        </div>
-      </Html>
+        </Html>
+      )}
     </group>
   );
 };
@@ -211,61 +232,78 @@ const FallbackView = ({ equipmentData }: { equipmentData: EquipmentData[] }) => 
   </Alert>
 );
 
-export const SolarEdgeDigitalTwin = ({ plant }: SolarEdgeDigitalTwinProps) => {
+export const SolarEdgeDigitalTwin = ({ plant, equipmentData: propEquipmentData }: SolarEdgeDigitalTwinProps) => {
   const [webglSupported, setWebglSupported] = useState(true);
 
   useEffect(() => {
     setWebglSupported(checkWebGLSupport());
   }, []);
 
-  // Mock data para demonstração - em implementação real viria da API SolarEdge
-  const equipmentData = useMemo<EquipmentData[]>(() => [
-    {
-      id: 'inv-001',
-      name: 'Inversor SE',
-      type: 'inverter',
-      position: [0, 0, 0],
-      status: 'online',
-      power: 5.2,
-      temperature: 45,
-      efficiency: 98.5
-    },
-    {
-      id: 'opt-001',
-      name: 'Opt 1',
-      type: 'optimizer',
-      position: [-3, 0, -2],
-      status: 'online',
-      voltage: 380,
-      current: 8.5
-    },
-    {
-      id: 'opt-002',
-      name: 'Opt 2',
-      type: 'optimizer',
-      position: [-3, 0, 2],
-      status: 'online',
-      voltage: 375,
-      current: 8.2
-    },
-    {
-      id: 'opt-003',
-      name: 'Opt 3',
-      type: 'optimizer',
-      position: [3, 0, -2],
-      status: 'warning',
-      voltage: 360,
-      current: 7.8
-    },
-    {
-      id: 'gw-001',
-      name: 'Gateway',
-      type: 'gateway',
-      position: [3, 0, 2],
-      status: 'online',
-      signal: 95
+  // Converter dados dos equipamentos para o formato do Digital Twin
+  const equipmentData = useMemo<EquipmentData[]>(() => {
+    if (!propEquipmentData || propEquipmentData.length === 0) {
+      // Fallback para dados mock quando não há dados reais
+      return [
+        {
+          id: 'inv-001',
+          name: 'Inversor SE',
+          type: 'inverter',
+          position: [0, 0, 0],
+          status: 'online',
+          power: 5.2,
+          temperature: 45,
+          efficiency: 98.5
+        },
+        {
+          id: 'opt-001',
+          name: 'Opt 1',
+          type: 'optimizer',
+          position: [-3, 0, -2],
+          status: 'online',
+          voltage: 380,
+          current: 8.5
+        },
+        {
+          id: 'gw-001',
+          name: 'Gateway',
+          type: 'gateway',
+          position: [3, 0, 2],
+          status: 'online',
+          signal: 95
+        }
+      ];
     }
-  ], []);
+
+    // Converter equipamentos reais para formato 3D
+    let positionIndex = 0;
+    const positions: [number, number, number][] = [
+      [0, 0, 0], [-3, 0, -2], [-3, 0, 2], [3, 0, -2], [3, 0, 2],
+      [-5, 0, 0], [5, 0, 0], [0, 0, -3], [0, 0, 3]
+    ];
+
+    return propEquipmentData.map(equipment => {
+      const position = positions[positionIndex % positions.length] || [0, 0, 0];
+      positionIndex++;
+
+      let type: 'inverter' | 'optimizer' | 'gateway' = 'inverter';
+      if (equipment.type === 'Otimizador') type = 'optimizer';
+      if (equipment.type === 'Gateway') type = 'gateway';
+
+      return {
+        id: equipment.id || `eq-${positionIndex}`,
+        name: equipment.name || 'Equipamento',
+        type,
+        position,
+        status: equipment.status === 'warning' ? 'warning' : 'online',
+        power: equipment.power,
+        temperature: equipment.temperature,
+        voltage: equipment.voltage,
+        current: equipment.current,
+        efficiency: equipment.efficiency,
+        signal: equipment.signal
+      };
+    });
+  }, [propEquipmentData]);
 
   const getTotalPower = () => equipmentData.reduce((sum, eq) => sum + (eq.power || 0), 0);
   const getOnlineCount = () => equipmentData.filter(eq => eq.status === 'online').length;
@@ -324,8 +362,13 @@ export const SolarEdgeDigitalTwin = ({ plant }: SolarEdgeDigitalTwinProps) => {
                 <Canvas 
                   shadows 
                   camera={{ position: [8, 8, 8], fov: 60 }}
-                  onCreated={({ gl }) => {
-                    gl.setSize(gl.domElement.clientWidth, gl.domElement.clientHeight, false);
+                  onCreated={({ gl, camera }) => {
+                    try {
+                      gl.setSize(gl.domElement.clientWidth, gl.domElement.clientHeight, false);
+                      gl.setClearColor('#1a1a1a');
+                    } catch (error) {
+                      console.warn('WebGL setup error:', error);
+                    }
                   }}
                   fallback={<FallbackView equipmentData={equipmentData} />}
                 >
