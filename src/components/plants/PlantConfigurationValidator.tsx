@@ -2,7 +2,8 @@ import { AlertCircle, CheckCircle, Info } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import type { Plant } from '@/types';
-import type { SungrowConfig, SolarEdgeConfig } from '@/types/monitoring';
+import type { SolarEdgeConfig } from '@/types/monitoring';
+import type { SungrowConfig } from '@/types/sungrow';
 
 interface PlantConfigurationValidatorProps {
   plant: Plant;

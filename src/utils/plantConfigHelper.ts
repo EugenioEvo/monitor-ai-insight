@@ -1,5 +1,5 @@
 import type { Plant } from '@/types';
-import type { SungrowConfig } from '@/types/monitoring';
+import type { SungrowConfig } from '@/types/sungrow';
 
 /**
  * Utilitário para padronizar o uso de Plant IDs

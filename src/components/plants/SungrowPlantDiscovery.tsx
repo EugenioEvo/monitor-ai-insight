@@ -7,7 +7,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { AlertCircle, CheckCircle, Loader2, Search, MapPin, Zap } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import type { SungrowConfig } from '@/types/monitoring';
+import type { SungrowConfig } from '@/types/sungrow';
 import { useLogger } from '@/services/logger';
 import { useErrorHandler } from '@/services/errorHandler';
 import { useDebouncedCallback } from '@/hooks/useDebounce';

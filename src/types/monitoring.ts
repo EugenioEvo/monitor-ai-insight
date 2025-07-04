@@ -30,15 +30,6 @@ export interface SolarEdgeConfig {
   [key: string]: any;
 }
 
-export interface SungrowConfig {
-  username: string;
-  password: string;
-  appkey: string;
-  accessKey: string;
-  plantId?: string; // Optional for plant discovery
-  baseUrl?: string;
-  [key: string]: any;
-}
 
 export interface MonitoringSystemStatus {
   connected: boolean;

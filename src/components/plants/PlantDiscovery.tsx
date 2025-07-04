@@ -13,7 +13,8 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { getDetailedErrorMessage } from '@/utils/errorHandling';
 import { logger } from '@/services/logger';
-import type { SolarEdgeConfig, SungrowConfig } from '@/types/monitoring';
+import type { SolarEdgeConfig } from '@/types/monitoring';
+import type { SungrowConfig } from '@/types/sungrow';
 import { SungrowConnectionTest } from './SungrowConnectionTest';
 
 interface DiscoveredPlant {

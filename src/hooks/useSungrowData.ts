@@ -2,7 +2,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { Plant } from '@/types';
-import type { SungrowConfig } from '@/types/monitoring';
+import type { SungrowConfig } from '@/types/sungrow';
 import { plantConfigHelper } from '@/utils/plantConfigHelper';
 
 export const useSungrowOverview = (plant: Plant) => {
