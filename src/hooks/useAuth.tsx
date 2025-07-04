@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { logger } from '@/services/logger';
+import { tokenRefreshManager } from '@/services/tokenRefreshManager';
 
 interface Profile {
   id: string;

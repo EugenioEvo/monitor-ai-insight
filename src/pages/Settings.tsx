@@ -1,8 +1,10 @@
 
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useSettings } from '@/hooks/useSettings';
 import { SettingsForm } from '@/components/settings/SettingsForm';
+import { HealthMonitor } from '@/components/monitoring/HealthMonitor';
 import { 
   Zap, 
   Users, 
@@ -13,7 +15,8 @@ import {
   Bot,
   Save,
   Loader2,
-  Settings as SettingsIcon
+  Settings as SettingsIcon,
+  Activity
 } from 'lucide-react';
 import { useMemo } from 'react';
 
@@ -121,30 +124,49 @@ const Settings = () => {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {settingsConfig.map((config) => (
-          <SettingsForm
-            key={config.section}
-            section={config.section}
-            settings={settings[config.section]}
-            onUpdate={(key, value) => updateSetting(config.section, key, value)}
-            title={config.title}
-            description={config.description}
-            icon={config.icon}
-          />
-        ))}
-      </div>
+      <Tabs defaultValue="settings" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="settings" className="flex items-center gap-2">
+            <SettingsIcon className="h-4 w-4" />
+            Configurações
+          </TabsTrigger>
+          <TabsTrigger value="monitoring" className="flex items-center gap-2">
+            <Activity className="h-4 w-4" />
+            Status do Sistema
+          </TabsTrigger>
+        </TabsList>
 
-      <div className="flex justify-end pt-6 border-t">
-        <Button onClick={handleSave} disabled={saving} size="lg" className="gap-2">
-          {saving ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <Save className="w-4 h-4" />
-          )}
-          {saving ? 'Salvando...' : 'Salvar Todas as Configurações'}
-        </Button>
-      </div>
+        <TabsContent value="settings" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {settingsConfig.map((config) => (
+              <SettingsForm
+                key={config.section}
+                section={config.section}
+                settings={settings[config.section]}
+                onUpdate={(key, value) => updateSetting(config.section, key, value)}
+                title={config.title}
+                description={config.description}
+                icon={config.icon}
+              />
+            ))}
+          </div>
+
+          <div className="flex justify-end pt-6 border-t">
+            <Button onClick={handleSave} disabled={saving} size="lg" className="gap-2">
+              {saving ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Save className="w-4 h-4" />
+              )}
+              {saving ? 'Salvando...' : 'Salvar Todas as Configurações'}
+            </Button>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="monitoring">
+          <HealthMonitor />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
