@@ -659,13 +659,40 @@ serve(async (req) => {
   logRequest(requestId, 'INFO', `Request: ${req.method} ${req.url}`);
 
   try {
-    const { action, config, plantId, period, deviceType } = await req.json();
-    logRequest(requestId, 'INFO', `Action: ${action}`);
-
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      { auth: { persistSession: false } }
     );
+
+    // Check authentication
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      throw new Error('Missing Authorization header');
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    
+    if (authError || !user) {
+      logRequest(requestId, 'ERROR', 'Authentication failed', { authError });
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'Unauthorized access',
+          requestId 
+        }),
+        { 
+          status: 401, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    logRequest(requestId, 'INFO', `Authenticated user: ${user.email}`);
+
+    const { action, config, plantId, period, deviceType } = await req.json();
+    logRequest(requestId, 'INFO', `Action: ${action}`);
 
     switch (action) {
       case 'test_connection':
