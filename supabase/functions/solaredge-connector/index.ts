@@ -58,6 +58,8 @@ serve(async (req) => {
         return await getPowerFlow(config);
       case 'get_equipment_list':
         return await getEquipmentList(config);
+      case 'get_equipment_data':
+        return await getEquipmentData(config);
       case 'get_energy_details':
         return await getEnergyDetails(config, period);
       case 'get_environmental_benefits':
