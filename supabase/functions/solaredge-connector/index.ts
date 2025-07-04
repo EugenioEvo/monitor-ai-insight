@@ -624,6 +624,7 @@ async function getEquipmentList(config: SolarEdgeConfig) {
       }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
+  }
 }
 
 async function getEquipmentData(config: SolarEdgeConfig) {
