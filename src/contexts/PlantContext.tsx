@@ -71,7 +71,7 @@ export const PlantProvider = ({ children }: PlantProviderProps) => {
     if (plants) {
       setPlants(plants);
     }
-  }, [plants, setPlants]);
+  }, [plants]); // Removido setPlants das dependências para evitar loop infinito
 
   // Sincronizar estados de loading e error + handle errors
   useEffect(() => {
