@@ -39,6 +39,61 @@ class AdvancedLogger {
     return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
+  private safeSerialize(data: any, maxDepth = 3, currentDepth = 0): any {
+    // Prevenir recursão infinita
+    if (currentDepth > maxDepth) {
+      return '[MAX_DEPTH_REACHED]';
+    }
+
+    // Detectar referências circulares
+    const seen = new WeakSet();
+    
+    const serialize = (obj: any, depth: number): any => {
+      if (depth > maxDepth) return '[MAX_DEPTH_REACHED]';
+      
+      if (obj === null || typeof obj !== 'object') {
+        return obj;
+      }
+
+      // Verificar se já foi visto (referência circular)
+      if (seen.has(obj)) {
+        return '[CIRCULAR_REFERENCE]';
+      }
+      seen.add(obj);
+
+      // Filtrar propriedades problemáticas do React/DOM
+      if (obj._reactInternalFiber || obj._reactInternals || obj.nodeType) {
+        return '[REACT/DOM_OBJECT]';
+      }
+
+      // Arrays
+      if (Array.isArray(obj)) {
+        return obj.slice(0, 10).map(item => serialize(item, depth + 1));
+      }
+
+      // Objetos regulares
+      const result: any = {};
+      let count = 0;
+      for (const key in obj) {
+        if (count >= 20) { // Limitar número de propriedades
+          result['...'] = '[TRUNCATED]';
+          break;
+        }
+        if (obj.hasOwnProperty && obj.hasOwnProperty(key)) {
+          try {
+            result[key] = serialize(obj[key], depth + 1);
+            count++;
+          } catch (e) {
+            result[key] = '[SERIALIZATION_ERROR]';
+          }
+        }
+      }
+      return result;
+    };
+
+    return serialize(data, currentDepth);
+  }
+
   private maskSensitiveData(data: any): any {
     if (typeof data === 'string') {
       // Mask tokens and keys in strings
@@ -46,16 +101,21 @@ class AdvancedLogger {
     }
     
     if (typeof data === 'object' && data !== null) {
-      const masked = { ...data };
-      this.sensitiveFields.forEach(field => {
-        if (masked[field]) {
-          const value = String(masked[field]);
-          masked[field] = value.length > 8 
-            ? value.substring(0, 4) + '***' + value.substring(value.length - 4)
-            : '***';
-        }
-      });
-      return masked;
+      try {
+        const safeSerialized = this.safeSerialize(data);
+        const masked = { ...safeSerialized };
+        this.sensitiveFields.forEach(field => {
+          if (masked[field]) {
+            const value = String(masked[field]);
+            masked[field] = value.length > 8 
+              ? value.substring(0, 4) + '***' + value.substring(value.length - 4)
+              : '***';
+          }
+        });
+        return masked;
+      } catch (e) {
+        return '[MASK_ERROR]';
+      }
     }
     
     return data;
@@ -100,9 +160,16 @@ class AdvancedLogger {
 
   private formatLogMessage(entry: LogEntry): string {
     const { timestamp, level, message, context } = entry;
-    const contextStr = Object.keys(context).length > 0 
-      ? ` [${JSON.stringify(context)}]` 
-      : '';
+    let contextStr = '';
+    
+    if (Object.keys(context).length > 0) {
+      try {
+        const safeContext = this.safeSerialize(context, 2);
+        contextStr = ` [${JSON.stringify(safeContext)}]`;
+      } catch (e) {
+        contextStr = ' [CONTEXT_SERIALIZATION_ERROR]';
+      }
+    }
     
     return `[${timestamp}] ${level}: ${message}${contextStr}`;
   }

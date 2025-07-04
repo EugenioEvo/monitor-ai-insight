@@ -28,76 +28,52 @@ import NotFound from "./pages/NotFound";
 const queryClient = new QueryClient();
 
 const App = () => (
-  <EnhancedErrorBoundary level="page" showDetails={true}>
+  <EnhancedErrorBoundary level="page" showDetails={false}>
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <PlantProvider>
           <TooltipProvider>
             <ThemeManager />
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <Routes>
-              <Route path="/auth" element={<Auth />} />
-              <Route path="/" element={<Index />} />
-              <Route path="/*" element={
-                <ProtectedRoute>
-                  <SidebarProvider defaultOpen>
-                    <div className="min-h-screen flex w-full">
-                      <AppSidebar />
-                      <main className="flex-1 p-6">
-                        <Routes>
-                          <Route path="/dashboard" element={
-                            <EnhancedErrorBoundary level="page" showDetails={true}>
-                              <Dashboard />
-                            </EnhancedErrorBoundary>
-                          } />
-                          <Route path="/plants" element={
-                            <EnhancedErrorBoundary level="page" showDetails={true}>
-                              <Plants />
-                            </EnhancedErrorBoundary>
-                          } />
-                          <Route path="/plants/:id/dashboard" element={
-                            <EnhancedErrorBoundary level="page" showDetails={true}>
-                              <PlantDashboard />
-                            </EnhancedErrorBoundary>
-                          } />
-                          <Route path="/customers" element={
-                            <EnhancedErrorBoundary level="page" showDetails={true}>
-                              <Customers />
-                            </EnhancedErrorBoundary>
-                          } />
-                          <Route path="/customers/:id/dashboard" element={
-                            <EnhancedErrorBoundary level="page" showDetails={true}>
-                              <CustomerDashboard />
-                            </EnhancedErrorBoundary>
-                          } />
-                          <Route path="/invoices" element={
-                            <EnhancedErrorBoundary level="page" showDetails={true}>
-                              <Invoices />
-                            </EnhancedErrorBoundary>
-                          } />
-                          <Route path="/chat" element={<Chat />} />
-                          <Route path="/agents" element={<Agents />} />
-                          <Route path="/alerts" element={<Alerts />} />
-                          <Route path="/settings" element={
-                            <ProtectedRoute requireAdmin={true}>
-                              <Settings />
-                            </ProtectedRoute>
-                          } />
-                          <Route path="*" element={<NotFound />} />
-                        </Routes>
-                      </main>
-                    </div>
-                  </SidebarProvider>
-                </ProtectedRoute>
-              } />
-            </Routes>
-          </BrowserRouter>
-        </TooltipProvider>
-      </PlantProvider>
-    </AuthProvider>
-  </QueryClientProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <Routes>
+                <Route path="/auth" element={<Auth />} />
+                <Route path="/" element={<Index />} />
+                <Route path="/*" element={
+                  <ProtectedRoute>
+                    <SidebarProvider defaultOpen>
+                      <div className="min-h-screen flex w-full">
+                        <AppSidebar />
+                        <main className="flex-1 p-6">
+                          <Routes>
+                            <Route path="/dashboard" element={<Dashboard />} />
+                            <Route path="/plants" element={<Plants />} />
+                            <Route path="/plants/:id/dashboard" element={<PlantDashboard />} />
+                            <Route path="/customers" element={<Customers />} />
+                            <Route path="/customers/:id/dashboard" element={<CustomerDashboard />} />
+                            <Route path="/invoices" element={<Invoices />} />
+                            <Route path="/chat" element={<Chat />} />
+                            <Route path="/agents" element={<Agents />} />
+                            <Route path="/alerts" element={<Alerts />} />
+                            <Route path="/settings" element={
+                              <ProtectedRoute requireAdmin={true}>
+                                <Settings />
+                              </ProtectedRoute>
+                            } />
+                            <Route path="*" element={<NotFound />} />
+                          </Routes>
+                        </main>
+                      </div>
+                    </SidebarProvider>
+                  </ProtectedRoute>
+                } />
+              </Routes>
+            </BrowserRouter>
+          </TooltipProvider>
+        </PlantProvider>
+      </AuthProvider>
+    </QueryClientProvider>
   </EnhancedErrorBoundary>
 );
 
