@@ -1,10 +1,15 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import React, { Component, ErrorInfo as ReactErrorInfo, ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertTriangle, RefreshCw, Home } from 'lucide-react';
 import { logger } from '@/services/logger';
 import { errorHandler } from '@/services/errorHandler';
+import { ErrorReporter } from './error-reporter';
+
+interface ErrorInfo {
+  componentStack: string;
+}
 
 interface Props {
   children: ReactNode;
@@ -40,7 +45,7 @@ export class EnhancedErrorBoundary extends Component<Props, State> {
     };
   }
 
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  componentDidCatch(error: Error, errorInfo: ReactErrorInfo) {
     const errorId = this.state.errorId || 'unknown';
     
     // Log detalhado do erro
@@ -55,8 +60,13 @@ export class EnhancedErrorBoundary extends Component<Props, State> {
       }
     });
 
-    this.setState({ errorInfo });
-    this.props.onError?.(error, errorInfo);
+    // Converter ReactErrorInfo para nossa interface ErrorInfo
+    const adaptedErrorInfo: ErrorInfo = {
+      componentStack: errorInfo.componentStack || ''
+    };
+
+    this.setState({ errorInfo: adaptedErrorInfo });
+    this.props.onError?.(error, adaptedErrorInfo);
   }
 
   private handleRetry = () => {
@@ -174,15 +184,28 @@ export class EnhancedErrorBoundary extends Component<Props, State> {
   }
 
   render() {
-    if (this.state.hasError) {
+    if (this.state.hasError && this.state.error) {
       if (this.props.fallback) {
         return this.props.fallback;
       }
       
       const { level = 'component' } = this.props;
-      return level === 'component' 
-        ? this.renderMinimalFallback()
-        : this.renderDetailedFallback();
+      
+      // Para componentes, usar o fallback minimal
+      if (level === 'component') {
+        return this.renderMinimalFallback();
+      }
+      
+      // Para páginas ou funcionalidades, usar o ErrorReporter avançado
+      return (
+        <ErrorReporter
+          error={this.state.error}
+          errorInfo={this.state.errorInfo || { componentStack: '' }}
+          onRetry={this.handleRetry}
+          onReset={this.handleRetry}
+          level={level === 'feature' ? 'component' : level}
+        />
+      );
     }
 
     return this.props.children;
