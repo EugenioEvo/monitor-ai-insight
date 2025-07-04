@@ -26,11 +26,13 @@ export const useSungrowOverview = (plant: Plant) => {
         has_credentials: !!(config.appkey && config.accessKey)
       });
 
+      const { data: session } = await supabase.auth.getSession();
       const { data, error } = await supabase.functions.invoke('sungrow-connector', {
         body: {
           action: 'get_station_real_kpi',
           config: config
-        }
+        },
+        headers: { Authorization: `Bearer ${session?.session?.access_token}` }
       });
 
       if (error) {
@@ -69,12 +71,14 @@ export const useSungrowEnergyData = (plant: Plant, period: 'day' | 'month' | 'ye
         period: period
       });
 
+      const { data: session } = await supabase.auth.getSession();
       const { data, error } = await supabase.functions.invoke('sungrow-connector', {
         body: {
           action: 'get_station_energy',
           config: config,
           period: period
-        }
+        },
+        headers: { Authorization: `Bearer ${session?.session?.access_token}` }
       });
 
       if (error) {
@@ -111,11 +115,13 @@ export const useSungrowDevices = (plant: Plant) => {
         plantId: config.plantId
       });
 
+      const { data: session } = await supabase.auth.getSession();
       const { data, error } = await supabase.functions.invoke('sungrow-connector', {
         body: {
           action: 'get_device_list',
           config: config
-        }
+        },
+        headers: { Authorization: `Bearer ${session?.session?.access_token}` }
       });
 
       if (error) {
@@ -153,12 +159,14 @@ export const useSungrowRealtimeData = (plant: Plant, deviceType: string = '1') =
         deviceType: deviceType
       });
 
+      const { data: session } = await supabase.auth.getSession();
       const { data, error } = await supabase.functions.invoke('sungrow-connector', {
         body: {
           action: 'get_device_real_time_data',
           config: config,
           deviceType: deviceType
-        }
+        },
+        headers: { Authorization: `Bearer ${session?.session?.access_token}` }
       });
 
       if (error) {

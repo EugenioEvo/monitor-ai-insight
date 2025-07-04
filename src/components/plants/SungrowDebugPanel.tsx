@@ -35,11 +35,13 @@ export const SungrowDebugPanel = () => {
         baseUrl: config.baseUrl
       });
 
+      const { data: session } = await supabase.auth.getSession();
       const { data, error } = await supabase.functions.invoke('sungrow-connector', {
         body: {
           action: 'test_connection',
           config: config
-        }
+        },
+        headers: { Authorization: `Bearer ${session?.session?.access_token}` }
       });
 
       console.log('Resposta recebida:', { data, error });
@@ -91,11 +93,13 @@ export const SungrowDebugPanel = () => {
     try {
       console.log('Descobrindo plantas Sungrow...');
 
+      const { data: session } = await supabase.auth.getSession();
       const { data, error } = await supabase.functions.invoke('sungrow-connector', {
         body: {
           action: 'discover_plants',
           config: config
-        }
+        },
+        headers: { Authorization: `Bearer ${session?.session?.access_token}` }
       });
 
       console.log('Plantas descobertas:', { data, error });
