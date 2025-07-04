@@ -16,6 +16,8 @@ export interface LogContext {
   duration?: number;
   status?: 'success' | 'error' | 'pending';
   metadata?: Record<string, any>;
+  // Allow any additional properties for flexibility
+  [key: string]: any;
 }
 
 export interface LogEntry {
@@ -290,39 +292,18 @@ export const logger = new AdvancedLogger();
 export const useLogger = (component: string) => {
   return {
     debug: (message: string, context?: Omit<LogContext, 'component'>) => 
-      logger.debug(message, { ...context, component }),
+      logger.debug(message, { component, ...context }),
     info: (message: string, context?: Omit<LogContext, 'component'>) => 
-      logger.info(message, { ...context, component }),
+      logger.info(message, { component, ...context }),
     warn: (message: string, context?: Omit<LogContext, 'component'>) => 
-      logger.warn(message, { ...context, component }),
+      logger.warn(message, { component, ...context }),
     error: (message: string, error?: Error, context?: Omit<LogContext, 'component'>) => 
-      logger.error(message, error, { ...context, component }),
+      logger.error(message, error, { component, ...context }),
     critical: (message: string, error?: Error, context?: Omit<LogContext, 'component'>) => 
-      logger.critical(message, error, { ...context, component }),
+      logger.critical(message, error, { component, ...context }),
     startTimer: (operation: string, context?: Omit<LogContext, 'component'>) =>
-      logger.startTimer(operation, { ...context, component }),
-    createContext: (extra?: Omit<LogContext, 'component'>) => 
-      logger.createContext({ ...extra, component })
+      logger.startTimer(operation, { component, ...context }),
+    createContext: (base?: Omit<LogContext, 'component'>) =>
+      logger.createContext({ component, ...base }),
   };
-};
-
-// Utilidades para migração gradual dos console.log existentes
-export const logMigrationHelper = {
-  // Substituir console.log por logger.info
-  migrateConsoleLog: (message: any, context?: LogContext) => {
-    if (typeof message === 'string') {
-      logger.info(message, context);
-    } else {
-      logger.info('Data logged', { ...context, data: message });
-    }
-  },
-  
-  // Substituir console.error por logger.error
-  migrateConsoleError: (message: any, error?: Error, context?: LogContext) => {
-    if (typeof message === 'string') {
-      logger.error(message, error, context);
-    } else {
-      logger.error('Error logged', error, { ...context, data: message });
-    }
-  }
 };
