@@ -27,6 +27,7 @@ export const SungrowConnectionTest = ({ onConnectionSuccess }: SungrowConnection
   const [errorDetails, setErrorDetails] = useState<string>('');
   
   const [config, setConfig] = useState<SungrowConfig>({
+    authMode: 'direct',
     username: '',
     password: '',
     appkey: '',

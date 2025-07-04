@@ -5,12 +5,20 @@
  */
 
 export interface SungrowConfig {
-  username: string;
-  password: string;
+  authMode: 'direct' | 'oauth2';
+  username?: string;
+  password?: string;
   appkey: string;
-  accessKey: string;
+  accessKey?: string;
   plantId?: string;
   baseUrl?: string;
+  // OAuth2 specific fields
+  authorizationCode?: string;
+  redirectUri?: string;
+  accessToken?: string;
+  refreshToken?: string;
+  tokenExpiresAt?: number;
+  authorizedPlants?: string[];
 }
 
 export interface SungrowAuthResponse {
@@ -18,6 +26,20 @@ export interface SungrowAuthResponse {
   result_msg: string;
   token?: string;
   expire_time?: number;
+}
+
+export interface SungrowOAuth2Response {
+  req_serial_num: string;
+  result_code: string;
+  result_msg: string;
+  result_data?: {
+    access_token: string;
+    token_type: string;
+    refresh_token: string;
+    expires_in: number;
+    auth_ps_list: string[];
+    auth_user: number;
+  };
 }
 
 export interface SungrowStationRealKpi {
@@ -212,14 +234,30 @@ export const normalizeSungrowKpi = (kpi: SungrowStationRealKpi['result_data']) =
 
 // Validadores de configuração
 export const validateSungrowConfig = (config: Partial<SungrowConfig>): config is SungrowConfig => {
+  if (!config.appkey) return false;
+  
+  if (config.authMode === 'oauth2') {
+    return Boolean(
+      config.authorizationCode || config.accessToken
+    );
+  }
+  
+  // Modo direct (padrão)
   return Boolean(
     config.username &&
     config.password &&
-    config.appkey &&
     config.accessKey
   );
 };
 
-export const validateSungrowPlantConfig = (config: Partial<SungrowConfig>): config is Required<SungrowConfig> => {
+export const validateSungrowPlantConfig = (config: Partial<SungrowConfig>): boolean => {
   return validateSungrowConfig(config) && Boolean(config.plantId);
+};
+
+// Type guard para OAuth2 response
+export const isSungrowOAuth2Response = (obj: any): obj is SungrowOAuth2Response => {
+  return obj && 
+    typeof obj.result_code === 'string' && 
+    typeof obj.result_msg === 'string' &&
+    typeof obj.req_serial_num === 'string';
 };

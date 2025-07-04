@@ -7,12 +7,34 @@ const corsHeaders = {
 };
 
 interface SungrowConfig {
-  username: string;
-  password: string;
+  authMode: 'direct' | 'oauth2';
+  username?: string;
+  password?: string;
   appkey: string;
-  accessKey: string;
+  accessKey?: string;
   plantId?: string;
   baseUrl?: string;
+  // OAuth2 specific fields
+  authorizationCode?: string;
+  redirectUri?: string;
+  accessToken?: string;
+  refreshToken?: string;
+  tokenExpiresAt?: number;
+  authorizedPlants?: string[];
+}
+
+interface SungrowOAuth2Response {
+  req_serial_num: string;
+  result_code: string;
+  result_msg: string;
+  result_data?: {
+    access_token: string;
+    token_type: string;
+    refresh_token: string;
+    expires_in: number;
+    auth_ps_list: string[];
+    auth_user: number;
+  };
 }
 
 interface AuthCache {
@@ -73,10 +95,23 @@ const getPlantIdFromConfig = (config: SungrowConfig): string | null => {
 
 const validateAuthConfig = (config: SungrowConfig, requirePlantId: boolean = false): void => {
   const missingFields = [];
-  if (!config.username) missingFields.push('username');
-  if (!config.password) missingFields.push('password');
+  
   if (!config.appkey) missingFields.push('appkey');
-  if (!config.accessKey) missingFields.push('accessKey');
+  
+  if (config.authMode === 'oauth2') {
+    if (!config.authorizationCode && !config.accessToken) {
+      missingFields.push('authorizationCode ou accessToken');
+    }
+    if (config.authorizationCode && !config.redirectUri) {
+      missingFields.push('redirectUri');
+    }
+  } else {
+    // Modo direct (padrão)
+    if (!config.username) missingFields.push('username');
+    if (!config.password) missingFields.push('password');
+    if (!config.accessKey) missingFields.push('accessKey');
+  }
+  
   if (requirePlantId && !config.plantId) missingFields.push('plantId');
   
   if (missingFields.length > 0) {
@@ -166,7 +201,137 @@ async function makeRequest(url: string, body: any, headers: any, requestId: stri
   }
 }
 
+// OAuth2 Authentication Functions
+async function authenticateOAuth2(config: SungrowConfig, requestId: string): Promise<SungrowOAuth2Response> {
+  logRequest(requestId, 'INFO', 'Iniciando autenticação OAuth2', {
+    hasAuthCode: !!config.authorizationCode,
+    hasAccessToken: !!config.accessToken,
+    redirectUri: config.redirectUri
+  });
+
+  // Se já temos access token válido, usar ele
+  if (config.accessToken && config.tokenExpiresAt && config.tokenExpiresAt > Date.now()) {
+    logRequest(requestId, 'INFO', 'Usando access token existente');
+    return {
+      req_serial_num: `existing_${Date.now()}`,
+      result_code: '1',
+      result_msg: 'success',
+      result_data: {
+        access_token: config.accessToken,
+        token_type: 'bearer',
+        refresh_token: config.refreshToken || '',
+        expires_in: Math.floor((config.tokenExpiresAt - Date.now()) / 1000),
+        auth_ps_list: config.authorizedPlants || [],
+        auth_user: 0
+      }
+    };
+  }
+
+  // Se temos refresh token, tentar renovar
+  if (config.refreshToken && !config.authorizationCode) {
+    try {
+      return await refreshAccessToken(config, requestId);
+    } catch (error) {
+      logRequest(requestId, 'WARN', 'Falha ao renovar token, será necessário novo authorization code', error);
+      throw new Error('Token expirado. É necessário obter um novo authorization code.');
+    }
+  }
+
+  // Usar authorization code para obter novo token
+  if (!config.authorizationCode || !config.redirectUri) {
+    throw new Error('Authorization code e redirect URI são obrigatórios para OAuth2');
+  }
+
+  const headers = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+    'User-Agent': 'Monitor.ai/1.0'
+  };
+
+  const body = {
+    grant_type: 'authorization_code',
+    code: config.authorizationCode,
+    redirect_uri: config.redirectUri,
+    appkey: config.appkey
+  };
+
+  logRequest(requestId, 'INFO', 'Fazendo request OAuth2 token', {
+    redirect_uri: config.redirectUri,
+    appkey: config.appkey?.substring(0, 8) + '***'
+  });
+
+  const response = await makeRequest(
+    `${config.baseUrl || DEFAULT_CONFIG.baseUrl}/openapi/apiManage/token`,
+    body,
+    headers,
+    requestId,
+    config
+  );
+
+  logRequest(requestId, 'INFO', 'OAuth2 token response', {
+    result_code: response.result_code,
+    has_data: !!response.result_data
+  });
+
+  if (response.result_code !== '1') {
+    handleSungrowError(response.result_code, response.result_msg);
+  }
+
+  return response as SungrowOAuth2Response;
+}
+
+async function refreshAccessToken(config: SungrowConfig, requestId: string): Promise<SungrowOAuth2Response> {
+  if (!config.refreshToken) {
+    throw new Error('Refresh token não disponível');
+  }
+
+  logRequest(requestId, 'INFO', 'Renovando access token via refresh token');
+
+  const headers = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+    'User-Agent': 'Monitor.ai/1.0'
+  };
+
+  const body = {
+    grant_type: 'refresh_token',
+    refresh_token: config.refreshToken,
+    appkey: config.appkey
+  };
+
+  const response = await makeRequest(
+    `${config.baseUrl || DEFAULT_CONFIG.baseUrl}/openapi/apiManage/token`,
+    body,
+    headers,
+    requestId,
+    config
+  );
+
+  if (response.result_code !== '1') {
+    handleSungrowError(response.result_code, response.result_msg);
+  }
+
+  logRequest(requestId, 'INFO', 'Token renovado com sucesso');
+  return response as SungrowOAuth2Response;
+}
+
 async function authenticate(config: SungrowConfig, requestId: string) {
+  // Decidir qual método de autenticação usar
+  if (config.authMode === 'oauth2') {
+    const oauthResponse = await authenticateOAuth2(config, requestId);
+    
+    if (oauthResponse.result_data) {
+      return {
+        result_code: '1',
+        token: oauthResponse.result_data.access_token,
+        oauth_data: oauthResponse.result_data
+      };
+    } else {
+      throw new Error('Falha na autenticação OAuth2');
+    }
+  }
+
+  // Método direto (original)
   const cacheKey = getUserCacheKey(config);
   
   // Verificar cache primeiro
@@ -709,6 +874,16 @@ serve(async (req) => {
         return await getDeviceRealTimeData(config, deviceType || '1', requestId);
       case 'sync_data':
         return await syncPlantData(supabase, plantId, requestId);
+      case 'oauth2_token':
+        const oauthResult = await authenticateOAuth2(config, requestId);
+        return new Response(
+          JSON.stringify({ 
+            success: oauthResult.result_code === '1', 
+            data: oauthResult.result_data,
+            message: oauthResult.result_msg
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       default:
         throw new Error(`Ação não suportada: ${action}`);
     }

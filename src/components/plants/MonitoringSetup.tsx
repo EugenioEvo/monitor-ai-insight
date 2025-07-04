@@ -43,6 +43,7 @@ export const MonitoringSetup = ({ plant, onUpdate }: MonitoringSetupProps) => {
 
   // Sungrow config
   const [sungrowConfig, setSungrowConfig] = useState<SungrowConfig>({
+    authMode: 'direct',
     username: '',
     password: '',
     appkey: '',

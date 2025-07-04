@@ -54,6 +54,7 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
   });
   
   const [sungrowConfig, setSungrowConfig] = useState<SungrowConfig>({
+    authMode: 'direct',
     username: '',
     password: '',
     appkey: '',
@@ -70,7 +71,7 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
     setCurrentStep(1);
     setSystemType('solaredge');
     setSolarEdgeConfig({ apiKey: '', siteId: '', username: '', password: '' });
-    setSungrowConfig({ username: '', password: '', appkey: '', accessKey: '', plantId: '', baseUrl: 'https://gateway.isolarcloud.com.hk' });
+    setSungrowConfig({ authMode: 'direct', username: '', password: '', appkey: '', accessKey: '', plantId: '', baseUrl: 'https://gateway.isolarcloud.com.hk' });
     setDiscoveredPlants([]);
     setSelectedPlants([]);
   };
