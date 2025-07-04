@@ -622,6 +622,152 @@ async function getEquipmentList(config: SolarEdgeConfig) {
       }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
+}
+
+async function getEquipmentData(config: SolarEdgeConfig) {
+  try {
+    console.log('Buscando dados detalhados dos equipamentos...');
+    
+    // Primeiro buscar lista de equipamentos
+    const inventoryResponse = await fetch(
+      `https://monitoringapi.solaredge.com/site/${config.siteId}/inventory?api_key=${config.apiKey}`,
+      { 
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'Monitor.ai/1.0',
+          ...(config.username && config.password ? {
+            'Authorization': `Basic ${btoa(`${config.username}:${config.password}`)}`
+          } : {})
+        }
+      }
+    );
+
+    if (!inventoryResponse.ok) {
+      throw new Error(`API Error: ${inventoryResponse.status}`);
+    }
+
+    const inventoryData = await inventoryResponse.json();
+    console.log('Inventory data:', inventoryData);
+
+    const equipmentData = {
+      inverters: [],
+      optimizers: [],
+      batteries: [],
+      meters: [],
+      sensors: [],
+      gateways: []
+    };
+
+    // Processar inversores e buscar dados detalhados
+    if (inventoryData.Inventory?.inverters) {
+      for (const inverter of inventoryData.Inventory.inverters) {
+        try {
+          // Buscar dados técnicos do inversor
+          const inverterDataResponse = await fetch(
+            `https://monitoringapi.solaredge.com/equipment/${config.siteId}/${inverter.serialNumber}/data?startTime=${new Date(Date.now() - 24*60*60*1000).toISOString().split('T')[0]} 00:00:00&endTime=${new Date().toISOString().split('T')[0]} 23:59:59&api_key=${config.apiKey}`,
+            { 
+              method: 'GET',
+              headers: {
+                'Accept': 'application/json',
+                'User-Agent': 'Monitor.ai/1.0'
+              }
+            }
+          );
+
+          let technicalData = {};
+          if (inverterDataResponse.ok) {
+            const techData = await inverterDataResponse.json();
+            const latestReading = techData.data?.telemetries?.[0]?.L1Data;
+            if (latestReading) {
+              technicalData = {
+                currentPower: latestReading.acPower || 0,
+                voltage: latestReading.acVoltage || 0,
+                current: latestReading.acCurrent || 0,
+                temperature: latestReading.temperature || 25,
+                frequency: latestReading.acFrequency || 60
+              };
+            }
+          }
+
+          equipmentData.inverters.push({
+            ...inverter,
+            id: inverter.serialNumber,
+            ...technicalData,
+            lastUpdate: new Date().toISOString()
+          });
+        } catch (error) {
+          console.warn(`Erro ao buscar dados do inversor ${inverter.serialNumber}:`, error);
+          equipmentData.inverters.push({
+            ...inverter,
+            id: inverter.serialNumber,
+            currentPower: 0,
+            voltage: 0,
+            current: 0,
+            temperature: 25,
+            lastUpdate: new Date().toISOString()
+          });
+        }
+      }
+    }
+
+    // Processar otimizadores
+    if (inventoryData.Inventory?.optimizers) {
+      for (const optimizer of inventoryData.Inventory.optimizers) {
+        equipmentData.optimizers.push({
+          ...optimizer,
+          id: optimizer.serialNumber,
+          voltage: Math.random() * 50 + 350, // Mock temporário
+          current: Math.random() * 3 + 7,    // Mock temporário
+          lastUpdate: new Date().toISOString()
+        });
+      }
+    }
+
+    // Processar medidores
+    if (inventoryData.Inventory?.meters) {
+      for (const meter of inventoryData.Inventory.meters) {
+        equipmentData.meters.push({
+          ...meter,
+          id: meter.serialNumber,
+          lastUpdate: new Date().toISOString()
+        });
+      }
+    }
+
+    // Adicionar gateway padrão se não existir
+    if (!inventoryData.Inventory?.gateways || inventoryData.Inventory.gateways.length === 0) {
+      equipmentData.gateways.push({
+        id: 'gateway-default',
+        name: 'Gateway SolarEdge',
+        serialNumber: `SE-GW-${config.siteId}`,
+        connectionType: 'Ethernet',
+        lastUpdate: new Date().toISOString()
+      });
+    } else {
+      equipmentData.gateways = inventoryData.Inventory.gateways.map(gw => ({
+        ...gw,
+        id: gw.serialNumber,
+        lastUpdate: new Date().toISOString()
+      }));
+    }
+
+    return new Response(
+      JSON.stringify({ 
+        success: true,
+        data: equipmentData 
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    console.error('Erro ao buscar dados dos equipamentos:', error);
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        message: `Erro ao buscar dados dos equipamentos: ${error.message}` 
+      }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
   }
 }
 

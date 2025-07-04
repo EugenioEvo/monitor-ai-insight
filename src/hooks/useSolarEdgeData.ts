@@ -67,7 +67,7 @@ export const useSolarEdgeEquipment = (plant: Plant) => {
         return null;
       }
 
-      logger.info('Fetching SolarEdge equipment for plant:', {
+      logger.info('Fetching SolarEdge equipment data for plant:', {
         plantId: plant.id,
         siteId: plant.api_site_id
       });
@@ -81,7 +81,7 @@ export const useSolarEdgeEquipment = (plant: Plant) => {
 
       const { data, error } = await supabase.functions.invoke('solaredge-connector', {
         body: {
-          action: 'get_equipment_list',
+          action: 'get_equipment_data',
           config: {
             ...config,
             siteId: siteId

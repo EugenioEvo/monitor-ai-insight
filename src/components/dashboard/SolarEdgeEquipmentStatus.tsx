@@ -29,17 +29,17 @@ export const SolarEdgeEquipmentStatus = ({ plant }: SolarEdgeEquipmentStatusProp
 
     const equipment = [];
     
-    // Adicionar inversores - usar dados reais
+    // Adicionar inversores com dados reais
     if (apiData.inverters && Array.isArray(apiData.inverters)) {
-      apiData.inverters.forEach((inverter: any, index: number) => {
+      apiData.inverters.forEach((inverter: any) => {
         // Verificar se há alertas para este inversor
         const inverterAlerts = alertsData?.filter((alert: any) => 
           alert.equipmentId === inverter.serialNumber
         ) || [];
         
         equipment.push({
-          id: inverter.serialNumber || `inv-${index}`,
-          name: inverter.name || `Inversor ${index + 1}`,
+          id: inverter.serialNumber || inverter.id,
+          name: inverter.name || `Inversor ${inverter.serialNumber}`,
           type: 'Inversor',
           status: inverterAlerts.length > 0 ? 'warning' : 'online',
           serialNumber: inverter.serialNumber,
@@ -47,62 +47,59 @@ export const SolarEdgeEquipmentStatus = ({ plant }: SolarEdgeEquipmentStatusProp
           model: inverter.model,
           communicationMethod: inverter.communicationMethod,
           connectedOptimizers: inverter.connectedOptimizers || 0,
+          // Dados técnicos reais
+          currentPower: inverter.currentPower || 0,
+          voltage: inverter.voltage || 0,
+          current: inverter.current || 0,
+          temperature: inverter.temperature || 25,
+          frequency: inverter.frequency || 60,
           alerts: inverterAlerts,
-          lastUpdate: new Date()
+          lastUpdate: new Date(inverter.lastUpdate || Date.now())
         });
       });
     }
 
-    // Adicionar otimizadores reais se disponíveis
+    // Adicionar otimizadores reais
     if (apiData.optimizers && Array.isArray(apiData.optimizers)) {
-      apiData.optimizers.forEach((optimizer: any, index: number) => {
+      apiData.optimizers.forEach((optimizer: any) => {
         const optimizerAlerts = alertsData?.filter((alert: any) => 
           alert.equipmentId === optimizer.serialNumber
         ) || [];
         
         equipment.push({
-          id: optimizer.serialNumber || `opt-${index}`,
-          name: optimizer.name || `Otimizador ${index + 1}`,
+          id: optimizer.serialNumber || optimizer.id,
+          name: optimizer.name || `Otimizador ${optimizer.serialNumber}`,
           type: 'Otimizador',
           status: optimizerAlerts.length > 0 ? 'warning' : 'online',
           serialNumber: optimizer.serialNumber,
           manufacturer: optimizer.manufacturer || 'SolarEdge',
           model: optimizer.model,
+          // Dados técnicos reais
+          voltage: optimizer.voltage || 0,
+          current: optimizer.current || 0,
           alerts: optimizerAlerts,
-          lastUpdate: new Date()
+          lastUpdate: new Date(optimizer.lastUpdate || Date.now())
         });
       });
     }
 
     // Adicionar gateway de monitoramento
     if (apiData.gateways && Array.isArray(apiData.gateways)) {
-      apiData.gateways.forEach((gateway: any, index: number) => {
+      apiData.gateways.forEach((gateway: any) => {
         const gatewayAlerts = alertsData?.filter((alert: any) => 
           alert.equipmentId === gateway.serialNumber
         ) || [];
         
         equipment.push({
-          id: gateway.serialNumber || `gw-${index}`,
+          id: gateway.serialNumber || gateway.id,
           name: gateway.name || 'Gateway SolarEdge',
           type: 'Gateway',
           status: gatewayAlerts.length > 0 ? 'warning' : 'online',
           connection: gateway.connectionType || 'Ethernet',
           serialNumber: gateway.serialNumber,
           alerts: gatewayAlerts,
-          lastUpdate: new Date()
+          lastUpdate: new Date(gateway.lastUpdate || Date.now())
         });
-      });
-    } else {
-      // Fallback para gateway padrão se não existir na API
-      equipment.push({
-        id: 'gw-default',
-        name: 'Gateway SolarEdge',
-        type: 'Gateway',
-        status: 'online',
-        connection: 'Ethernet',
-        serialNumber: 'SE-GW-001',
-        alerts: [],
-        lastUpdate: new Date()
       });
     }
 

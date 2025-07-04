@@ -14,6 +14,12 @@ interface Equipment {
   communicationMethod?: string;
   connectedOptimizers?: number;
   connection?: string;
+  // Dados técnicos reais
+  currentPower?: number;
+  voltage?: number;
+  current?: number;
+  temperature?: number;
+  frequency?: number;
   alerts?: any[];
   lastUpdate: Date;
 }
@@ -67,12 +73,20 @@ export const SolarEdgeEquipmentList = ({ equipmentList }: SolarEdgeEquipmentList
                 <CardContent className="space-y-3">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <div className="text-sm text-muted-foreground">Método de Com.</div>
-                      <div className="font-medium">{equipment.communicationMethod || 'N/A'}</div>
+                      <div className="text-sm text-muted-foreground">Potência Atual</div>
+                      <div className="font-medium">{(equipment.currentPower || 0).toFixed(1)} kW</div>
                     </div>
                     <div>
-                      <div className="text-sm text-muted-foreground">Otimizadores</div>
-                      <div className="font-medium">{equipment.connectedOptimizers || 0}</div>
+                      <div className="text-sm text-muted-foreground">Tensão</div>
+                      <div className="font-medium">{(equipment.voltage || 0).toFixed(0)} V</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Corrente</div>
+                      <div className="font-medium">{(equipment.current || 0).toFixed(1)} A</div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Temperatura</div>
+                      <div className="font-medium">{(equipment.temperature || 25).toFixed(0)}°C</div>
                     </div>
                   </div>
 
@@ -120,6 +134,16 @@ export const SolarEdgeEquipmentList = ({ equipmentList }: SolarEdgeEquipmentList
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2">
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <div className="text-muted-foreground">Tensão</div>
+                      <div className="font-medium">{(equipment.voltage || 0).toFixed(0)}V</div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground">Corrente</div>
+                      <div className="font-medium">{(equipment.current || 0).toFixed(1)}A</div>
+                    </div>
+                  </div>
                   {equipment.alerts && equipment.alerts.length > 0 && (
                     <Badge variant="destructive" className="text-xs">
                       {equipment.alerts.length} alertas
