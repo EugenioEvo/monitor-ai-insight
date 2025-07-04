@@ -17,8 +17,10 @@ export type Database = {
           message: string
           plant_id: string
           severity: string
+          status: string | null
           timestamp: string
           type: string
+          updated_at: string | null
         }
         Insert: {
           acknowledged_by?: string | null
@@ -27,8 +29,10 @@ export type Database = {
           message: string
           plant_id: string
           severity: string
+          status?: string | null
           timestamp?: string
           type: string
+          updated_at?: string | null
         }
         Update: {
           acknowledged_by?: string | null
@@ -37,8 +41,10 @@ export type Database = {
           message?: string
           plant_id?: string
           severity?: string
+          status?: string | null
           timestamp?: string
           type?: string
+          updated_at?: string | null
         }
         Relationships: [
           {
@@ -755,40 +761,96 @@ export type Database = {
           },
         ]
       }
+      ticket_history: {
+        Row: {
+          changed_at: string
+          changed_by: string | null
+          field_changed: string
+          id: string
+          new_value: string | null
+          notes: string | null
+          old_value: string | null
+          ticket_id: string
+        }
+        Insert: {
+          changed_at?: string
+          changed_by?: string | null
+          field_changed: string
+          id?: string
+          new_value?: string | null
+          notes?: string | null
+          old_value?: string | null
+          ticket_id: string
+        }
+        Update: {
+          changed_at?: string
+          changed_by?: string | null
+          field_changed?: string
+          id?: string
+          new_value?: string | null
+          notes?: string | null
+          old_value?: string | null
+          ticket_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ticket_history_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tickets: {
         Row: {
+          actual_hours: number | null
           assigned_to: string | null
+          closed_at: string | null
           created_at: string
           description: string
+          due_date: string | null
+          estimated_hours: number | null
           id: string
           opened_at: string
           plant_id: string
           priority: string
           status: string
+          title: string | null
           type: string
           updated_at: string
         }
         Insert: {
+          actual_hours?: number | null
           assigned_to?: string | null
+          closed_at?: string | null
           created_at?: string
           description: string
+          due_date?: string | null
+          estimated_hours?: number | null
           id?: string
           opened_at?: string
           plant_id: string
           priority: string
           status?: string
+          title?: string | null
           type: string
           updated_at?: string
         }
         Update: {
+          actual_hours?: number | null
           assigned_to?: string | null
+          closed_at?: string | null
           created_at?: string
           description?: string
+          due_date?: string | null
+          estimated_hours?: number | null
           id?: string
           opened_at?: string
           plant_id?: string
           priority?: string
           status?: string
+          title?: string | null
           type?: string
           updated_at?: string
         }

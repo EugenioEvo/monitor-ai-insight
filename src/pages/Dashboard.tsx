@@ -1,59 +1,129 @@
 
-import { Zap, DollarSign, AlertTriangle, TrendingUp, Sun, Battery } from "lucide-react";
-import { MetricCard } from "@/components/dashboard/MetricCard";
-import { EnergyChart } from "@/components/dashboard/EnergyChart";
-import { AlertsList } from "@/components/dashboard/AlertsList";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import React, { useState } from 'react';
+import { MetricCard } from '@/components/dashboard/MetricCard';
+import { EnergyChart } from '@/components/dashboard/EnergyChart';
+import { AlertsList } from '@/components/dashboard/AlertsList';
+import { PeriodSelector } from '@/components/dashboard/PeriodSelector';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useMetrics } from '@/hooks/useMetrics';
+import { useAlerts } from '@/hooks/useAlerts';
+import { 
+  Zap, 
+  DollarSign, 
+  AlertTriangle, 
+  TrendingUp, 
+  Sun, 
+  Battery,
+  Wrench,
+  RefreshCw,
+  Calendar
+} from 'lucide-react';
+
+type Period = 'today' | 'week' | 'month';
+type PeriodSelectorType = 'DAY' | 'MONTH' | 'YEAR';
 
 export default function Dashboard() {
+  const [selectedPeriod, setSelectedPeriod] = useState<Period>('today');
+  const [chartPeriod, setChartPeriod] = useState<PeriodSelectorType>('DAY');
+  
+  const { data: metrics, isLoading: metricsLoading, refetch: refetchMetrics } = useMetrics(selectedPeriod);
+  const { data: alerts, isLoading: alertsLoading } = useAlerts(undefined, 'open');
+
+  const formatKWh = (value: number) => {
+    if (value >= 1000) {
+      return `${(value / 1000).toFixed(1)} MWh`;
+    }
+    return `${value.toFixed(1)} kWh`;
+  };
+
+  const formatValue = (value: number | undefined) => {
+    if (value === undefined) return '0';
+    return value.toString();
+  };
+
+  const getPeriodLabel = (period: Period) => {
+    switch (period) {
+      case 'today': return 'Hoje';
+      case 'week': return 'Última Semana';
+      case 'month': return 'Este Mês';
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Dashboard Solar</h1>
-          <p className="text-gray-600">Monitoramento em tempo real das suas usinas</p>
+          <h1 className="text-3xl font-bold">Dashboard Solar</h1>
+          <p className="text-muted-foreground">
+            Monitoramento em tempo real das suas usinas
+          </p>
         </div>
-        <div className="text-right">
-          <p className="text-sm text-gray-500">Última atualização</p>
-          <p className="font-semibold">18/12/2024 14:30</p>
+        <div className="flex items-center gap-4">
+          <PeriodSelector 
+            period={chartPeriod} 
+            onPeriodChange={setChartPeriod}
+          />
+          <Button
+            variant="outline" 
+            size="sm"
+            onClick={() => refetchMetrics()}
+            disabled={metricsLoading}
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${metricsLoading ? 'animate-spin' : ''}`} />
+            Atualizar
+          </Button>
         </div>
       </div>
 
       {/* Metrics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <MetricCard
-          title="Geração Atual"
-          value="125 kW"
-          change="+12% vs ontem"
-          changeType="positive"
-          icon={Sun}
-          description="2 plantas ativas"
-        />
-        <MetricCard
-          title="Economia Mensal"
-          value="R$ 8.947"
-          change="+18% vs mês anterior"
-          changeType="positive"
-          icon={DollarSign}
-          description="Até 18/12/2024"
-        />
-        <MetricCard
-          title="Performance"
-          value="94.2%"
-          change="-5.8% vs meta"
-          changeType="negative"
-          icon={TrendingUp}
-          description="Abaixo da meta"
-        />
-        <MetricCard
-          title="Alertas Ativos"
-          value="5"
-          change="3 críticos"
-          changeType="negative"
-          icon={AlertTriangle}
-          description="Requer atenção"
-        />
+        {metricsLoading ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="p-6 rounded-lg border">
+              <Skeleton className="h-4 w-20 mb-2" />
+              <Skeleton className="h-8 w-16 mb-1" />
+              <Skeleton className="h-3 w-24" />
+            </div>
+          ))
+        ) : (
+          <>
+            <MetricCard
+              title="Geração"
+              value={formatKWh(metrics?.totalGeneration || 0)}
+              change={`${getPeriodLabel(selectedPeriod)}`}
+              changeType="positive"
+              icon={Sun}
+              description={`${metrics?.activePlants || 0} plantas ativas`}
+            />
+            <MetricCard
+              title="Consumo"
+              value={formatKWh(metrics?.totalConsumption || 0)}
+              change={`${getPeriodLabel(selectedPeriod)}`}
+              changeType="positive"
+              icon={Battery}
+              description="Faturas processadas"
+            />
+            <MetricCard
+              title="Tickets O&M"
+              value={formatValue(metrics?.openTickets)}
+              change={metrics?.openTickets === 0 ? "Nenhum aberto" : "Requer atenção"}
+              changeType={metrics?.openTickets === 0 ? "positive" : "negative"}
+              icon={Wrench}
+              description="Operação & Manutenção"
+            />
+            <MetricCard
+              title="Alertas Ativos"
+              value={formatValue(metrics?.openAlerts)}
+              change={metrics?.openAlerts === 0 ? "Nenhum ativo" : "Verificar urgência"}
+              changeType={metrics?.openAlerts === 0 ? "positive" : "negative"}
+              icon={AlertTriangle}
+              description={alerts?.filter(a => a.severity === 'critical').length + " críticos" || ""}
+            />
+          </>
+        )}
       </div>
 
       {/* Charts and Alerts Row */}
@@ -64,8 +134,11 @@ export default function Dashboard() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Zap className="w-5 h-5 text-blue-500" />
-                Geração vs Consumo (Hoje)
+                Geração vs Consumo ({getPeriodLabel(selectedPeriod)})
               </CardTitle>
+              <CardDescription>
+                Comparativo entre energia gerada e consumida
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <EnergyChart />
@@ -90,56 +163,80 @@ export default function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
-                <div>
-                  <p className="font-medium">Usina Solar Nordeste</p>
-                  <p className="text-sm text-gray-600">150.5 kWp • Neoenergia PE</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-green-600 font-semibold">98.2%</p>
-                  <p className="text-xs text-gray-500">Performance</p>
-                </div>
+            {metricsLoading ? (
+              <div className="space-y-4">
+                {Array.from({ length: 2 }).map((_, i) => (
+                  <div key={i} className="p-3 rounded-lg border">
+                    <Skeleton className="h-4 w-32 mb-2" />
+                    <Skeleton className="h-3 w-24" />
+                  </div>
+                ))}
               </div>
-              <div className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg">
-                <div>
-                  <p className="font-medium">Planta Solar Sul</p>
-                  <p className="text-sm text-gray-600">89.2 kWp • Copel</p>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
+                  <div>
+                    <p className="font-medium">Plantas Ativas</p>
+                    <p className="text-sm text-muted-foreground">
+                      {metrics?.activePlants || 0} usinas operacionais
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-green-600 font-semibold">
+                      {metrics?.activePlants || 0}
+                    </p>
+                    <p className="text-xs text-muted-foreground">Online</p>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-yellow-600 font-semibold">87.5%</p>
-                  <p className="text-xs text-gray-500">Performance</p>
-                </div>
+                
+                {(metrics?.openTickets || 0) > 0 && (
+                  <div className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg">
+                    <div>
+                      <p className="font-medium">Manutenção Pendente</p>
+                      <p className="text-sm text-muted-foreground">
+                        Tickets aguardando ação
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-yellow-600 font-semibold">
+                        {metrics?.openTickets}
+                      </p>
+                      <p className="text-xs text-muted-foreground">Abertos</p>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
+            )}
           </CardContent>
         </Card>
 
-        {/* Compliance Status */}
+        {/* System Health */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-blue-500" />
-              Compliance Lei 14.300/2022
+              <TrendingUp className="w-5 h-5 text-blue-500" />
+              Saúde do Sistema
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-sm">Limite de Potência</span>
-                <span className="text-green-600 font-medium">✓ Conforme</span>
+                <span className="text-sm">Conectividade</span>
+                <span className="text-green-600 font-medium">✓ Online</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm">Prazo de Compensação</span>
-                <span className="text-green-600 font-medium">✓ 48 meses restantes</span>
+                <span className="text-sm">Sincronização</span>
+                <span className="text-green-600 font-medium">✓ Atualizado</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm">Conexão à Rede</span>
-                <span className="text-green-600 font-medium">✓ Aprovada</span>
+                <span className="text-sm">Alertas Críticos</span>
+                <span className={`font-medium ${(alerts?.filter(a => a.severity === 'critical').length || 0) === 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {(alerts?.filter(a => a.severity === 'critical').length || 0) === 0 ? '✓ Nenhum' : `⚠ ${alerts?.filter(a => a.severity === 'critical').length}`}
+                </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm">Medição Bidirecional</span>
-                <span className="text-green-600 font-medium">✓ Instalada</span>
+                <span className="text-sm">Performance Geral</span>
+                <span className="text-green-600 font-medium">✓ Normal</span>
               </div>
             </div>
           </CardContent>
