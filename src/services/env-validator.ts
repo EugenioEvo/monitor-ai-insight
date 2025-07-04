@@ -62,7 +62,7 @@ class EnvironmentValidator {
         SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL || 'https://znsctgihxeuhjqcofgsi.supabase.co',
         SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpuc2N0Z2loeGV1aGpxY29mZ3NpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTAyMTI0NTEsImV4cCI6MjA2NTc4ODQ1MX0.WhS2sUvEtUCyIWxSEKn8BsZI3T2rp-lhplo0Jh9c-ww',
         NODE_ENV: import.meta.env.MODE as 'development' | 'production',
-        LOG_LEVEL: import.meta.env.VITE_LOG_LEVEL,
+        LOG_LEVEL: import.meta.env.VITE_LOG_LEVEL || 'INFO',
         MIN_REQUEST_INTERVAL: import.meta.env.VITE_MIN_REQUEST_INTERVAL,
         MAX_RETRY_ATTEMPTS: import.meta.env.VITE_MAX_RETRY_ATTEMPTS,
         CACHE_TTL_MINUTES: import.meta.env.VITE_CACHE_TTL_MINUTES,
