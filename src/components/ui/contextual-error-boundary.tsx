@@ -56,7 +56,6 @@ export class ContextualErrorBoundary extends Component<Props, State> {
     const { context } = this.props;
     const errorId = this.state.errorId || 'unknown';
     
-    // Log estruturado do erro
     const logLevel = context.critical ? 'critical' : 'error';
     const logMethod = context.critical ? logger.critical : logger.error;
     
@@ -77,7 +76,6 @@ export class ContextualErrorBoundary extends Component<Props, State> {
     this.setState({ errorInfo });
     this.props.onError?.(error, errorInfo);
 
-    // Se crítico, reportar imediatamente
     if (context.critical) {
       this.reportError(error, errorInfo, errorId);
     }
@@ -85,7 +83,6 @@ export class ContextualErrorBoundary extends Component<Props, State> {
 
   private async reportError(error: Error, errorInfo: ErrorInfo, errorId: string) {
     try {
-      // TODO: Integração com Sentry ou sistema de bug tracking
       const errorReport = {
         errorId,
         message: error.message,
@@ -97,10 +94,9 @@ export class ContextualErrorBoundary extends Component<Props, State> {
         timestamp: new Date().toISOString()
       };
 
-      // Por enquanto, salvar no localStorage para debug
       const existingReports = JSON.parse(localStorage.getItem('error_reports') || '[]');
       existingReports.push(errorReport);
-      localStorage.setItem('error_reports', JSON.stringify(existingReports.slice(-10))); // Manter apenas os últimos 10
+      localStorage.setItem('error_reports', JSON.stringify(existingReports.slice(-10)));
 
       logger.info('Erro reportado para tracking', {
         component: 'ContextualErrorBoundary',
@@ -139,9 +135,8 @@ export class ContextualErrorBoundary extends Component<Props, State> {
     const { error, errorInfo, errorId } = this.state;
     const { context } = this.props;
     
-    const bugReport = {
-      title: `Erro em ${context.component}${context.page ? ` - ${context.page}` : ''}`,
-      body: `
+    const bugReportTitle = `Erro em ${context.component}${context.page ? ` - ${context.page}` : ''}`;
+    const bugReportBody = `
 **Descrição do Erro:**
 ${error?.message}
 
@@ -167,10 +162,9 @@ ${errorInfo?.componentStack}
 - URL: ${window.location.href}
 - User Agent: ${navigator.userAgent}
 - Timestamp: ${new Date().toISOString()}
-      `.trim();
+    `.trim();
 
-    // Criar issue no GitHub ou abrir modal de feedback
-    const issueUrl = `https://github.com/seu-usuario/monitor-ai/issues/new?title=${encodeURIComponent(bugReport.title)}&body=${encodeURIComponent(bugReport.body)}`;
+    const issueUrl = `https://github.com/seu-usuario/monitor-ai/issues/new?title=${encodeURIComponent(bugReportTitle)}&body=${encodeURIComponent(bugReportBody)}`;
     window.open(issueUrl, '_blank');
     
     logger.info('Bug report iniciado', {
@@ -347,7 +341,6 @@ ${errorInfo?.componentStack}
   }
 }
 
-// HOC para facilitar uso
 export const withContextualErrorBoundary = <P extends object>(
   Component: React.ComponentType<P>,
   context: Props['context'],
@@ -363,7 +356,6 @@ export const withContextualErrorBoundary = <P extends object>(
   return WrappedComponent;
 };
 
-// Hook para usar error boundaries programaticamente
 export const useErrorBoundary = (context: Props['context']) => {
   const [error, setError] = React.useState<Error | null>(null);
 
@@ -380,7 +372,6 @@ export const useErrorBoundary = (context: Props['context']) => {
     setError(null);
   }, []);
 
-  // Se houver erro, renderizar boundary inline
   if (error) {
     return {
       ErrorComponent: () => (
