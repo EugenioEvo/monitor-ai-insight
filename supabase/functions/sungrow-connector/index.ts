@@ -43,12 +43,15 @@ interface AuthCache {
   config?: SungrowConfig;
 }
 
-// Cache de autenticação por usuário/sessão
-const authCaches = new Map<string, AuthCache>();
+interface StoredToken {
+  access_token: string;
+  refresh_token?: string;
+  expires_at: string;
+  config_hash: string;
+}
 
-const getUserCacheKey = (config: SungrowConfig): string => {
-  return `${config.username}_${config.appkey}`;
-};
+// Cache de autenticação por usuário/sessão (mantido para compatibilidade)
+const authCaches = new Map<string, AuthCache>();
 
 // Configuração padrão para Sungrow
 const DEFAULT_CONFIG = {
@@ -59,20 +62,421 @@ const DEFAULT_CONFIG = {
     stationRealKpi: '/openapi/getStationRealKpi',
     stationEnergy: '/openapi/getStationEnergy',
     deviceRealTimeData: '/openapi/getDeviceRealTimeData',
-    stationList: '/openapi/getStationList'
+    stationList: '/openapi/getStationList',
+    token: '/openapi/token'
   }
 };
 
-// Códigos de erro da Sungrow API
+// Códigos de erro da Sungrow API com mapeamento para HTTP status
 const SUNGROW_ERROR_CODES = {
-  '1': 'Sucesso',
-  '0': 'Falha geral',
-  '401': 'Não autorizado - Token inválido',
-  '403': 'Acesso negado',
-  '500': 'Erro interno do servidor',
-  '1001': 'Parâmetros inválidos',
-  '1002': 'Token expirado'
+  '1': { description: 'Sucesso', httpStatus: 200 },
+  '0': { description: 'Falha geral', httpStatus: 400 },
+  '401': { description: 'Não autorizado - Token inválido', httpStatus: 401 },
+  '403': { description: 'Acesso negado', httpStatus: 403 },
+  '500': { description: 'Erro interno do servidor', httpStatus: 500 },
+  '1001': { description: 'Parâmetros inválidos', httpStatus: 422 },
+  '1002': { description: 'Token expirado', httpStatus: 401 },
+  '1003': { description: 'Usuário não encontrado', httpStatus: 404 },
+  '1004': { description: 'Senha incorreta', httpStatus: 401 },
+  '1005': { description: 'Conta bloqueada', httpStatus: 403 },
+  '1006': { description: 'Limite de sessões excedido', httpStatus: 429 }
 };
+
+// Fase 1: Função para criar respostas de erro padronizadas
+const createErrorResponse = (message: string, status: number, requestId: string, details?: any) => {
+  const errorResponse = {
+    success: false,
+    error: message,
+    requestId,
+    ...(details && { details })
+  };
+  
+  return new Response(
+    JSON.stringify(errorResponse),
+    { 
+      status, 
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    }
+  );
+};
+
+// Fase 6: Sistema de logging estruturado
+const logger = {
+  debug: (requestId: string, message: string, data?: any) => {
+    console.log(JSON.stringify({ level: 'DEBUG', requestId, message, timestamp: new Date().toISOString(), ...data }));
+  },
+  info: (requestId: string, message: string, data?: any) => {
+    console.log(JSON.stringify({ level: 'INFO', requestId, message, timestamp: new Date().toISOString(), ...data }));
+  },
+  warn: (requestId: string, message: string, data?: any) => {
+    console.warn(JSON.stringify({ level: 'WARN', requestId, message, timestamp: new Date().toISOString(), ...data }));
+  },
+  error: (requestId: string, message: string, data?: any) => {
+    // Remove dados sensíveis antes do log
+    const sanitizedData = data ? sanitizeSensitiveData(data) : undefined;
+    console.error(JSON.stringify({ level: 'ERROR', requestId, message, timestamp: new Date().toISOString(), ...sanitizedData }));
+  }
+};
+
+// Função para sanitizar dados sensíveis
+const sanitizeSensitiveData = (data: any): any => {
+  if (!data || typeof data !== 'object') return data;
+  
+  const sensitiveKeys = ['password', 'accessKey', 'access_token', 'refresh_token', 'authorizationCode'];
+  const sanitized = { ...data };
+  
+  for (const key of sensitiveKeys) {
+    if (sanitized[key]) {
+      sanitized[key] = `${sanitized[key].substring(0, 4)}***`;
+    }
+  }
+  
+  return sanitized;
+};
+
+// Fase 2: Funções para gerenciar tokens persistentes
+const createConfigHash = (config: SungrowConfig): string => {
+  const hashData = {
+    username: config.username,
+    appkey: config.appkey,
+    authMode: config.authMode,
+    baseUrl: config.baseUrl
+  };
+  return btoa(JSON.stringify(hashData));
+};
+
+const getStoredToken = async (supabase: any, userId: string, config: SungrowConfig): Promise<StoredToken | null> => {
+  try {
+    const configHash = createConfigHash(config);
+    const { data, error } = await supabase
+      .from('sungrow_tokens')
+      .select('access_token, refresh_token, expires_at, config_hash')
+      .eq('user_id', userId)
+      .eq('config_hash', configHash)
+      .maybeSingle();
+
+    if (error || !data) return null;
+
+    // Verificar se o token ainda é válido (com margem de 5 minutos)
+    const expiresAt = new Date(data.expires_at);
+    const now = new Date();
+    const marginMs = 5 * 60 * 1000; // 5 minutos
+
+    if (expiresAt.getTime() - now.getTime() < marginMs) {
+      return null; // Token expirado ou prestes a expirar
+    }
+
+    return data;
+  } catch (error) {
+    return null;
+  }
+};
+
+const storeToken = async (
+  supabase: any, 
+  userId: string, 
+  config: SungrowConfig, 
+  tokenData: { 
+    access_token: string; 
+    refresh_token?: string; 
+    expires_in: number; 
+  }
+): Promise<void> => {
+  try {
+    const configHash = createConfigHash(config);
+    const expiresAt = new Date(Date.now() + (tokenData.expires_in * 1000));
+
+    await supabase
+      .from('sungrow_tokens')
+      .upsert({
+        user_id: userId,
+        access_token: tokenData.access_token,
+        refresh_token: tokenData.refresh_token || null,
+        expires_at: expiresAt.toISOString(),
+        config_hash: configHash
+      }, {
+        onConflict: 'user_id'
+      });
+  } catch (error) {
+    // Falha ao armazenar token não deve quebrar o fluxo
+    console.warn('Failed to store token:', error);
+  }
+};
+
+// Fase 3: Validação inteligente por ação
+const validateForAction = (config: SungrowConfig, action: string, requestId: string): Response | null => {
+  const errors: string[] = [];
+
+  // Campos sempre obrigatórios
+  if (!config.appkey) {
+    errors.push('appkey é obrigatório');
+  }
+
+  // Validação específica por modo de autenticação
+  if (config.authMode === 'oauth2') {
+    if (!config.authorizationCode && !config.accessToken) {
+      errors.push('authorizationCode ou accessToken é obrigatório para OAuth2');
+    }
+    if (config.authorizationCode && !config.redirectUri) {
+      errors.push('redirectUri é obrigatório quando usar authorizationCode');
+    }
+  } else {
+    // Modo direct
+    if (!config.username) errors.push('username é obrigatório para autenticação direta');
+    if (!config.password) errors.push('password é obrigatório para autenticação direta');
+    if (!config.accessKey) errors.push('accessKey é obrigatório para autenticação direta');
+  }
+
+  // Campos específicos por ação
+  const actionsRequiringPlantId = [
+    'get_station_real_kpi', 
+    'get_station_energy', 
+    'get_device_list', 
+    'get_device_real_time_data', 
+    'sync_data'
+  ];
+
+  if (actionsRequiringPlantId.includes(action) && !config.plantId) {
+    errors.push('plantId é obrigatório para esta ação');
+  }
+
+  if (errors.length > 0) {
+    return createErrorResponse(
+      `Configuração inválida: ${errors.join(', ')}`,
+      422,
+      requestId,
+      { missingFields: errors }
+    );
+  }
+
+  return null;
+};
+
+// Fase 1: Tratamento de erros da Sungrow API
+const handleSungrowError = (resultCode: string, resultMsg: string, requestId: string): Response => {
+  const errorInfo = SUNGROW_ERROR_CODES[resultCode] || { 
+    description: 'Erro desconhecido', 
+    httpStatus: 400 
+  };
+  
+  const message = `${errorInfo.description}: ${resultMsg}`;
+  return createErrorResponse(message, errorInfo.httpStatus, requestId, { sungrowCode: resultCode });
+};
+
+const getUserCacheKey = (config: SungrowConfig): string => {
+  return `${config.username}_${config.appkey}`;
+};
+
+const isTokenValid = (config: SungrowConfig): boolean => {
+  const cacheKey = getUserCacheKey(config);
+  const cache = authCaches.get(cacheKey);
+  
+  if (!cache?.token || !cache?.expiresAt) return false;
+  
+  // Token válido por mais 5 minutos
+  const notExpired = cache.expiresAt > Date.now() + (5 * 60 * 1000);
+  
+  return notExpired;
+};
+
+// Fase 5: Rate limiting melhorado
+const requestTimes = new Map<string, number>();
+const MIN_REQUEST_INTERVAL = 300; // 300ms entre requests (otimizado)
+
+const enforceRateLimit = async (config: SungrowConfig) => {
+  const userKey = getUserCacheKey(config);
+  const now = Date.now();
+  const lastRequestTime = requestTimes.get(userKey) || 0;
+  const timeSinceLastRequest = now - lastRequestTime;
+  
+  if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
+    const waitTime = MIN_REQUEST_INTERVAL - timeSinceLastRequest;
+    await new Promise(resolve => setTimeout(resolve, waitTime));
+  }
+  
+  requestTimes.set(userKey, Date.now());
+};
+
+async function makeRequest(url: string, body: any, headers: any, requestId: string, config: SungrowConfig, retries = 2) {
+  await enforceRateLimit(config);
+  
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      logger.debug(requestId, `HTTP Request attempt ${attempt}`, { url, method: 'POST' });
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      logger.debug(requestId, 'HTTP Response received', { status: response.status, hasData: !!data });
+      
+      return data;
+    } catch (error) {
+      logger.warn(requestId, `Request attempt ${attempt} failed`, { error: error.message, url });
+      
+      if (attempt === retries) {
+        throw error;
+      }
+      
+      // Backoff exponencial mais conservador
+      const backoffMs = Math.min(1000 * Math.pow(1.5, attempt - 1), 5000);
+      await new Promise(resolve => setTimeout(resolve, backoffMs));
+    }
+  }
+}
+
+// Fase 4: OAuth2 Authentication corrigida
+async function authenticateOAuth2(config: SungrowConfig, requestId: string, supabase: any, userId: string): Promise<SungrowOAuth2Response> {
+  logger.info(requestId, 'Starting OAuth2 authentication', {
+    hasAuthCode: !!config.authorizationCode,
+    hasAccessToken: !!config.accessToken,
+    authMode: config.authMode
+  });
+
+  // Verificar token armazenado primeiro
+  const storedToken = await getStoredToken(supabase, userId, config);
+  if (storedToken) {
+    logger.info(requestId, 'Using stored valid token');
+    return {
+      req_serial_num: `stored_${Date.now()}`,
+      result_code: '1',
+      result_msg: 'success',
+      result_data: {
+        access_token: storedToken.access_token,
+        token_type: 'bearer',
+        refresh_token: storedToken.refresh_token || '',
+        expires_in: Math.floor((new Date(storedToken.expires_at).getTime() - Date.now()) / 1000),
+        auth_ps_list: config.authorizedPlants || [],
+        auth_user: 0
+      }
+    };
+  }
+
+  // Se temos access token válido na config, usar ele
+  if (config.accessToken && config.tokenExpiresAt && config.tokenExpiresAt > Date.now()) {
+    logger.info(requestId, 'Using config access token');
+    return {
+      req_serial_num: `config_${Date.now()}`,
+      result_code: '1',
+      result_msg: 'success',
+      result_data: {
+        access_token: config.accessToken,
+        token_type: 'bearer',
+        refresh_token: config.refreshToken || '',
+        expires_in: Math.floor((config.tokenExpiresAt - Date.now()) / 1000),
+        auth_ps_list: config.authorizedPlants || [],
+        auth_user: 0
+      }
+    };
+  }
+
+  // Tentar refresh token se disponível
+  if (config.refreshToken && !config.authorizationCode) {
+    try {
+      return await refreshAccessToken(config, requestId, supabase, userId);
+    } catch (error) {
+      logger.warn(requestId, 'Token refresh failed, need new authorization code', { error: error.message });
+      throw new Error('Token expirado. É necessário obter um novo authorization code.');
+    }
+  }
+
+  // Usar authorization code para obter novo token
+  if (!config.authorizationCode || !config.redirectUri) {
+    throw new Error('Authorization code e redirect URI são obrigatórios para OAuth2');
+  }
+
+  // Headers corretos para OAuth2 (sem x-access-key)
+  const headers = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+    'User-Agent': 'Monitor.ai/1.0'
+  };
+
+  const body = {
+    grant_type: 'authorization_code',
+    code: config.authorizationCode,
+    redirect_uri: config.redirectUri,
+    appkey: config.appkey
+  };
+
+  logger.info(requestId, 'OAuth2 token request', {
+    url: `${config.baseUrl || DEFAULT_CONFIG.baseUrl}${DEFAULT_CONFIG.endpoints.token}`,
+    grant_type: body.grant_type,
+    redirect_uri: config.redirectUri
+  });
+
+  const response = await makeRequest(
+    `${config.baseUrl || DEFAULT_CONFIG.baseUrl}${DEFAULT_CONFIG.endpoints.token}`,
+    body,
+    headers,
+    requestId,
+    config
+  );
+
+  logger.info(requestId, 'OAuth2 token response', {
+    result_code: response.result_code,
+    result_msg: response.result_msg,
+    has_data: !!response.result_data
+  });
+
+  if (response.result_code !== '1') {
+    return handleSungrowError(response.result_code, response.result_msg, requestId);
+  }
+
+  // Armazenar token se bem-sucedido
+  if (response.result_data) {
+    await storeToken(supabase, userId, config, response.result_data);
+  }
+
+  return response as SungrowOAuth2Response;
+}
+
+async function refreshAccessToken(config: SungrowConfig, requestId: string, supabase: any, userId: string): Promise<SungrowOAuth2Response> {
+  if (!config.refreshToken) {
+    throw new Error('Refresh token não disponível');
+  }
+
+  logger.info(requestId, 'Refreshing access token');
+
+  const headers = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+    'User-Agent': 'Monitor.ai/1.0'
+  };
+
+  const body = {
+    grant_type: 'refresh_token',
+    refresh_token: config.refreshToken,
+    appkey: config.appkey
+  };
+
+  const response = await makeRequest(
+    `${config.baseUrl || DEFAULT_CONFIG.baseUrl}${DEFAULT_CONFIG.endpoints.token}`,
+    body,
+    headers,
+    requestId,
+    config
+  );
+
+  if (response.result_code !== '1') {
+    return handleSungrowError(response.result_code, response.result_msg, requestId);
+  }
+
+  // Armazenar novo token
+  if (response.result_data) {
+    await storeToken(supabase, userId, config, response.result_data);
+  }
+
+  logger.info(requestId, 'Token refreshed successfully');
+  return response as SungrowOAuth2Response;
+}
 
 // Utility functions
 const createStandardHeaders = (accessKey: string, token?: string) => ({
@@ -89,244 +493,8 @@ const validatePlantId = (config: SungrowConfig): string => {
   throw new Error('Plant ID não configurado. Verifique as configurações da planta.');
 };
 
-const getPlantIdFromConfig = (config: SungrowConfig): string | null => {
-  return config.plantId || null;
-};
-
-const validateAuthConfig = (config: SungrowConfig, requirePlantId: boolean = false): void => {
-  const missingFields = [];
-  
-  if (!config.appkey) missingFields.push('appkey');
-  
-  if (config.authMode === 'oauth2') {
-    if (!config.authorizationCode && !config.accessToken) {
-      missingFields.push('authorizationCode ou accessToken');
-    }
-    if (config.authorizationCode && !config.redirectUri) {
-      missingFields.push('redirectUri');
-    }
-  } else {
-    // Modo direct (padrão)
-    if (!config.username) missingFields.push('username');
-    if (!config.password) missingFields.push('password');
-    if (!config.accessKey) missingFields.push('accessKey');
-  }
-  
-  if (requirePlantId && !config.plantId) missingFields.push('plantId');
-  
-  if (missingFields.length > 0) {
-    throw new Error(`Configuração incompleta. Campos obrigatórios: ${missingFields.join(', ')}`);
-  }
-};
-
-const validateCredentialsOnly = (config: SungrowConfig): void => {
-  validateAuthConfig(config, false);
-};
-
-const logRequest = (requestId: string, level: string, message: string, data?: any) => {
-  const timestamp = new Date().toISOString();
-  if (level === 'ERROR') {
-    console.error(`[${requestId}] ${timestamp} ${message}`, data);
-  } else {
-    console.log(`[${requestId}] ${timestamp} ${message}`, data);
-  }
-};
-
-const handleSungrowError = (resultCode: string, resultMsg: string) => {
-  const errorDescription = SUNGROW_ERROR_CODES[resultCode] || 'Erro desconhecido';
-  throw new Error(`${errorDescription}: ${resultMsg} (Código: ${resultCode})`);
-};
-
-const isTokenValid = (config: SungrowConfig): boolean => {
-  const cacheKey = getUserCacheKey(config);
-  const cache = authCaches.get(cacheKey);
-  
-  if (!cache?.token || !cache?.expiresAt) return false;
-  
-  // Token válido por mais 5 minutos
-  const notExpired = cache.expiresAt > Date.now() + (5 * 60 * 1000);
-  
-  return notExpired;
-};
-
-// Rate limiting melhorado e menos agressivo
-const requestTimes = new Map<string, number>();
-const MIN_REQUEST_INTERVAL = 100; // 100ms entre requests (menos agressivo)
-
-const enforceRateLimit = async (config: SungrowConfig) => {
-  const userKey = getUserCacheKey(config);
-  const now = Date.now();
-  const lastRequestTime = requestTimes.get(userKey) || 0;
-  const timeSinceLastRequest = now - lastRequestTime;
-  
-  if (timeSinceLastRequest < MIN_REQUEST_INTERVAL) {
-    const waitTime = MIN_REQUEST_INTERVAL - timeSinceLastRequest;
-    await new Promise(resolve => setTimeout(resolve, waitTime));
-  }
-  
-  requestTimes.set(userKey, Date.now());
-};
-
-async function makeRequest(url: string, body: any, headers: any, requestId: string, config: SungrowConfig, retries = 3) {
-  await enforceRateLimit(config);
-  
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    try {
-      logRequest(requestId, 'INFO', `Tentativa ${attempt}: ${url}`);
-      
-      const response = await fetch(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      logRequest(requestId, 'INFO', 'Response received', { status: response.status });
-      
-      return data;
-    } catch (error) {
-      logRequest(requestId, 'ERROR', `Tentativa ${attempt} falhou`, error);
-      
-      if (attempt === retries) {
-        throw error;
-      }
-      
-      // Backoff exponencial
-      await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)));
-    }
-  }
-}
-
-// OAuth2 Authentication Functions
-async function authenticateOAuth2(config: SungrowConfig, requestId: string): Promise<SungrowOAuth2Response> {
-  logRequest(requestId, 'INFO', 'Iniciando autenticação OAuth2', {
-    hasAuthCode: !!config.authorizationCode,
-    hasAccessToken: !!config.accessToken,
-    redirectUri: config.redirectUri,
-    authMode: config.authMode
-  });
-
-  // Se já temos access token válido, usar ele
-  if (config.accessToken && config.tokenExpiresAt && config.tokenExpiresAt > Date.now()) {
-    logRequest(requestId, 'INFO', 'Usando access token existente');
-    return {
-      req_serial_num: `existing_${Date.now()}`,
-      result_code: '1',
-      result_msg: 'success',
-      result_data: {
-        access_token: config.accessToken,
-        token_type: 'bearer',
-        refresh_token: config.refreshToken || '',
-        expires_in: Math.floor((config.tokenExpiresAt - Date.now()) / 1000),
-        auth_ps_list: config.authorizedPlants || [],
-        auth_user: 0
-      }
-    };
-  }
-
-  // Se temos refresh token, tentar renovar
-  if (config.refreshToken && !config.authorizationCode) {
-    try {
-      return await refreshAccessToken(config, requestId);
-    } catch (error) {
-      logRequest(requestId, 'WARN', 'Falha ao renovar token, será necessário novo authorization code', error);
-      throw new Error('Token expirado. É necessário obter um novo authorization code.');
-    }
-  }
-
-  // Usar authorization code para obter novo token
-  if (!config.authorizationCode || !config.redirectUri) {
-    throw new Error('Authorization code e redirect URI são obrigatórios para OAuth2');
-  }
-
-  // Headers corretos para OAuth2 baseado na documentação
-  const headers = {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-    'User-Agent': 'Monitor.ai/1.0'
-  };
-
-  // Body exato da documentação
-  const body = {
-    grant_type: 'authorization_code',
-    code: config.authorizationCode,
-    redirect_uri: config.redirectUri,
-    appkey: config.appkey
-  };
-
-  logRequest(requestId, 'INFO', 'OAuth2 token request', {
-    url: `${config.baseUrl || DEFAULT_CONFIG.baseUrl}/openapi/token`,
-    grant_type: body.grant_type,
-    redirect_uri: config.redirectUri,
-    appkey: config.appkey?.substring(0, 8) + '***',
-    code_length: config.authorizationCode?.length
-  });
-
-  // Endpoint correto baseado na documentação: /openapi/token (não /openapi/apiManage/token)
-  const response = await makeRequest(
-    `${config.baseUrl || DEFAULT_CONFIG.baseUrl}/openapi/token`,
-    body,
-    headers,
-    requestId,
-    config
-  );
-
-  logRequest(requestId, 'INFO', 'OAuth2 token response', {
-    result_code: response.result_code,
-    result_msg: response.result_msg,
-    has_data: !!response.result_data,
-    auth_ps_list_count: response.result_data?.auth_ps_list?.length || 0
-  });
-
-  if (response.result_code !== '1') {
-    handleSungrowError(response.result_code, response.result_msg);
-  }
-
-  return response as SungrowOAuth2Response;
-}
-
-async function refreshAccessToken(config: SungrowConfig, requestId: string): Promise<SungrowOAuth2Response> {
-  if (!config.refreshToken) {
-    throw new Error('Refresh token não disponível');
-  }
-
-  logRequest(requestId, 'INFO', 'Renovando access token via refresh token');
-
-  const headers = {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-    'User-Agent': 'Monitor.ai/1.0'
-  };
-
-  const body = {
-    grant_type: 'refresh_token',
-    refresh_token: config.refreshToken,
-    appkey: config.appkey
-  };
-
-  // Endpoint correto para refresh token
-  const response = await makeRequest(
-    `${config.baseUrl || DEFAULT_CONFIG.baseUrl}/openapi/token`,
-    body,
-    headers,
-    requestId,
-    config
-  );
-
-  if (response.result_code !== '1') {
-    handleSungrowError(response.result_code, response.result_msg);
-  }
-
-  logRequest(requestId, 'INFO', 'Token renovado com sucesso');
-  return response as SungrowOAuth2Response;
-}
-
-async function authenticate(config: SungrowConfig, requestId: string) {
-  logRequest(requestId, 'INFO', 'Iniciando autenticação', {
+async function authenticate(config: SungrowConfig, requestId: string, supabase: any, userId: string) {
+  logger.info(requestId, 'Starting authentication', {
     authMode: config.authMode,
     hasAccessToken: !!config.accessToken,
     hasRefreshToken: !!config.refreshToken,
@@ -335,13 +503,12 @@ async function authenticate(config: SungrowConfig, requestId: string) {
 
   // Decidir qual método de autenticação usar
   if (config.authMode === 'oauth2') {
-    const oauthResponse = await authenticateOAuth2(config, requestId);
+    const oauthResponse = await authenticateOAuth2(config, requestId, supabase, userId);
     
     if (oauthResponse.result_data) {
-      logRequest(requestId, 'INFO', 'OAuth2 authentication successful', {
+      logger.info(requestId, 'OAuth2 authentication successful', {
         token_type: oauthResponse.result_data.token_type,
-        expires_in: oauthResponse.result_data.expires_in,
-        auth_ps_list_count: oauthResponse.result_data.auth_ps_list?.length || 0
+        expires_in: oauthResponse.result_data.expires_in
       });
       
       return {
@@ -360,23 +527,13 @@ async function authenticate(config: SungrowConfig, requestId: string) {
   // Verificar cache primeiro
   if (isTokenValid(config)) {
     const cache = authCaches.get(cacheKey);
-    logRequest(requestId, 'INFO', 'Usando token em cache');
+    logger.info(requestId, 'Using cached token');
     return { result_code: '1', token: cache?.token };
   }
   
-  logRequest(requestId, 'INFO', 'Autenticando com Sungrow OpenAPI (método direto)', {
-    username: config.username?.substring(0, 3) + '***',
-    appkey: config.appkey?.substring(0, 8) + '***',
-    baseUrl: config.baseUrl || DEFAULT_CONFIG.baseUrl,
-    hasAccessKey: !!config.accessKey
-  });
+  logger.info(requestId, 'Authenticating with Sungrow OpenAPI (direct method)');
   
-  // Validar credenciais para método direto
-  if (!config.accessKey) {
-    throw new Error('Access Key é obrigatório para autenticação direta');
-  }
-  
-  const headers = createStandardHeaders(config.accessKey);
+  const headers = createStandardHeaders(config.accessKey!);
   const body = {
     appkey: config.appkey,
     user_account: config.username,
@@ -391,7 +548,7 @@ async function authenticate(config: SungrowConfig, requestId: string) {
     config
   );
 
-  logRequest(requestId, 'INFO', 'Direct auth response', {
+  logger.info(requestId, 'Direct auth response', {
     result_code: response.result_code,
     result_msg: response.result_msg,
     has_token: !!response.token
@@ -405,78 +562,58 @@ async function authenticate(config: SungrowConfig, requestId: string) {
       config: { ...config }
     });
     
-    logRequest(requestId, 'INFO', 'Autenticação direta bem-sucedida');
+    logger.info(requestId, 'Direct authentication successful');
     return response;
   } else {
-    logRequest(requestId, 'ERROR', 'Falha na autenticação direta', {
+    logger.error(requestId, 'Direct authentication failed', {
       result_code: response.result_code,
       result_msg: response.result_msg
     });
-    handleSungrowError(response.result_code, response.result_msg);
+    return handleSungrowError(response.result_code, response.result_msg, requestId);
   }
 }
 
-async function testConnection(config: SungrowConfig, requestId: string) {
+async function testConnection(config: SungrowConfig, requestId: string, supabase: any, userId: string) {
   try {
-    logRequest(requestId, 'INFO', 'Testando conexão', {
-      username: config.username?.substring(0, 3) + '***',
-      hasCredentials: !!(config.appkey && config.accessKey)
-    });
+    logger.info(requestId, 'Testing connection');
 
-    validateCredentialsOnly(config); // Validar apenas credenciais
+    const validationError = validateForAction(config, 'test_connection', requestId);
+    if (validationError) return validationError;
 
-    await authenticate(config, requestId);
+    await authenticate(config, requestId, supabase, userId);
     
-    logRequest(requestId, 'INFO', 'Conexão estabelecida com sucesso');
+    logger.info(requestId, 'Connection test successful');
     
     return new Response(
       JSON.stringify({ success: true, message: 'Conexão estabelecida com sucesso' }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
-  } catch (error) {
-    logRequest(requestId, 'ERROR', 'Falha no teste de conexão', {
-      error: error.message,
-      stack: error.stack
-    });
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: `Falha na conexão: ${error.message}`,
-        requestId 
-      }),
-      { 
-        status: 400, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    );
+  } catch (error: any) {
+    logger.error(requestId, 'Connection test failed', { error: error.message });
+    return createErrorResponse(`Falha na conexão: ${error.message}`, 400, requestId);
   }
 }
 
-async function discoverPlants(config: SungrowConfig, requestId: string) {
+async function discoverPlants(config: SungrowConfig, requestId: string, supabase: any, userId: string) {
   try {
-    logRequest(requestId, 'INFO', 'Descobrindo plantas', {
-      authMode: config.authMode,
-      username: config.username?.substring(0, 3) + '***',
-      hasCredentials: !!(config.appkey && (config.accessKey || config.accessToken))
-    });
+    logger.info(requestId, 'Discovering plants');
     
-    // Validar apenas credenciais de autenticação, não plantId para descoberta
-    validateCredentialsOnly(config);
+    const validationError = validateForAction(config, 'discover_plants', requestId);
+    if (validationError) return validationError;
     
-    const authResult = await authenticate(config, requestId);
+    const authResult = await authenticate(config, requestId, supabase, userId);
     
     // Para OAuth2, usar auth_ps_list se disponível
     if (config.authMode === 'oauth2' && authResult.oauth_data?.auth_ps_list) {
-      logRequest(requestId, 'INFO', 'Usando auth_ps_list do OAuth2', {
+      logger.info(requestId, 'Using OAuth2 auth_ps_list', {
         plant_count: authResult.oauth_data.auth_ps_list.length
       });
       
-      // Retornar plantas autorizadas do OAuth2
-      const plants = authResult.oauth_data.auth_ps_list.map((plantId: string, index: number) => ({
+      const plants = authResult.oauth_data.auth_ps_list.map((plantId: string) => ({
         id: plantId,
         ps_id: parseInt(plantId),
         name: `Planta ${plantId}`,
-        capacity: 0, // Não temos esta informação no OAuth2
+        capacity: 0,
         location: 'OAuth2 Authorized Plant',
         status: 'Active',
         installationDate: '',
@@ -493,7 +630,6 @@ async function discoverPlants(config: SungrowConfig, requestId: string) {
     // Para método direto, usar getStationList
     const token = authResult.token;
     
-    // Headers corretos para o método direto
     const headers = config.authMode === 'oauth2' 
       ? {
           'Content-Type': 'application/json',
@@ -501,9 +637,8 @@ async function discoverPlants(config: SungrowConfig, requestId: string) {
           'Authorization': `Bearer ${token}`,
           'User-Agent': 'Monitor.ai/1.0'
         }
-      : createStandardHeaders(config.accessKey, token);
+      : createStandardHeaders(config.accessKey!, token);
     
-    // Body correto baseado no modo de autenticação
     const body = config.authMode === 'oauth2'
       ? {
           appkey: config.appkey
@@ -514,11 +649,7 @@ async function discoverPlants(config: SungrowConfig, requestId: string) {
           has_token: true
         };
 
-    logRequest(requestId, 'INFO', 'Fazendo request para getStationList', {
-      authMode: config.authMode,
-      url: `${config.baseUrl || DEFAULT_CONFIG.baseUrl}${DEFAULT_CONFIG.endpoints.stationList}`,
-      hasToken: !!token
-    });
+    logger.info(requestId, 'Requesting station list', { authMode: config.authMode });
 
     const response = await makeRequest(
       `${config.baseUrl || DEFAULT_CONFIG.baseUrl}${DEFAULT_CONFIG.endpoints.stationList}`,
@@ -528,25 +659,20 @@ async function discoverPlants(config: SungrowConfig, requestId: string) {
       config
     );
 
-    logRequest(requestId, 'INFO', 'Response recebida do getStationList', {
+    logger.info(requestId, 'Station list response', {
       result_code: response.result_code,
       result_msg: response.result_msg,
-      has_data: !!response.result_data,
-      page_list_length: response.result_data?.page_list?.length || 0,
-      response_keys: response.result_data ? Object.keys(response.result_data) : []
+      has_data: !!response.result_data
     });
 
     if (response.result_code === '1' && response.result_data) {
-      // Verificar se temos page_list
       if (!response.result_data.page_list || !Array.isArray(response.result_data.page_list)) {
-        logRequest(requestId, 'WARN', 'Formato de resposta inesperado', {
-          result_data: response.result_data
-        });
-        throw new Error('Formato de resposta inválido: page_list não encontrado');
+        logger.warn(requestId, 'Invalid response format', { result_data: response.result_data });
+        return createErrorResponse('Formato de resposta inválido: page_list não encontrado', 502, requestId);
       }
 
       const plants = response.result_data.page_list.map((station: any) => ({
-        id: station.ps_id.toString(), // Garantir que seja string
+        id: station.ps_id.toString(),
         ps_id: station.ps_id,
         name: station.ps_name,
         capacity: parseFloat(station.ps_capacity_kw) || 0,
@@ -557,46 +683,37 @@ async function discoverPlants(config: SungrowConfig, requestId: string) {
         longitude: parseFloat(station.ps_longitude) || 0,
       }));
 
-      logRequest(requestId, 'INFO', `${plants.length} plantas encontradas e processadas`);
+      logger.info(requestId, `${plants.length} plants discovered`);
       
       return new Response(
         JSON.stringify({ success: true, plants }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     } else {
-      logRequest(requestId, 'ERROR', 'API retornou erro para getStationList', {
+      logger.error(requestId, 'Station list API error', {
         result_code: response.result_code,
-        result_msg: response.result_msg,
-        full_response: response
+        result_msg: response.result_msg
       });
-      handleSungrowError(response.result_code, response.result_msg);
+      return handleSungrowError(response.result_code, response.result_msg, requestId);
     }
-  } catch (error) {
-    logRequest(requestId, 'ERROR', 'Erro ao descobrir plantas', {
-      error: error.message,
-      stack: error.stack
-    });
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: `Falha ao descobrir plantas: ${error.message}`,
-        requestId 
-      }),
-      { 
-        status: 400, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    );
+  } catch (error: any) {
+    logger.error(requestId, 'Plant discovery failed', { error: error.message });
+    return createErrorResponse(`Falha ao descobrir plantas: ${error.message}`, 500, requestId);
   }
 }
 
-async function getStationRealKpi(config: SungrowConfig, requestId: string) {
+async function getStationRealKpi(config: SungrowConfig, requestId: string, supabase: any, userId: string) {
   try {
+    const validationError = validateForAction(config, 'get_station_real_kpi', requestId);
+    if (validationError) return validationError;
+
     const plantId = validatePlantId(config);
-    logRequest(requestId, 'INFO', `Buscando KPI real da estação: ${plantId}`);
+    logger.info(requestId, `Getting station real KPI: ${plantId}`);
     
-    const { token } = await authenticate(config, requestId);
-    const headers = createStandardHeaders(config.accessKey, token);
+    const authResult = await authenticate(config, requestId, supabase, userId);
+    const token = authResult.token;
+    
+    const headers = createStandardHeaders(config.accessKey!, token);
     const body = {
       appkey: config.appkey,
       ps_id: plantId,
@@ -613,10 +730,9 @@ async function getStationRealKpi(config: SungrowConfig, requestId: string) {
     );
 
     if (response.result_code === '1') {
-      // Validar dados essenciais
       const data = response.result_data;
       if (!data) {
-        throw new Error('Dados KPI não encontrados na resposta');
+        return createErrorResponse('Dados KPI não encontrados na resposta', 404, requestId);
       }
 
       return new Response(
@@ -624,30 +740,24 @@ async function getStationRealKpi(config: SungrowConfig, requestId: string) {
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     } else {
-      handleSungrowError(response.result_code, response.result_msg);
+      return handleSungrowError(response.result_code, response.result_msg, requestId);
     }
-  } catch (error) {
-    logRequest(requestId, 'ERROR', 'Erro ao buscar KPI', error);
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: `Falha ao buscar KPI da estação: ${error.message}`,
-        requestId 
-      }),
-      { 
-        status: 400, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    );
+  } catch (error: any) {
+    logger.error(requestId, 'Failed to get station KPI', { error: error.message });
+    return createErrorResponse(`Falha ao buscar KPI da estação: ${error.message}`, 500, requestId);
   }
 }
 
-async function getStationEnergy(config: SungrowConfig, period: string, requestId: string) {
+async function getStationEnergy(config: SungrowConfig, period: string, requestId: string, supabase: any, userId: string) {
   try {
+    const validationError = validateForAction(config, 'get_station_energy', requestId);
+    if (validationError) return validationError;
+
     const plantId = validatePlantId(config);
-    logRequest(requestId, 'INFO', `Buscando energia da estação: ${plantId}, período: ${period}`);
+    logger.info(requestId, `Getting station energy: ${plantId}, period: ${period}`);
     
-    const { token } = await authenticate(config, requestId);
+    const authResult = await authenticate(config, requestId, supabase, userId);
+    const token = authResult.token;
 
     // Definir parâmetros de data baseado no período
     const now = new Date();
@@ -672,10 +782,10 @@ async function getStationEnergy(config: SungrowConfig, period: string, requestId
         dateType = 3;
         break;
       default:
-        throw new Error(`Período não suportado: ${period}`);
+        return createErrorResponse(`Período não suportado: ${period}`, 422, requestId);
     }
 
-    const headers = createStandardHeaders(config.accessKey, token);
+    const headers = createStandardHeaders(config.accessKey!, token);
     const body = {
       appkey: config.appkey,
       ps_id: plantId,
@@ -700,31 +810,26 @@ async function getStationEnergy(config: SungrowConfig, period: string, requestId
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     } else {
-      handleSungrowError(response.result_code, response.result_msg);
+      return handleSungrowError(response.result_code, response.result_msg, requestId);
     }
-  } catch (error) {
-    logRequest(requestId, 'ERROR', 'Erro ao buscar energia', error);
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: `Falha ao buscar energia da estação: ${error.message}`,
-        requestId 
-      }),
-      { 
-        status: 400, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    );
+  } catch (error: any) {
+    logger.error(requestId, 'Failed to get station energy', { error: error.message });
+    return createErrorResponse(`Falha ao buscar energia da estação: ${error.message}`, 500, requestId);
   }
 }
 
-async function getDeviceList(config: SungrowConfig, requestId: string) {
+async function getDeviceList(config: SungrowConfig, requestId: string, supabase: any, userId: string) {
   try {
+    const validationError = validateForAction(config, 'get_device_list', requestId);
+    if (validationError) return validationError;
+
     const plantId = validatePlantId(config);
-    logRequest(requestId, 'INFO', `Buscando lista de dispositivos: ${plantId}`);
+    logger.info(requestId, `Getting device list: ${plantId}`);
     
-    const { token } = await authenticate(config, requestId);
-    const headers = createStandardHeaders(config.accessKey, token);
+    const authResult = await authenticate(config, requestId, supabase, userId);
+    const token = authResult.token;
+    
+    const headers = createStandardHeaders(config.accessKey!, token);
     const body = {
       appkey: config.appkey,
       ps_id: plantId,
@@ -746,31 +851,26 @@ async function getDeviceList(config: SungrowConfig, requestId: string) {
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     } else {
-      handleSungrowError(response.result_code, response.result_msg);
+      return handleSungrowError(response.result_code, response.result_msg, requestId);
     }
-  } catch (error) {
-    logRequest(requestId, 'ERROR', 'Erro ao buscar dispositivos', error);
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: `Falha ao buscar lista de dispositivos: ${error.message}`,
-        requestId 
-      }),
-      { 
-        status: 400, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    );
+  } catch (error: any) {
+    logger.error(requestId, 'Failed to get device list', { error: error.message });
+    return createErrorResponse(`Falha ao buscar lista de dispositivos: ${error.message}`, 500, requestId);
   }
 }
 
-async function getDeviceRealTimeData(config: SungrowConfig, deviceType: string, requestId: string) {
+async function getDeviceRealTimeData(config: SungrowConfig, deviceType: string, requestId: string, supabase: any, userId: string) {
   try {
+    const validationError = validateForAction(config, 'get_device_real_time_data', requestId);
+    if (validationError) return validationError;
+
     const plantId = validatePlantId(config);
-    logRequest(requestId, 'INFO', `Buscando dados em tempo real: ${plantId}, tipo: ${deviceType}`);
+    logger.info(requestId, `Getting device real-time data: ${plantId}, type: ${deviceType}`);
     
-    const { token } = await authenticate(config, requestId);
-    const headers = createStandardHeaders(config.accessKey, token);
+    const authResult = await authenticate(config, requestId, supabase, userId);
+    const token = authResult.token;
+    
+    const headers = createStandardHeaders(config.accessKey!, token);
     const body = {
       appkey: config.appkey,
       ps_id: plantId,
@@ -793,30 +893,20 @@ async function getDeviceRealTimeData(config: SungrowConfig, deviceType: string, 
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     } else {
-      handleSungrowError(response.result_code, response.result_msg);
+      return handleSungrowError(response.result_code, response.result_msg, requestId);
     }
-  } catch (error) {
-    logRequest(requestId, 'ERROR', 'Erro ao buscar dados em tempo real', error);
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: `Falha ao buscar dados em tempo real: ${error.message}`,
-        requestId 
-      }),
-      { 
-        status: 400, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    );
+  } catch (error: any) {
+    logger.error(requestId, 'Failed to get device real-time data', { error: error.message });
+    return createErrorResponse(`Falha ao buscar dados em tempo real: ${error.message}`, 500, requestId);
   }
 }
 
-async function syncPlantData(supabase: any, plantId: string, requestId: string) {
+async function syncPlantData(supabase: any, plantId: string, requestId: string, userId: string) {
   const startTime = Date.now();
   let dataPointsSynced = 0;
   
   try {
-    logRequest(requestId, 'INFO', `Iniciando sincronização: ${plantId}`);
+    logger.info(requestId, `Starting plant data sync: ${plantId}`);
 
     // Buscar dados da planta
     const { data: plant, error: plantError } = await supabase
@@ -826,15 +916,15 @@ async function syncPlantData(supabase: any, plantId: string, requestId: string) 
       .single();
 
     if (plantError || !plant) {
-      throw new Error(`Planta não encontrada: ${plantError?.message}`);
+      return createErrorResponse(`Planta não encontrada: ${plantError?.message}`, 404, requestId);
     }
 
     if (plant.monitoring_system !== 'sungrow') {
-      throw new Error('Planta não é do tipo Sungrow');
+      return createErrorResponse('Planta não é do tipo Sungrow', 422, requestId);
     }
 
     if (!plant.api_credentials) {
-      throw new Error('Credenciais da API não configuradas');
+      return createErrorResponse('Credenciais da API não configuradas', 422, requestId);
     }
 
     let config = plant.api_credentials as SungrowConfig;
@@ -844,12 +934,15 @@ async function syncPlantData(supabase: any, plantId: string, requestId: string) 
       config = { ...config, plantId: plant.api_site_id };
     }
 
+    const validationError = validateForAction(config, 'sync_data', requestId);
+    if (validationError) return validationError;
+
     const plantConfigId = validatePlantId(config);
-    logRequest(requestId, 'INFO', `Sincronizando planta: ${plant.name} (${plantConfigId})`);
+    logger.info(requestId, `Syncing plant: ${plant.name} (${plantConfigId})`);
 
     // Buscar dados em tempo real
     try {
-      const kpiResponse = await getStationRealKpi(config, requestId);
+      const kpiResponse = await getStationRealKpi(config, requestId, supabase, userId);
       const kpiData = await kpiResponse.json();
       
       if (kpiData.success && kpiData.data) {
@@ -869,18 +962,18 @@ async function syncPlantData(supabase: any, plantId: string, requestId: string) 
           });
 
         if (readingError) {
-          logRequest(requestId, 'ERROR', 'Erro ao inserir leitura', readingError);
+          logger.error(requestId, 'Failed to insert reading', { error: readingError });
         } else {
           dataPointsSynced++;
-          logRequest(requestId, 'INFO', 'Leitura inserida com sucesso');
+          logger.info(requestId, 'Reading inserted successfully');
         }
       }
-    } catch (error) {
-      logRequest(requestId, 'ERROR', 'Erro ao buscar dados KPI', error);
+    } catch (error: any) {
+      logger.error(requestId, 'Failed to get KPI data', { error: error.message });
     }
 
     const syncDuration = Date.now() - startTime;
-    logRequest(requestId, 'INFO', `Sincronização concluída em ${syncDuration}ms. Pontos: ${dataPointsSynced}`);
+    logger.info(requestId, `Sync completed in ${syncDuration}ms. Points: ${dataPointsSynced}`);
 
     return new Response(
       JSON.stringify({ 
@@ -893,22 +986,15 @@ async function syncPlantData(supabase: any, plantId: string, requestId: string) 
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
-  } catch (error) {
+  } catch (error: any) {
     const syncDuration = Date.now() - startTime;
-    logRequest(requestId, 'ERROR', 'Falha na sincronização', error);
+    logger.error(requestId, 'Sync failed', { error: error.message });
     
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: `Falha na sincronização: ${error.message}`,
-        dataPointsSynced,
-        syncDuration,
-        requestId 
-      }),
-      { 
-        status: 400, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
+    return createErrorResponse(
+      `Falha na sincronização: ${error.message}`,
+      500,
+      requestId,
+      { dataPointsSynced, syncDuration }
     );
   }
 }
@@ -919,7 +1005,7 @@ serve(async (req) => {
   }
 
   const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  logRequest(requestId, 'INFO', `Request: ${req.method} ${req.url}`);
+  logger.info(requestId, `Request: ${req.method} ${req.url}`);
 
   try {
     const supabase = createClient(
@@ -931,49 +1017,39 @@ serve(async (req) => {
     // Check authentication
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
-      throw new Error('Missing Authorization header');
+      return createErrorResponse('Missing Authorization header', 401, requestId);
     }
 
     const token = authHeader.replace('Bearer ', '');
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     
     if (authError || !user) {
-      logRequest(requestId, 'ERROR', 'Authentication failed', { authError });
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'Unauthorized access',
-          requestId 
-        }),
-        { 
-          status: 401, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
+      logger.error(requestId, 'Authentication failed', { authError });
+      return createErrorResponse('Unauthorized access', 401, requestId);
     }
 
-    logRequest(requestId, 'INFO', `Authenticated user: ${user.email}`);
+    logger.info(requestId, `Authenticated user: ${user.email}`);
 
     const { action, config, plantId, period, deviceType } = await req.json();
-    logRequest(requestId, 'INFO', `Action: ${action}`);
+    logger.info(requestId, `Action: ${action}`);
 
     switch (action) {
       case 'test_connection':
-        return await testConnection(config, requestId);
+        return await testConnection(config, requestId, supabase, user.id);
       case 'discover_plants':
-        return await discoverPlants(config, requestId);
+        return await discoverPlants(config, requestId, supabase, user.id);
       case 'get_station_real_kpi':
-        return await getStationRealKpi(config, requestId);
+        return await getStationRealKpi(config, requestId, supabase, user.id);
       case 'get_station_energy':
-        return await getStationEnergy(config, period || 'day', requestId);
+        return await getStationEnergy(config, period || 'day', requestId, supabase, user.id);
       case 'get_device_list':
-        return await getDeviceList(config, requestId);
+        return await getDeviceList(config, requestId, supabase, user.id);
       case 'get_device_real_time_data':
-        return await getDeviceRealTimeData(config, deviceType || '1', requestId);
+        return await getDeviceRealTimeData(config, deviceType || '1', requestId, supabase, user.id);
       case 'sync_data':
-        return await syncPlantData(supabase, plantId, requestId);
+        return await syncPlantData(supabase, plantId, requestId, user.id);
       case 'oauth2_token':
-        const oauthResult = await authenticateOAuth2(config, requestId);
+        const oauthResult = await authenticateOAuth2(config, requestId, supabase, user.id);
         return new Response(
           JSON.stringify({ 
             success: oauthResult.result_code === '1', 
@@ -983,20 +1059,10 @@ serve(async (req) => {
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       default:
-        throw new Error(`Ação não suportada: ${action}`);
+        return createErrorResponse(`Ação não suportada: ${action}`, 422, requestId);
     }
-  } catch (error) {
-    logRequest(requestId, 'ERROR', 'Request failed', error);
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: error.message,
-        requestId 
-      }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    );
+  } catch (error: any) {
+    logger.error(requestId, 'Request failed', { error: error.message });
+    return createErrorResponse('Erro interno do servidor', 500, requestId);
   }
 });
