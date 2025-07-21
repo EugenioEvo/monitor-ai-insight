@@ -18,6 +18,7 @@ interface SungrowConfig {
   refreshToken?: string;
   tokenExpiresAt?: number;
   authorizedPlants?: string[];
+  language?: string; // Novo campo para idioma configurável
 }
 
 interface SungrowAuthResponse {
@@ -54,8 +55,12 @@ const SUNGROW_ERROR_CODES: Record<string, string> = {
   '1005': 'Conta bloqueada',
   '1006': 'Limite de sessões excedido',
   'E900': 'Não autorizado - Verificar credenciais',
-  'E911': 'Chave de acesso obrigatória - Verificar x-access-key'
+  'E911': 'Chave de acesso obrigatória - Verificar x-access-key',
+  '010': 'Parâmetro de idioma inválido - Usando idioma padrão'
 };
+
+// Idiomas suportados pela API Sungrow (em ordem de preferência)
+const SUPPORTED_LANGUAGES = ['en_US', 'en', 'zh_CN', 'zh'];
 
 class SungrowAPI {
   private config: SungrowConfig;
@@ -83,6 +88,16 @@ class SungrowAPI {
     }
   }
 
+  private getValidLanguage(): string | undefined {
+    // Se o usuário especificou um idioma, tentar usá-lo
+    if (this.config.language && SUPPORTED_LANGUAGES.includes(this.config.language)) {
+      return this.config.language;
+    }
+    
+    // Usar idioma padrão mais compatível ou omitir completamente
+    return 'en_US';
+  }
+
   private async makeRequest(endpoint: string, data: any) {
     const url = `${this.config.baseUrl}${endpoint}`;
     
@@ -90,7 +105,8 @@ class SungrowAPI {
       url,
       hasToken: !!this.token,
       hasAccessKey: !!this.config.accessKey,
-      dataKeys: Object.keys(data || {})
+      dataKeys: Object.keys(data || {}),
+      languageParam: data.lang || 'not included'
     });
 
     // Validar configuração antes de fazer a requisição
@@ -152,15 +168,43 @@ class SungrowAPI {
       }
     }
 
-    // Direct authentication
-    const authData = {
+    // Tentar autenticação sem parâmetro lang primeiro
+    let authData: any = {
       appkey: this.config.appkey,
       user_account: this.config.username,
-      user_password: this.config.password,
-      lang: 'pt'
+      user_password: this.config.password
     };
 
-    const response = await this.makeRequest('/openapi/login', authData);
+    console.log('Attempting authentication without language parameter');
+
+    let response = await this.makeRequest('/openapi/login', authData);
+    
+    // Se falhar com erro relacionado ao idioma, tentar com idiomas válidos
+    if (response.result_code === '010') {
+      console.log('Language parameter error detected, trying with supported languages');
+      
+      for (const lang of SUPPORTED_LANGUAGES) {
+        try {
+          console.log(`Trying authentication with language: ${lang}`);
+          authData = {
+            appkey: this.config.appkey,
+            user_account: this.config.username,
+            user_password: this.config.password,
+            lang: lang
+          };
+          
+          response = await this.makeRequest('/openapi/login', authData);
+          
+          if (response.result_code === '1') {
+            console.log(`Authentication successful with language: ${lang}`);
+            break;
+          }
+        } catch (error) {
+          console.warn(`Authentication failed with language ${lang}:`, error);
+          continue;
+        }
+      }
+    }
     
     if (response.result_code !== '1') {
       const errorMsg = SUNGROW_ERROR_CODES[response.result_code] || response.result_msg;
@@ -184,14 +228,21 @@ class SungrowAPI {
       
       const token = await this.authenticate();
       
-      // Test a simple API call
-      const testData = {
+      // Test a simple API call without language parameter first
+      let testData: any = {
         appkey: this.config.appkey,
-        token: token,
-        lang: 'pt'
+        token: token
       };
 
-      const response = await this.makeRequest('/openapi/getStationList', testData);
+      console.log('Testing connection without language parameter');
+      let response = await this.makeRequest('/openapi/getStationList', testData);
+      
+      // Se falhar por causa do idioma, tentar com idiomas suportados
+      if (response.result_code === '010') {
+        console.log('Language error in test, trying with supported language');
+        testData.lang = this.getValidLanguage();
+        response = await this.makeRequest('/openapi/getStationList', testData);
+      }
       
       if (response.result_code === '1') {
         return { 
@@ -264,15 +315,22 @@ class SungrowAPI {
       if (discoveredPlants.length === 0) {
         console.log('Discovering plants via getStationList');
         
-        const stationData = {
+        // Usar idioma compatível ou omitir
+        let stationData: any = {
           appkey: this.config.appkey,
           token: token,
           page_no: 1,
-          page_size: 50,
-          lang: 'pt'
+          page_size: 50
         };
 
-        const response = await this.makeRequest('/openapi/getStationList', stationData);
+        // Tentar primeiro sem idioma
+        let response = await this.makeRequest('/openapi/getStationList', stationData);
+        
+        // Se falhar por idioma, tentar com idioma válido
+        if (response.result_code === '010') {
+          stationData.lang = this.getValidLanguage();
+          response = await this.makeRequest('/openapi/getStationList', stationData);
+        }
         
         if (response.result_code === '1' && response.result_data?.page_list) {
           console.log(`Found ${response.result_data.page_list.length} plants in station list`);
@@ -336,15 +394,20 @@ class SungrowAPI {
     try {
       console.log(`Enriching data for plant ${plantId}`);
       
-      // Get real-time KPIs
-      const kpiData = {
+      // Get real-time KPIs - tentar sem idioma primeiro
+      let kpiData: any = {
         appkey: this.config.appkey,
         token: token,
-        ps_id: plantId,
-        lang: 'pt'
+        ps_id: plantId
       };
 
-      const kpiResponse = await this.makeRequest('/openapi/getStationRealKpi', kpiData);
+      let kpiResponse = await this.makeRequest('/openapi/getStationRealKpi', kpiData);
+      
+      // Se falhar por idioma, tentar com idioma válido
+      if (kpiResponse.result_code === '010') {
+        kpiData.lang = this.getValidLanguage();
+        kpiResponse = await this.makeRequest('/openapi/getStationRealKpi', kpiData);
+      }
       
       if (kpiResponse.result_code === '1' && kpiResponse.result_data) {
         const kpi = kpiResponse.result_data;
@@ -414,14 +477,20 @@ class SungrowAPI {
     try {
       const token = await this.authenticate();
       
-      const data = {
+      // Tentar primeiro sem idioma
+      let data: any = {
         appkey: this.config.appkey,
         token: token,
-        ps_id: plantId,
-        lang: 'pt'
+        ps_id: plantId
       };
 
-      const response = await this.makeRequest('/openapi/getStationRealKpi', data);
+      let response = await this.makeRequest('/openapi/getStationRealKpi', data);
+      
+      // Se falhar por idioma, tentar com idioma válido
+      if (response.result_code === '010') {
+        data.lang = this.getValidLanguage();
+        response = await this.makeRequest('/openapi/getStationRealKpi', data);
+      }
       
       if (response.result_code === '1') {
         return { success: true, data: response.result_data };
@@ -439,15 +508,21 @@ class SungrowAPI {
     try {
       const token = await this.authenticate();
       
-      const data = {
+      // Tentar primeiro sem idioma
+      let data: any = {
         appkey: this.config.appkey,
         token: token,
         ps_id: plantId,
-        query_type: period === 'day' ? 1 : period === 'month' ? 2 : 3,
-        lang: 'pt'
+        query_type: period === 'day' ? 1 : period === 'month' ? 2 : 3
       };
 
-      const response = await this.makeRequest('/openapi/getStationEnergy', data);
+      let response = await this.makeRequest('/openapi/getStationEnergy', data);
+      
+      // Se falhar por idioma, tentar com idioma válido
+      if (response.result_code === '010') {
+        data.lang = this.getValidLanguage();
+        response = await this.makeRequest('/openapi/getStationEnergy', data);
+      }
       
       if (response.result_code === '1') {
         return { success: true, data: response.result_data };
@@ -465,14 +540,20 @@ class SungrowAPI {
     try {
       const token = await this.authenticate();
       
-      const data = {
+      // Tentar primeiro sem idioma
+      let data: any = {
         appkey: this.config.appkey,
         token: token,
-        ps_id: plantId,
-        lang: 'pt'
+        ps_id: plantId
       };
 
-      const response = await this.makeRequest('/openapi/getDeviceList', data);
+      let response = await this.makeRequest('/openapi/getDeviceList', data);
+      
+      // Se falhar por idioma, tentar com idioma válido
+      if (response.result_code === '010') {
+        data.lang = this.getValidLanguage();
+        response = await this.makeRequest('/openapi/getDeviceList', data);
+      }
       
       if (response.result_code === '1') {
         return { success: true, data: response.result_data };
@@ -490,15 +571,21 @@ class SungrowAPI {
     try {
       const token = await this.authenticate();
       
-      const data = {
+      // Tentar primeiro sem idioma
+      let data: any = {
         appkey: this.config.appkey,
         token: token,
         ps_id: plantId,
-        device_type: deviceType,
-        lang: 'pt'
+        device_type: deviceType
       };
 
-      const response = await this.makeRequest('/openapi/getDeviceRealTimeData', data);
+      let response = await this.makeRequest('/openapi/getDeviceRealTimeData', data);
+      
+      // Se falhar por idioma, tentar com idioma válido
+      if (response.result_code === '010') {
+        data.lang = this.getValidLanguage();
+        response = await this.makeRequest('/openapi/getDeviceRealTimeData', data);
+      }
       
       if (response.result_code === '1') {
         return { success: true, data: response.result_data };
@@ -531,7 +618,8 @@ serve(async (req) => {
       period,
       deviceType,
       hasAccessKey: !!config?.accessKey,
-      hasAppkey: !!config?.appkey
+      hasAppkey: !!config?.appkey,
+      configuredLanguage: config?.language || 'auto-detect'
     });
 
     const api = new SungrowAPI(config, supabase);
