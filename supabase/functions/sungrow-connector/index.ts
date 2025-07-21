@@ -53,7 +53,8 @@ const SUNGROW_ERROR_CODES: Record<string, string> = {
   '1004': 'Senha incorreta',
   '1005': 'Conta bloqueada',
   '1006': 'Limite de sessões excedido',
-  'E900': 'Não autorizado - Verificar credenciais'
+  'E900': 'Não autorizado - Verificar credenciais',
+  'E911': 'Chave de acesso obrigatória - Verificar x-access-key'
 };
 
 class SungrowAPI {
@@ -70,22 +71,45 @@ class SungrowAPI {
     this.supabase = supabase;
   }
 
+  private validateConfig(): void {
+    if (!this.config.appkey) {
+      throw new Error('AppKey é obrigatório para autenticação com Sungrow');
+    }
+    if (!this.config.accessKey) {
+      throw new Error('AccessKey (x-access-key) é obrigatório para autenticação com Sungrow');
+    }
+    if (!this.config.username || !this.config.password) {
+      throw new Error('Username e Password são obrigatórios para autenticação direta');
+    }
+  }
+
   private async makeRequest(endpoint: string, data: any) {
     const url = `${this.config.baseUrl}${endpoint}`;
     
     console.log(`Making request to: ${endpoint}`, {
       url,
       hasToken: !!this.token,
+      hasAccessKey: !!this.config.accessKey,
       dataKeys: Object.keys(data || {})
     });
 
+    // Validar configuração antes de fazer a requisição
+    this.validateConfig();
+
     try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'User-Agent': 'Sungrow-Monitor/1.0'
+      };
+
+      // Adicionar x-access-key obrigatório
+      if (this.config.accessKey) {
+        headers['x-access-key'] = this.config.accessKey;
+      }
+
       const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'User-Agent': 'Sungrow-Monitor/1.0'
-        },
+        headers,
         body: JSON.stringify(data)
       });
 
@@ -116,7 +140,8 @@ class SungrowAPI {
     console.log('Authenticating with Sungrow API', {
       authMode: this.config.authMode,
       hasUsername: !!this.config.username,
-      hasAppkey: !!this.config.appkey
+      hasAppkey: !!this.config.appkey,
+      hasAccessKey: !!this.config.accessKey
     });
 
     if (this.config.authMode === 'oauth2' && this.config.accessToken) {
@@ -154,6 +179,9 @@ class SungrowAPI {
 
   async testConnection(): Promise<{ success: boolean; message: string }> {
     try {
+      // Validar configuração primeiro
+      this.validateConfig();
+      
       const token = await this.authenticate();
       
       // Test a simple API call
@@ -188,6 +216,9 @@ class SungrowAPI {
 
   async discoverPlantsEnhanced(): Promise<{ success: boolean; plants?: any[]; statistics?: any; error?: string }> {
     try {
+      // Validar configuração primeiro
+      this.validateConfig();
+      
       const token = await this.authenticate();
       let discoveredPlants: any[] = [];
       let statistics = {
@@ -498,7 +529,9 @@ serve(async (req) => {
       hasConfig: !!config,
       plantId,
       period,
-      deviceType
+      deviceType,
+      hasAccessKey: !!config?.accessKey,
+      hasAppkey: !!config?.appkey
     });
 
     const api = new SungrowAPI(config, supabase);
