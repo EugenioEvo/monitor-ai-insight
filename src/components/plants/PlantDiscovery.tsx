@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -16,6 +17,7 @@ import { logger } from '@/services/logger';
 import type { SolarEdgeConfig } from '@/types/monitoring';
 import type { SungrowConfig } from '@/types/sungrow';
 import { SungrowConnectionTest } from './SungrowConnectionTest';
+import { SungrowPlantDiscovery } from './SungrowPlantDiscovery';
 
 interface DiscoveredPlant {
   id: string;
@@ -26,7 +28,7 @@ interface DiscoveredPlant {
   installationDate?: string;
   latitude?: number;
   longitude?: number;
-  ps_id?: string; // Plant Station ID específico do Sungrow
+  ps_id?: string;
 }
 
 interface PlantDiscoveryProps {
@@ -63,7 +65,7 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
     baseUrl: 'https://gateway.isolarcloud.com.hk'
   });
   
-  // Step 3: Plantas descobertas
+  // Step 3: Plantas descobertas (para SolarEdge)
   const [discoveredPlants, setDiscoveredPlants] = useState<DiscoveredPlant[]>([]);
   const [selectedPlants, setSelectedPlants] = useState<string[]>([]);
 
@@ -82,42 +84,7 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
       const config = systemType === 'solaredge' ? solarEdgeConfig : sungrowConfig;
       const functionName = systemType === 'solaredge' ? 'solaredge-connector' : 'sungrow-connector';
       
-      const { data, error } = await supabase.functions.invoke(functionName, {
-        body: {
-          action: 'test_connection',
-          config
-        }
-      });
-
-      if (error) throw error;
-
-      if (data.success) {
-        toast({
-          title: "Conexão bem-sucedida!",
-          description: "Credenciais válidas. Você pode prosseguir para descobrir plantas.",
-        });
-        setCurrentStep(3);
-      } else {
-        throw new Error(data.message);
-      }
-    } catch (error: any) {
-      toast({
-        title: "Erro na conexão",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setTesting(false);
-    }
-  };
-
-  const discoverPlants = async () => {
-    setDiscovering(true);
-    try {
-      const config = systemType === 'solaredge' ? solarEdgeConfig : sungrowConfig;
-      const functionName = systemType === 'solaredge' ? 'solaredge-connector' : 'sungrow-connector';
-      
-      logger.info('Discovering plants', {
+      logger.info('Testing connection', {
         component: 'PlantDiscovery',
         systemType,
         username: config.username ? `${config.username.substring(0, 3)}***` : 'missing'
@@ -125,36 +92,86 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
       
       const { data, error } = await supabase.functions.invoke(functionName, {
         body: {
-          action: 'discover_plants',
+          action: 'test_connection',
           config
+        }
+      });
+
+      if (error) {
+        logger.error('Connection test failed', error, {
+          component: 'PlantDiscovery',
+          systemType
+        });
+        throw error;
+      }
+
+      if (data.success) {
+        logger.info('Connection test successful', {
+          component: 'PlantDiscovery',
+          systemType
+        });
+        
+        toast({
+          title: "Conexão bem-sucedida!",
+          description: "Credenciais válidas. Você pode prosseguir para descobrir plantas.",
+        });
+        setCurrentStep(3);
+      } else {
+        throw new Error(data.message || 'Falha na conexão');
+      }
+    } catch (error: any) {
+      logger.error('Connection test error', error, {
+        component: 'PlantDiscovery',
+        systemType
+      });
+      
+      toast({
+        title: "Erro na conexão",
+        description: error.message || 'Falha ao testar conexão',
+        variant: "destructive",
+      });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  // SolarEdge discovery (mantém lógica original)
+  const discoverSolarEdgePlants = async () => {
+    setDiscovering(true);
+    try {
+      logger.info('Discovering SolarEdge plants', {
+        component: 'PlantDiscovery',
+        systemType: 'solaredge'
+      });
+      
+      const { data, error } = await supabase.functions.invoke('solaredge-connector', {
+        body: {
+          action: 'discover_plants',
+          config: solarEdgeConfig
         }
       });
 
       if (error) throw error;
 
       if (data.success) {
-        // Para Sungrow, garantir que cada planta tenha o ps_id correto
-        const plantsWithPsId = data.plants.map((plant: any) => ({
-          ...plant,
-          ps_id: plant.ps_id || plant.id // Garantir que ps_id seja preservado
-        }));
-        
-        setDiscoveredPlants(plantsWithPsId);
-        logger.info('Plants discovered successfully', {
+        setDiscoveredPlants(data.plants);
+        logger.info('SolarEdge plants discovered successfully', {
           component: 'PlantDiscovery',
-          systemType,
-          plantsCount: plantsWithPsId.length,
-          plants: plantsWithPsId.map(p => ({ name: p.name, id: p.id, ps_id: p.ps_id }))
+          plantsCount: data.plants.length
         });
         
         toast({
           title: "Plantas descobertas!",
-          description: `Encontradas ${plantsWithPsId.length} plantas disponíveis.`,
+          description: `Encontradas ${data.plants.length} plantas disponíveis.`,
         });
       } else {
         throw new Error(data.message);
       }
     } catch (error: any) {
+      logger.error('SolarEdge discovery failed', error, {
+        component: 'PlantDiscovery'
+      });
+      
       toast({
         title: "Erro ao descobrir plantas",
         description: error.message,
@@ -203,22 +220,14 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
           continue;
         }
 
-        // Preparar configuração com plantId correto para Sungrow
+        // Preparar configuração
         let finalConfig = config;
         if (systemType === 'sungrow') {
           finalConfig = {
             ...config,
-            plantId: plant.ps_id || plant.id // Usar ps_id se disponível, senão usar id
+            plantId: plant.ps_id || plant.id
           };
         }
-
-        logger.debug('Final config for plant import', {
-          component: 'PlantDiscovery',
-          plantName: plant.name,
-          plantId: finalConfig.plantId || 'not set',
-          apiSiteId: plant.ps_id || plant.id,
-          systemType
-        });
 
         // Criar nova planta
         const { data: newPlant, error: insertError } = await supabase
@@ -232,7 +241,7 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
             start_date: plant.installationDate || new Date().toISOString().split('T')[0],
             status: 'active' as const,
             monitoring_system: systemType,
-            api_site_id: plant.ps_id || plant.id, // Usar ps_id se disponível
+            api_site_id: plant.ps_id || plant.id,
             api_credentials: finalConfig as any,
             sync_enabled: true
           })
@@ -254,64 +263,21 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
           plantId: newPlant.id,
           systemType
         });
-
-        // Após importar, fazer sincronização inicial automática
-        if (newPlant && systemType === 'sungrow') {
-          try {
-            logger.info('Starting initial sync for imported plant', {
-              component: 'PlantDiscovery',
-              plantName: plant.name,
-              plantId: newPlant.id,
-              systemType: 'sungrow'
-            });
-            
-            const { data: syncResult, error: syncError } = await supabase.functions.invoke('sungrow-connector', {
-              body: {
-                action: 'sync_data',
-                plantId: newPlant.id
-              }
-            });
-
-            if (syncError) {
-              logger.error('Erro na sincronização inicial', syncError, {
-                component: 'PlantDiscovery',
-                plantName: plant.name,
-                plantId: newPlant.id
-              });
-            } else if (syncResult?.success) {
-              logger.info('Sincronização inicial bem-sucedida', {
-                component: 'PlantDiscovery',
-                plantName: plant.name,
-                plantId: newPlant.id,
-                dataPointsSynced: syncResult.dataPointsSynced || 0
-              });
-            } else {
-              logger.warn('Sincronização inicial falhou', {
-                component: 'PlantDiscovery',
-                plantName: plant.name,
-                plantId: newPlant.id,
-                error: syncResult?.error
-              });
-            }
-          } catch (syncError) {
-            logger.error('Falha na sincronização inicial', syncError as Error, {
-              component: 'PlantDiscovery',
-              plantName: plant.name,
-              plantId: newPlant.id
-            });
-          }
-        }
       }
 
       toast({
         title: "Importação concluída!",
-        description: `${selectedPlants.length} plantas foram importadas com sucesso e a sincronização inicial foi iniciada.`,
+        description: `${selectedPlants.length} plantas foram importadas com sucesso.`,
       });
       
       onPlantImported();
       setIsOpen(false);
       resetWizard();
     } catch (error: any) {
+      logger.error('Import failed', error as Error, {
+        component: 'PlantDiscovery'
+      });
+      
       toast({
         title: "Erro na importação",
         description: error.message,
@@ -333,6 +299,99 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
   const handleSungrowConnectionSuccess = (config: SungrowConfig) => {
     setSungrowConfig(config);
     setCurrentStep(3);
+  };
+
+  const handleSungrowPlantsSelected = (plants: any[]) => {
+    logger.info('Sungrow plants selected for import', {
+      component: 'PlantDiscovery',
+      plantsCount: plants.length,
+      plantNames: plants.map(p => p.name)
+    });
+    
+    // Converter plantas do Sungrow para formato padrão e importar
+    importSungrowPlants(plants);
+  };
+
+  const importSungrowPlants = async (plants: any[]) => {
+    setImporting(true);
+    try {
+      for (const plant of plants) {
+        // Verificar se a planta já existe
+        const { data: existing } = await supabase
+          .from('plants')
+          .select('id')
+          .eq('api_site_id', plant.ps_id || plant.id)
+          .maybeSingle();
+
+        if (existing) {
+          logger.warn('Sungrow plant already exists, skipping', {
+            component: 'PlantDiscovery',
+            plantName: plant.name,
+            apiSiteId: plant.ps_id || plant.id
+          });
+          continue;
+        }
+
+        const finalConfig = {
+          ...sungrowConfig,
+          plantId: plant.ps_id || plant.id
+        };
+
+        // Criar nova planta
+        const { data: newPlant, error: insertError } = await supabase
+          .from('plants')
+          .insert({
+            name: plant.name,
+            capacity_kwp: plant.capacity || 0,
+            lat: plant.latitude || -23.5505,
+            lng: plant.longitude || -46.6333,
+            concessionaria: plant.location || 'A definir',
+            start_date: plant.installationDate || new Date().toISOString().split('T')[0],
+            status: 'active' as const,
+            monitoring_system: 'sungrow',
+            api_site_id: plant.ps_id || plant.id,
+            api_credentials: finalConfig as any,
+            sync_enabled: true
+          })
+          .select()
+          .single();
+
+        if (insertError) {
+          logger.error('Erro ao importar planta Sungrow', insertError as Error, {
+            component: 'PlantDiscovery',
+            plantName: plant.name
+          });
+          continue;
+        }
+
+        logger.info('Sungrow plant imported successfully', {
+          component: 'PlantDiscovery',
+          plantName: plant.name,
+          plantId: newPlant.id
+        });
+      }
+
+      toast({
+        title: "Importação concluída!",
+        description: `${plants.length} plantas Sungrow foram importadas com sucesso.`,
+      });
+      
+      onPlantImported();
+      setIsOpen(false);
+      resetWizard();
+    } catch (error: any) {
+      logger.error('Sungrow import failed', error as Error, {
+        component: 'PlantDiscovery'
+      });
+      
+      toast({
+        title: "Erro na importação",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setImporting(false);
+    }
   };
 
   return (
@@ -488,112 +547,123 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
 
           {/* Step 3: Descobrir e importar plantas */}
           {currentStep === 3 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Download className="w-5 h-5" />
-                  Descobrir e Importar Plantas
-                </CardTitle>
-                <CardDescription>
-                  Conecte-se ao portal para descobrir suas plantas disponíveis
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {discoveredPlants.length === 0 ? (
-                  <div className="text-center py-8">
-                    <Button onClick={discoverPlants} disabled={discovering} size="lg">
-                      {discovering && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                      <Download className="w-4 h-4 mr-2" />
-                      Descobrir Plantas
-                    </Button>
-                    <p className="text-sm text-muted-foreground mt-2">
-                      Clique para buscar plantas disponíveis no seu portal
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-center">
-                      <h4 className="font-medium">
-                        {discoveredPlants.length} plantas encontradas
-                      </h4>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setSelectedPlants(discoveredPlants.map(p => p.id))}
-                        >
-                          Selecionar Todas
+            <>
+              {systemType === 'sungrow' ? (
+                // Usar SungrowPlantDiscovery para Sungrow
+                <SungrowPlantDiscovery 
+                  config={sungrowConfig} 
+                  onPlantsSelected={handleSungrowPlantsSelected}
+                />
+              ) : (
+                // Lógica original para SolarEdge
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Download className="w-5 h-5" />
+                      Descobrir e Importar Plantas SolarEdge
+                    </CardTitle>
+                    <CardDescription>
+                      Conecte-se ao portal para descobrir suas plantas disponíveis
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    {discoveredPlants.length === 0 ? (
+                      <div className="text-center py-8">
+                        <Button onClick={discoverSolarEdgePlants} disabled={discovering} size="lg">
+                          {discovering && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                          <Download className="w-4 h-4 mr-2" />
+                          Descobrir Plantas
                         </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setSelectedPlants([])}
-                        >
-                          Limpar Seleção
-                        </Button>
+                        <p className="text-sm text-muted-foreground mt-2">
+                          Clique para buscar plantas disponíveis no seu portal
+                        </p>
                       </div>
-                    </div>
-
-                    <div className="grid gap-3 max-h-96 overflow-y-auto">
-                      {discoveredPlants.map((plant) => (
-                        <div
-                          key={plant.id}
-                          className={`flex items-center space-x-3 p-3 border rounded-lg cursor-pointer transition-colors ${
-                            selectedPlants.includes(plant.id) ? 'bg-accent border-primary' : 'hover:bg-accent/50'
-                          }`}
-                          onClick={() => togglePlantSelection(plant.id)}
-                        >
-                          <Checkbox
-                            checked={selectedPlants.includes(plant.id)}
-                            onChange={() => togglePlantSelection(plant.id)}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <h5 className="font-medium truncate">{plant.name}</h5>
-                              {plant.status && (
-                                <Badge variant={plant.status === 'Active' ? 'default' : 'secondary'}>
-                                  {plant.status}
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
-                              <span className="text-xs bg-gray-100 px-2 py-1 rounded">
-                                PS_ID: {plant.ps_id || plant.id}
-                              </span>
-                              {plant.capacity && (
-                                <span className="flex items-center gap-1">
-                                  <Zap className="w-3 h-3" />
-                                  {plant.capacity} kW
-                                </span>
-                              )}
-                              {plant.location && (
-                                <span className="flex items-center gap-1">
-                                  <MapPin className="w-3 h-3" />
-                                  {plant.location}
-                                </span>
-                              )}
-                            </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="flex justify-between items-center">
+                          <h4 className="font-medium">
+                            {discoveredPlants.length} plantas encontradas
+                          </h4>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setSelectedPlants(discoveredPlants.map(p => p.id))}
+                            >
+                              Selecionar Todas
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setSelectedPlants([])}
+                            >
+                              Limpar Seleção
+                            </Button>
                           </div>
                         </div>
-                      ))}
-                    </div>
 
-                    <div className="flex justify-between pt-4">
-                      <Button variant="outline" onClick={() => setCurrentStep(2)}>
-                        Voltar
-                      </Button>
-                      <Button 
-                        onClick={importSelectedPlants} 
-                        disabled={importing || selectedPlants.length === 0}
-                      >
-                        {importing && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                        Importar {selectedPlants.length} Plantas
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                        <div className="grid gap-3 max-h-96 overflow-y-auto">
+                          {discoveredPlants.map((plant) => (
+                            <div
+                              key={plant.id}
+                              className={`flex items-center space-x-3 p-3 border rounded-lg cursor-pointer transition-colors ${
+                                selectedPlants.includes(plant.id) ? 'bg-accent border-primary' : 'hover:bg-accent/50'
+                              }`}
+                              onClick={() => togglePlantSelection(plant.id)}
+                            >
+                              <Checkbox
+                                checked={selectedPlants.includes(plant.id)}
+                                onChange={() => togglePlantSelection(plant.id)}
+                              />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <h5 className="font-medium truncate">{plant.name}</h5>
+                                  {plant.status && (
+                                    <Badge variant={plant.status === 'Active' ? 'default' : 'secondary'}>
+                                      {plant.status}
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
+                                  <span className="text-xs bg-gray-100 px-2 py-1 rounded">
+                                    ID: {plant.id}
+                                  </span>
+                                  {plant.capacity && (
+                                    <span className="flex items-center gap-1">
+                                      <Zap className="w-3 h-3" />
+                                      {plant.capacity} kW
+                                    </span>
+                                  )}
+                                  {plant.location && (
+                                    <span className="flex items-center gap-1">
+                                      <MapPin className="w-3 h-3" />
+                                      {plant.location}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="flex justify-between pt-4">
+                          <Button variant="outline" onClick={() => setCurrentStep(2)}>
+                            Voltar
+                          </Button>
+                          <Button 
+                            onClick={importSelectedPlants} 
+                            disabled={importing || selectedPlants.length === 0}
+                          >
+                            {importing && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                            Importar {selectedPlants.length} Plantas
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+            </>
           )}
         </div>
       </DialogContent>
