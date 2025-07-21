@@ -18,7 +18,7 @@ interface SungrowConfig {
   refreshToken?: string;
   tokenExpiresAt?: number;
   authorizedPlants?: string[];
-  language?: string; // Novo campo para idioma configurável
+  language?: string;
 }
 
 interface SungrowAuthResponse {
@@ -56,6 +56,7 @@ const SUNGROW_ERROR_CODES: Record<string, string> = {
   '1006': 'Limite de sessões excedido',
   'E900': 'Não autorizado - Verificar credenciais',
   'E911': 'Chave de acesso obrigatória - Verificar x-access-key',
+  'E912': 'Chave de acesso inválida - Verificar valor da x-access-key',
   '010': 'Parâmetro de idioma inválido - Usando idioma padrão'
 };
 
@@ -77,13 +78,29 @@ class SungrowAPI {
   }
 
   private validateConfig(): void {
-    if (!this.config.appkey) {
-      throw new Error('AppKey é obrigatório para autenticação com Sungrow');
+    console.log('Validando configuração Sungrow:', {
+      hasAppkey: !!this.config.appkey,
+      hasAccessKey: !!this.config.accessKey,
+      hasUsername: !!this.config.username,
+      hasPassword: !!this.config.password,
+      appkeyLength: this.config.appkey?.length || 0,
+      accessKeyLength: this.config.accessKey?.length || 0
+    });
+
+    if (!this.config.appkey?.trim()) {
+      throw new Error('AppKey é obrigatório e não pode estar vazio');
     }
-    if (!this.config.accessKey) {
-      throw new Error('AccessKey (x-access-key) é obrigatório para autenticação com Sungrow');
+    
+    if (!this.config.accessKey?.trim()) {
+      throw new Error('AccessKey (x-access-key) é obrigatório e não pode estar vazio');
     }
-    if (!this.config.username || !this.config.password) {
+    
+    // Validação adicional para E912
+    if (this.config.accessKey.length < 10) {
+      throw new Error('AccessKey parece estar incompleto (muito curto)');
+    }
+    
+    if (!this.config.username?.trim() || !this.config.password?.trim()) {
       throw new Error('Username e Password são obrigatórios para autenticação direta');
     }
   }
@@ -105,6 +122,7 @@ class SungrowAPI {
       url,
       hasToken: !!this.token,
       hasAccessKey: !!this.config.accessKey,
+      accessKeyPrefix: this.config.accessKey ? `${this.config.accessKey.substring(0, 8)}...` : 'missing',
       dataKeys: Object.keys(data || {}),
       languageParam: data.lang || 'not included'
     });
@@ -118,9 +136,17 @@ class SungrowAPI {
         'User-Agent': 'Sungrow-Monitor/1.0'
       };
 
-      // Adicionar x-access-key obrigatório
+      // Adicionar x-access-key obrigatório - com validação especial para E912
       if (this.config.accessKey) {
-        headers['x-access-key'] = this.config.accessKey;
+        headers['x-access-key'] = this.config.accessKey.trim();
+        console.log('Adding x-access-key header:', {
+          keyExists: true,
+          keyLength: this.config.accessKey.trim().length,
+          keyPrefix: `${this.config.accessKey.trim().substring(0, 8)}...`
+        });
+      } else {
+        console.error('CRITICAL: x-access-key is missing!');
+        throw new Error('x-access-key é obrigatório mas não foi fornecido');
       }
 
       const response = await fetch(url, {
@@ -130,6 +156,7 @@ class SungrowAPI {
       });
 
       if (!response.ok) {
+        console.error(`HTTP Error: ${response.status} ${response.statusText}`);
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
@@ -141,9 +168,25 @@ class SungrowAPI {
         hasData: !!result.result_data
       });
 
+      // Tratamento específico para erro E912
+      if (result.result_code === 'E912') {
+        console.error('E912 Error Details:', {
+          provided_access_key_length: this.config.accessKey?.length || 0,
+          provided_access_key_prefix: this.config.accessKey ? `${this.config.accessKey.substring(0, 8)}...` : 'none',
+          error_message: result.result_msg
+        });
+        throw new Error(`Chave de acesso inválida (E912): ${result.result_msg}. Verifique se a x-access-key está correta no portal Sungrow.`);
+      }
+
       return result;
     } catch (error) {
       console.error(`Request failed for ${endpoint}:`, error);
+      
+      // Melhor tratamento de erro para E912
+      if (error instanceof Error && error.message.includes('E912')) {
+        throw new Error(`Chave de acesso inválida: Verifique se a x-access-key foi copiada corretamente do portal Sungrow. ${error.message}`);
+      }
+      
       throw error;
     }
   }
@@ -157,7 +200,8 @@ class SungrowAPI {
       authMode: this.config.authMode,
       hasUsername: !!this.config.username,
       hasAppkey: !!this.config.appkey,
-      hasAccessKey: !!this.config.accessKey
+      hasAccessKey: !!this.config.accessKey,
+      accessKeyLength: this.config.accessKey?.length || 0
     });
 
     if (this.config.authMode === 'oauth2' && this.config.accessToken) {
@@ -170,9 +214,9 @@ class SungrowAPI {
 
     // Tentar autenticação sem parâmetro lang primeiro
     let authData: any = {
-      appkey: this.config.appkey,
-      user_account: this.config.username,
-      user_password: this.config.password
+      appkey: this.config.appkey.trim(),
+      user_account: this.config.username?.trim(),
+      user_password: this.config.password?.trim()
     };
 
     console.log('Attempting authentication without language parameter');
@@ -187,9 +231,9 @@ class SungrowAPI {
         try {
           console.log(`Trying authentication with language: ${lang}`);
           authData = {
-            appkey: this.config.appkey,
-            user_account: this.config.username,
-            user_password: this.config.password,
+            appkey: this.config.appkey.trim(),
+            user_account: this.config.username?.trim(),
+            user_password: this.config.password?.trim(),
             lang: lang
           };
           
@@ -230,7 +274,7 @@ class SungrowAPI {
       
       // Test a simple API call without language parameter first
       let testData: any = {
-        appkey: this.config.appkey,
+        appkey: this.config.appkey.trim(),
         token: token
       };
 
@@ -258,6 +302,15 @@ class SungrowAPI {
       }
     } catch (error) {
       console.error('Connection test failed:', error);
+      
+      // Melhor guidance para erro E912
+      if (error instanceof Error && error.message.includes('E912')) {
+        return { 
+          success: false, 
+          message: `Chave de acesso inválida: Verifique se você copiou corretamente a "Access Key Value" do portal Sungrow iSolarCloud. ${error.message}`
+        };
+      }
+      
       return { 
         success: false, 
         message: error instanceof Error ? error.message : 'Erro desconhecido na conexão'
