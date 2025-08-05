@@ -18,7 +18,8 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { action = 'generate_monthly_report', report_type = 'monthly', plant_id } = await req.json().catch(() => ({}));
+    const requestBody = await req.json().catch(() => ({}));
+    const { action = 'generate_monthly_report', report_type = 'monthly', plant_id } = requestBody;
 
     if (action === 'generate_monthly_report') {
       const now = new Date();
@@ -169,7 +170,7 @@ serve(async (req) => {
     }
 
     if (action === 'get_reports') {
-      const { plant_id, report_type = 'monthly', limit = 10 } = await req.json();
+      const { plant_id, report_type = 'monthly', limit = 10 } = requestBody;
       
       let query = supabaseClient
         .from('automated_reports')
