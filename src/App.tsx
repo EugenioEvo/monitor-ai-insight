@@ -22,6 +22,7 @@ import Invoices from "./pages/Invoices";
 import Chat from "./pages/Chat";
 import Agents from "./pages/Agents";
 import Alerts from "./pages/Alerts";
+import Reports from "./pages/Reports";
 import Maintenance from "./pages/Maintenance";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
@@ -69,6 +70,7 @@ const App = () => (
                             <Route path="/chat" element={<Chat />} />
                             <Route path="/agents" element={<Agents />} />
                             <Route path="/alerts" element={<Alerts />} />
+                            <Route path="/reports" element={<Reports />} />
                             <Route path="/maintenance" element={<Maintenance />} />
                             <Route path="/settings" element={
                               <ProtectedRoute requireAdmin={true}>
