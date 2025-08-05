@@ -8,8 +8,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { FileText, Download, RefreshCw, Calendar, TrendingUp, Activity, Zap, BarChart3 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { format } from 'date-fns';
+import { format as formatDate } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface AutomatedReport {
   id: string;
@@ -103,33 +105,101 @@ export const AutomatedReportsPanel: React.FC = () => {
     }
   };
 
-  const downloadReport = (report: AutomatedReport) => {
-    const reportContent = {
-      ...report.report_data,
-      metadata: {
-        generated_at: report.generated_at,
-        period: `${format(new Date(report.period_start), 'dd/MM/yyyy')} - ${format(new Date(report.period_end), 'dd/MM/yyyy')}`,
-        report_type: report.report_type
-      }
-    };
+  const downloadReport = (report: AutomatedReport, downloadFormat: 'pdf' | 'json' = 'pdf') => {
+    if (downloadFormat === 'pdf') {
+      generatePDFReport(report);
+    } else {
+      const reportContent = {
+        ...report.report_data,
+        metadata: {
+          generated_at: report.generated_at,
+          period: `${formatDate(new Date(report.period_start), 'dd/MM/yyyy')} - ${formatDate(new Date(report.period_end), 'dd/MM/yyyy')}`,
+          report_type: report.report_type
+        }
+      };
 
-    const blob = new Blob([JSON.stringify(reportContent, null, 2)], {
-      type: 'application/json'
-    });
-    
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `relatorio_${report.report_type}_${format(new Date(report.generated_at), 'yyyyMMdd')}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+      const blob = new Blob([JSON.stringify(reportContent, null, 2)], {
+        type: 'application/json'
+      });
+      
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `relatorio_${report.report_type}_${formatDate(new Date(report.generated_at), 'yyyyMMdd')}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
 
     toast({
       title: "Download iniciado",
       description: "O relatório está sendo baixado.",
     });
+  };
+
+  const generatePDFReport = (report: AutomatedReport) => {
+    const doc = new jsPDF();
+    const plant = plants.find(p => p.id === report.plant_id);
+    const energyMetrics = report.report_data?.energy_metrics || {};
+    const operationalMetrics = report.report_data?.operational_metrics || {};
+    
+    // Título
+    doc.setFontSize(18);
+    doc.text('Relatório de Performance Solar', 20, 20);
+    
+    // Informações básicas
+    doc.setFontSize(12);
+    doc.text(`Planta: ${plant?.name || 'Todas as plantas'}`, 20, 35);
+    doc.text(`Tipo: ${getReportTypeName(report.report_type)}`, 20, 45);
+    doc.text(`Período: ${formatDate(new Date(report.period_start), 'dd/MM/yyyy')} - ${formatDate(new Date(report.period_end), 'dd/MM/yyyy')}`, 20, 55);
+    doc.text(`Gerado em: ${formatDate(new Date(report.generated_at), 'dd/MM/yyyy HH:mm')}`, 20, 65);
+    
+    // Métricas de energia
+    doc.setFontSize(14);
+    doc.text('Métricas de Energia', 20, 85);
+    
+    const energyData = [
+      ['Energia Total (kWh)', formatMetric(energyMetrics.total_energy_kwh || 0)],
+      ['Potência Média (kW)', formatMetric((energyMetrics.average_power_w || 0) / 1000)],
+      ['Potência Máxima (kW)', formatMetric((energyMetrics.max_power_w || 0) / 1000)],
+      ['Performance (%)', formatMetric(energyMetrics.performance_percentage || 0)],
+      ['Disponibilidade (%)', formatMetric(energyMetrics.availability_percentage || 0)]
+    ];
+    
+    autoTable(doc, {
+      startY: 95,
+      head: [['Métrica', 'Valor']],
+      body: energyData,
+      theme: 'striped',
+      headStyles: { fillColor: [41, 128, 185] },
+      margin: { left: 20, right: 20 }
+    });
+    
+    // Métricas operacionais
+    const finalY = (doc as any).lastAutoTable.finalY || 95;
+    doc.setFontSize(14);
+    doc.text('Métricas Operacionais', 20, finalY + 20);
+    
+    const operationalData = [
+      ['Total de Alertas', (operationalMetrics.total_alerts || 0).toString()],
+      ['Alertas Críticos', (operationalMetrics.critical_alerts || 0).toString()],
+      ['Tickets Abertos', (operationalMetrics.open_tickets || 0).toString()],
+      ['Tickets Fechados', (operationalMetrics.closed_tickets || 0).toString()]
+    ];
+    
+    autoTable(doc, {
+      startY: finalY + 30,
+      head: [['Métrica', 'Valor']],
+      body: operationalData,
+      theme: 'striped',
+      headStyles: { fillColor: [231, 76, 60] },
+      margin: { left: 20, right: 20 }
+    });
+    
+    // Salvar PDF
+    const fileName = `relatorio_${report.report_type}_${formatDate(new Date(report.generated_at), 'yyyyMMdd')}.pdf`;
+    doc.save(fileName);
   };
 
   useEffect(() => {
@@ -292,10 +362,10 @@ export const AutomatedReportsPanel: React.FC = () => {
                         <TableCell>
                           <div className="space-y-1">
                             <div className="text-sm">
-                              {format(new Date(report.period_start), 'dd/MM/yyyy', { locale: ptBR })}
+                              {formatDate(new Date(report.period_start), 'dd/MM/yyyy', { locale: ptBR })}
                             </div>
                             <div className="text-xs text-muted-foreground">
-                              até {format(new Date(report.period_end), 'dd/MM/yyyy', { locale: ptBR })}
+                              até {formatDate(new Date(report.period_end), 'dd/MM/yyyy', { locale: ptBR })}
                             </div>
                           </div>
                         </TableCell>
@@ -333,7 +403,7 @@ export const AutomatedReportsPanel: React.FC = () => {
                           </div>
                         </TableCell>
                         <TableCell>
-                          {format(new Date(report.generated_at), 'dd/MM/yyyy HH:mm', { locale: ptBR })}
+                          {formatDate(new Date(report.generated_at), 'dd/MM/yyyy HH:mm', { locale: ptBR })}
                         </TableCell>
                         <TableCell>
                           <Button
