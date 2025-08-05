@@ -130,10 +130,9 @@ export const usePerformanceMonitoring = () => {
       const duration = performance.now() - start;
       trackApiCall(endpoint, duration);
       
-      logger.error('API call failed', {
+      logger.error('API call failed', error instanceof Error ? error : undefined, {
         endpoint,
-        duration,
-        error: error instanceof Error ? error.message : 'Unknown error'
+        duration
       });
       
       throw error;
