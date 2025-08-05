@@ -137,20 +137,20 @@ export const useCreateTicket = () => {
 
   return useMutation({
     mutationFn: async (ticket: Omit<Ticket, 'id' | 'created_at' | 'updated_at' | 'opened_at'>) => {
-      const { data, error } = await supabase
-        .from('tickets')
-        .insert([{
-          ...ticket,
-          opened_at: new Date().toISOString()
-        }])
-        .select()
-        .single();
+      const { data: session } = await supabase.auth.getSession();
+      
+      const { data, error } = await supabase.functions.invoke('create-ticket', {
+        body: ticket,
+        headers: { 
+          Authorization: `Bearer ${session?.session?.access_token}` 
+        }
+      });
 
       if (error) {
         throw new Error(error.message);
       }
 
-      return data;
+      return data.ticket;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tickets'] });

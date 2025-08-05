@@ -35,6 +35,7 @@ import { SmartAlertsManager } from "@/components/alerts/SmartAlertsManager";
 import { MetricsCacheManager } from "@/components/performance/MetricsCacheManager";
 import { AutomatedReportsPanel } from "@/components/reports/AutomatedReportsPanel";
 import { TestDataManager } from "@/components/maintenance/TestDataManager";
+import { TicketForm } from "@/components/tickets/TicketForm";
 
 const statusColors = {
   open: 'bg-red-100 text-red-800',
@@ -84,10 +85,9 @@ export default function Maintenance() {
             Gerencie alertas e tickets de manutenção das usinas
           </p>
         </div>
-        <Button>
-          <Plus className="w-4 h-4 mr-2" />
-          Novo Ticket
-        </Button>
+        <TicketForm onSuccess={() => {
+          // Recarregar dados se necessário
+        }} />
       </div>
 
       {/* Cards de Resumo */}

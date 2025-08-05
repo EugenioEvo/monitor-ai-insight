@@ -146,13 +146,35 @@ serve(async (req) => {
         console.error('Erro ao gerar relatórios:', error);
       }
 
+      // 4. Criar tickets de teste
+      console.log('Creating test tickets...');
+      const testTickets = plants.map((plant, index) => ({
+        plant_id: plant.id,
+        title: `Manutenção ${['Preventiva', 'Corretiva', 'Limpeza', 'Inspeção'][index % 4]} - ${plant.name}`,
+        description: `Ticket de teste criado automaticamente para validação do sistema. Planta: ${plant.name}`,
+        priority: ['low', 'medium', 'high', 'critical'][index % 4],
+        status: ['open', 'in_progress', 'completed'][index % 3],
+        type: ['maintenance', 'repair', 'inspection', 'upgrade'][index % 4],
+        assigned_to: index % 2 === 0 ? 'João Silva' : 'Maria Santos',
+        opened_at: new Date(Date.now() - (index * 24 * 60 * 60 * 1000)).toISOString(),
+        ...(index % 3 === 2 ? { closed_at: new Date().toISOString() } : {})
+      }));
+
+      const { data: ticketsData, error: ticketsError } = await supabaseClient
+        .from('tickets')
+        .insert(testTickets)
+        .select();
+
+      if (ticketsError) throw ticketsError;
+
       return new Response(JSON.stringify({
         success: true,
         message: 'Dados de teste populados com sucesso',
         summary: {
           plants_processed: plants.length,
           readings_inserted: insertedReadings,
-          days_covered: 31
+          days_covered: 31,
+          tickets_created: testTickets.length
         }
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -170,7 +192,9 @@ serve(async (req) => {
         'metrics_cache',
         'automated_reports',
         'alerts',
-        'system_metrics'
+        'system_metrics',
+        'tickets',
+        'ticket_history'
       ];
 
       const results = [];
