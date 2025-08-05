@@ -12,7 +12,7 @@ interface Invoice {
   id: string;
   uc_code: string;
   reference_month: string;
-  total_r$: number;
+  'total_r$': number;
   energy_kwh: number;
   status: string;
 }
@@ -193,7 +193,7 @@ export const InvoicePlantMapping = () => {
                       <Badge variant="secondary">{invoice.reference_month}</Badge>
                     </div>
                     <div className="text-sm text-muted-foreground mt-1">
-                      R$ {invoice.total_r$.toFixed(2)} • {invoice.energy_kwh.toFixed(0)} kWh
+                      R$ {invoice['total_r$'].toFixed(2)} • {invoice.energy_kwh.toFixed(0)} kWh
                     </div>
                   </div>
                   <div className="w-64">
@@ -245,7 +245,7 @@ export const InvoicePlantMapping = () => {
                       <Badge variant="default">{plant?.name}</Badge>
                     </div>
                     <div className="text-sm text-muted-foreground">
-                      {invoice.reference_month} • R$ {invoice.total_r$.toFixed(2)}
+                      {invoice.reference_month} • R$ {invoice['total_r$'].toFixed(2)}
                     </div>
                   </div>
                 );

@@ -1,158 +1,212 @@
-
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+}
 
-const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const openAIApiKey = Deno.env.get('OPENAI_API_KEY')!;
+interface Database {
+  public: {
+    Tables: {
+      plants: {
+        Row: {
+          id: string
+          name: string
+          monitoring_system: string
+          sync_enabled: boolean
+          last_sync: string | null
+        }
+      }
+      sync_logs: {
+        Row: {
+          id: string
+          plant_id: string
+          system_type: string
+          status: string
+          message: string | null
+          data_points_synced: number
+          sync_duration_ms: number | null
+          created_at: string
+        }
+        Insert: {
+          plant_id: string
+          system_type: string
+          status: string
+          message?: string
+          data_points_synced?: number
+          sync_duration_ms?: number
+        }
+      }
+      alerts: {
+        Insert: {
+          plant_id: string
+          type: string
+          severity: string
+          message: string
+          status?: string
+        }
+      }
+    }
+  }
+}
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: corsHeaders })
   }
 
   try {
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    
-    console.log('Scheduler: Checking for high priority alerts...');
+    const supabase = createClient<Database>(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
 
-    // Get alerts with P1 or P2 priority that haven't been processed
-    const { data: alerts, error: alertsError } = await supabase
-      .from('alerts')
-      .select(`
-        *,
-        plants (name, lat, lng, concessionaria)
-      `)
-      .in('severity', ['high', 'critical'])
-      .is('acknowledged_by', null)
-      .order('created_at', { ascending: true });
+    console.log('🕐 Iniciando sincronização automática...')
 
-    if (alertsError) {
-      throw new Error(`Alerts query error: ${alertsError.message}`);
+    // Buscar plantas habilitadas para sincronização
+    const { data: plants, error: plantsError } = await supabase
+      .from('plants')
+      .select('id, name, monitoring_system, sync_enabled, last_sync')
+      .eq('sync_enabled', true)
+
+    if (plantsError) {
+      console.error('Erro ao buscar plantas:', plantsError)
+      throw plantsError
     }
 
-    if (!alerts || alerts.length === 0) {
-      return new Response(JSON.stringify({
-        success: true,
-        message: 'No high priority alerts to process'
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    console.log(`Encontradas ${plants?.length || 0} plantas para sincronização`)
 
-    const processedTickets = [];
+    const syncResults = []
 
-    for (const alert of alerts) {
-      // Map severity to priority
-      const priority = alert.severity === 'critical' ? 'P1' : 'P2';
-      
-      // Use AI to suggest ticket details and schedule
-      const ticketSuggestion = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${openAIApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o',
-          messages: [
-            {
-              role: 'system',
-              content: `Você é um coordenador de O&M para plantas solares.
-              Com base no alerta, crie um ticket detalhado e sugira cronograma.
-              
-              Responda com JSON:
-              {
-                "description": "descrição detalhada do problema e ações necessárias",
-                "suggested_date": "YYYY-MM-DD (data sugerida para atendimento)",
-                "estimated_duration": "tempo estimado em horas",
-                "required_skills": ["competências necessárias"],
-                "urgency_reason": "justificativa da urgência",
-                "whatsapp_message": "mensagem resumida para WhatsApp"
-              }`
-            },
-            {
-              role: 'user',
-              content: `ALERTA:
-              Tipo: ${alert.type}
-              Severidade: ${alert.severity}
-              Mensagem: ${alert.message}
-              Planta: ${alert.plants?.name}
-              Localização: ${alert.plants?.lat}, ${alert.plants?.lng}
-              Concessionária: ${alert.plants?.concessionaria}
-              Data do alerta: ${alert.created_at}`
-            }
-          ],
-          max_tokens: 800
-        }),
-      });
+    for (const plant of plants || []) {
+      const syncStartTime = Date.now()
+      console.log(`🔄 Sincronizando planta: ${plant.name} (${plant.monitoring_system})`)
 
-      const aiResult = await ticketSuggestion.json();
-      const suggestion = JSON.parse(aiResult.choices[0].message.content);
+      try {
+        let functionName = ''
+        if (plant.monitoring_system === 'sungrow') {
+          functionName = 'sungrow-connector'
+        } else if (plant.monitoring_system === 'solaredge') {
+          functionName = 'solaredge-connector'
+        } else {
+          console.log(`⚠️  Sistema ${plant.monitoring_system} não suportado para sincronização automática`)
+          continue
+        }
 
-      // Create ticket in database
-      const { data: ticket, error: ticketError } = await supabase
-        .from('tickets')
-        .insert({
-          plant_id: alert.plant_id,
-          priority: priority,
-          description: suggestion.description,
-          type: alert.type,
-          status: 'open'
+        // Chamar função de sincronização específica
+        const { data: syncData, error: syncError } = await supabase.functions.invoke(functionName, {
+          body: {
+            action: 'sync_data',
+            plantId: plant.id
+          }
         })
-        .select()
-        .single();
 
-      if (ticketError) {
-        console.error(`Ticket creation error for alert ${alert.id}:`, ticketError);
-        continue;
+        const syncDuration = Date.now() - syncStartTime
+
+        if (syncError) {
+          console.error(`❌ Erro na sincronização da planta ${plant.name}:`, syncError)
+          
+          // Log do erro
+          await supabase.from('sync_logs').insert({
+            plant_id: plant.id,
+            system_type: plant.monitoring_system,
+            status: 'error',
+            message: syncError.message || 'Erro desconhecido na sincronização',
+            data_points_synced: 0,
+            sync_duration_ms: syncDuration
+          })
+
+          // Criar alerta para falha de sincronização
+          await supabase.from('alerts').insert({
+            plant_id: plant.id,
+            type: 'sync_failure',
+            severity: 'high',
+            message: `Falha na sincronização da planta ${plant.name}: ${syncError.message}`,
+            status: 'open'
+          })
+
+          syncResults.push({
+            plantId: plant.id,
+            plantName: plant.name,
+            success: false,
+            error: syncError.message
+          })
+        } else {
+          console.log(`✅ Sincronização da planta ${plant.name} concluída com sucesso`)
+          
+          const dataPointsSynced = syncData?.data?.dataPointsSynced || 0
+          
+          // Log do sucesso
+          await supabase.from('sync_logs').insert({
+            plant_id: plant.id,
+            system_type: plant.monitoring_system,
+            status: 'success',
+            message: `Sincronização bem-sucedida: ${dataPointsSynced} pontos de dados`,
+            data_points_synced: dataPointsSynced,
+            sync_duration_ms: syncDuration
+          })
+
+          // Atualizar timestamp da última sincronização
+          await supabase
+            .from('plants')
+            .update({ last_sync: new Date().toISOString() })
+            .eq('id', plant.id)
+
+          syncResults.push({
+            plantId: plant.id,
+            plantName: plant.name,
+            success: true,
+            dataPointsSynced
+          })
+        }
+      } catch (error) {
+        console.error(`💥 Exceção durante sincronização da planta ${plant.name}:`, error)
+        
+        await supabase.from('sync_logs').insert({
+          plant_id: plant.id,
+          system_type: plant.monitoring_system,
+          status: 'error',
+          message: `Exceção durante sincronização: ${error.message}`,
+          data_points_synced: 0,
+          sync_duration_ms: Date.now() - syncStartTime
+        })
+
+        syncResults.push({
+          plantId: plant.id,
+          plantName: plant.name,
+          success: false,
+          error: error.message
+        })
       }
-
-      // Mark alert as acknowledged
-      await supabase
-        .from('alerts')
-        .update({ acknowledged_by: 'scheduler_bot' })
-        .eq('id', alert.id);
-
-      // Log the WhatsApp message that would be sent
-      console.log(`WhatsApp notification for ticket ${ticket.id}:`);
-      console.log(suggestion.whatsapp_message);
-
-      processedTickets.push({
-        ticket_id: ticket.id,
-        alert_id: alert.id,
-        priority: priority,
-        plant_name: alert.plants?.name,
-        suggested_date: suggestion.suggested_date,
-        whatsapp_message: suggestion.whatsapp_message
-      });
     }
 
-    console.log(`Scheduler: Processed ${processedTickets.length} alerts into tickets`);
+    console.log('🏁 Sincronização automática concluída')
 
-    return new Response(JSON.stringify({
-      success: true,
-      alerts_processed: alerts.length,
-      tickets_created: processedTickets.length,
-      tickets: processedTickets
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return new Response(
+      JSON.stringify({
+        success: true,
+        message: 'Sincronização automática executada',
+        results: syncResults,
+        totalPlants: plants?.length || 0,
+        successfulSyncs: syncResults.filter(r => r.success).length,
+        failedSyncs: syncResults.filter(r => !r.success).length
+      }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      }
+    )
 
   } catch (error) {
-    console.error('Error in scheduler:', error);
-    return new Response(JSON.stringify({ 
-      success: false, 
-      error: error.message 
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    console.error('💥 Erro geral no scheduler:', error)
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: error.message
+      }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      }
+    )
   }
-});
+})
