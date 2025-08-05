@@ -143,6 +143,38 @@ serve(async (req) => {
       });
     }
 
+    if (action === 'get_alerts') {
+      const { status = 'active', plant_id, limit = 50 } = await req.json().catch(() => ({}));
+      
+      let query = supabaseClient
+        .from('smart_alerts')
+        .select('*')
+        .order('triggered_at', { ascending: false })
+        .limit(limit);
+
+      if (status) {
+        query = query.eq('status', status);
+      }
+      
+      if (plant_id) {
+        query = query.eq('plant_id', plant_id);
+      }
+
+      const { data: alerts, error } = await query;
+
+      if (error) {
+        throw new Error(`Error fetching smart alerts: ${error.message}`);
+      }
+
+      return new Response(JSON.stringify({
+        success: true,
+        alerts: alerts || [],
+        count: alerts?.length || 0
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     return new Response(JSON.stringify({ error: 'Invalid action' }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

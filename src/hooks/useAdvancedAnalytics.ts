@@ -59,6 +59,7 @@ export const useAnalyticsTrends = (period: string = '30_days') => {
     },
     staleTime: 5 * 60 * 1000, // 5 minutos
     refetchInterval: 10 * 60 * 1000, // 10 minutos
+    retry: 2
   });
 };
 
@@ -75,22 +76,24 @@ export const useSmartAlerts = (status?: string) => {
     },
     staleTime: 2 * 60 * 1000, // 2 minutos
     refetchInterval: 5 * 60 * 1000, // 5 minutos
+    retry: 2
   });
 };
 
 export const useMetricsCache = () => {
   return useQuery({
     queryKey: ['metrics-cache'],
-    queryFn: async (): Promise<CacheEntry[]> => {
+    queryFn: async () => {
       const { data, error } = await supabase.functions.invoke('cache-optimizer', {
         body: { action: 'get_cache_stats' }
       });
 
       if (error) throw error;
-      return data?.cache_entries || [];
+      return data?.stats || {};
     },
     staleTime: 30 * 1000, // 30 segundos
     refetchInterval: 60 * 1000, // 1 minuto
+    retry: 1
   });
 };
 
@@ -108,10 +111,11 @@ export const useAutomatedReports = (reportType?: string, plantId?: string) => {
       });
 
       if (error) throw error;
-      return data.reports || [];
+      return data?.reports || [];
     },
     staleTime: 5 * 60 * 1000, // 5 minutos
     refetchInterval: 15 * 60 * 1000, // 15 minutos
+    retry: 1
   });
 };
 

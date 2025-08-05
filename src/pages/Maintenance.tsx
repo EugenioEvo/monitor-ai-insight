@@ -34,6 +34,7 @@ import { AdvancedAnalytics } from "@/components/analytics/AdvancedAnalytics";
 import { SmartAlertsManager } from "@/components/alerts/SmartAlertsManager";
 import { MetricsCacheManager } from "@/components/performance/MetricsCacheManager";
 import { AutomatedReportsPanel } from "@/components/reports/AutomatedReportsPanel";
+import { TestDataManager } from "@/components/maintenance/TestDataManager";
 
 const statusColors = {
   open: 'bg-red-100 text-red-800',
@@ -155,8 +156,12 @@ export default function Maintenance() {
         </Card>
       </div>
 
-      <Tabs defaultValue="tickets" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-9">
+      <Tabs defaultValue="test-data" className="space-y-4">
+        <TabsList className="grid w-full grid-cols-10">
+          <TabsTrigger value="test-data">
+            <Shield className="h-4 w-4 mr-1" />
+            Dados Teste
+          </TabsTrigger>
           <TabsTrigger value="tickets">Tickets</TabsTrigger>
           <TabsTrigger value="alerts">Alertas</TabsTrigger>
           <TabsTrigger value="monitor">
@@ -176,6 +181,10 @@ export default function Maintenance() {
           <TabsTrigger value="cache">Cache</TabsTrigger>
           <TabsTrigger value="reports">Relatórios</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="test-data">
+          <TestDataManager />
+        </TabsContent>
 
         <TabsContent value="tickets" className="space-y-4">
           <Card>

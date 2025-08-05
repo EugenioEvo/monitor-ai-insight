@@ -104,6 +104,38 @@ serve(async (req) => {
       });
     }
 
+    if (action === 'get_trends') {
+      const { period = '30_days', plant_id, limit = 50 } = await req.json().catch(() => ({}));
+      
+      let query = supabaseClient
+        .from('analytics_trends')
+        .select('*')
+        .order('calculated_at', { ascending: false })
+        .limit(limit);
+
+      if (period) {
+        query = query.eq('period', period);
+      }
+      
+      if (plant_id) {
+        query = query.eq('plant_id', plant_id);
+      }
+
+      const { data: trends, error } = await query;
+
+      if (error) {
+        throw new Error(`Error fetching analytics trends: ${error.message}`);
+      }
+
+      return new Response(JSON.stringify({
+        success: true,
+        trends: trends || [],
+        count: trends?.length || 0
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     return new Response(JSON.stringify({ error: 'Invalid action' }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

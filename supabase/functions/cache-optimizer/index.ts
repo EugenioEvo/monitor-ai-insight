@@ -155,7 +155,7 @@ serve(async (req) => {
     }
 
     if (action === 'get_cached_metrics') {
-      const { cache_key } = await req.json();
+      const { cache_key } = await req.json().catch(() => ({}));
       
       const { data: cached, error } = await supabaseClient
         .from('metrics_cache')
@@ -177,6 +177,33 @@ serve(async (req) => {
         cached: true,
         data: cached.cache_data,
         expires_at: cached.expires_at
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (action === 'get_cache_stats') {
+      const { data: cacheStats, error } = await supabaseClient
+        .from('metrics_cache')
+        .select('cache_key, expires_at, created_at')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        throw new Error(`Error fetching cache stats: ${error.message}`);
+      }
+
+      const now = new Date();
+      const validEntries = cacheStats?.filter(entry => new Date(entry.expires_at) > now) || [];
+      const expiredEntries = cacheStats?.filter(entry => new Date(entry.expires_at) <= now) || [];
+
+      return new Response(JSON.stringify({
+        success: true,
+        stats: {
+          total_entries: cacheStats?.length || 0,
+          valid_entries: validEntries.length,
+          expired_entries: expiredEntries.length,
+          cache_keys: [...new Set(cacheStats?.map(entry => entry.cache_key) || [])]
+        }
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
