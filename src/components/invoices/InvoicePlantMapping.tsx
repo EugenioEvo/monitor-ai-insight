@@ -47,7 +47,7 @@ export const InvoicePlantMapping = () => {
   const loadData = async () => {
     try {
       const [invoicesData, plantsData, beneficiariesData] = await Promise.all([
-        supabase.from('invoices').select('id, uc_code, reference_month, total_r$, energy_kwh, status'),
+        supabase.from('invoices').select('id, uc_code, reference_month, "total_r$", energy_kwh, status'),
         supabase.from('plants').select('id, name, consumer_unit_code'),
         supabase.from('beneficiaries').select('id, plant_id, uc_code, name, allocation_percent')
       ]);
