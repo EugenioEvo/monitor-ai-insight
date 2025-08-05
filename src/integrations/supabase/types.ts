@@ -61,6 +61,36 @@ export type Database = {
           },
         ]
       }
+      analytics_trends: {
+        Row: {
+          calculated_at: string
+          created_at: string
+          id: string
+          metric_type: string
+          period: string
+          plant_id: string | null
+          trend_data: Json
+        }
+        Insert: {
+          calculated_at?: string
+          created_at?: string
+          id?: string
+          metric_type: string
+          period: string
+          plant_id?: string | null
+          trend_data: Json
+        }
+        Update: {
+          calculated_at?: string
+          created_at?: string
+          id?: string
+          metric_type?: string
+          period?: string
+          plant_id?: string | null
+          trend_data?: Json
+        }
+        Relationships: []
+      }
       app_config: {
         Row: {
           created_at: string
@@ -79,6 +109,39 @@ export type Database = {
           key?: string
           updated_at?: string
           value?: string
+        }
+        Relationships: []
+      }
+      automated_reports: {
+        Row: {
+          created_at: string
+          generated_at: string
+          id: string
+          period_end: string
+          period_start: string
+          plant_id: string | null
+          report_data: Json
+          report_type: string
+        }
+        Insert: {
+          created_at?: string
+          generated_at?: string
+          id?: string
+          period_end: string
+          period_start: string
+          plant_id?: string | null
+          report_data: Json
+          report_type: string
+        }
+        Update: {
+          created_at?: string
+          generated_at?: string
+          id?: string
+          period_end?: string
+          period_start?: string
+          plant_id?: string | null
+          report_data?: Json
+          report_type?: string
         }
         Relationships: []
       }
@@ -477,6 +540,33 @@ export type Database = {
           },
         ]
       }
+      metrics_cache: {
+        Row: {
+          cache_data: Json
+          cache_key: string
+          created_at: string
+          expires_at: string
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          cache_data: Json
+          cache_key: string
+          created_at?: string
+          expires_at: string
+          id?: string
+          updated_at?: string
+        }
+        Update: {
+          cache_data?: Json
+          cache_key?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       monitoring_configs: {
         Row: {
           config_data: Json
@@ -725,6 +815,48 @@ export type Database = {
           },
         ]
       }
+      smart_alerts: {
+        Row: {
+          acknowledged_at: string | null
+          alert_type: string
+          conditions: Json | null
+          created_at: string
+          id: string
+          message: string
+          plant_id: string | null
+          resolved_at: string | null
+          severity: string
+          status: string
+          triggered_at: string
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          alert_type: string
+          conditions?: Json | null
+          created_at?: string
+          id?: string
+          message: string
+          plant_id?: string | null
+          resolved_at?: string | null
+          severity: string
+          status?: string
+          triggered_at?: string
+        }
+        Update: {
+          acknowledged_at?: string | null
+          alert_type?: string
+          conditions?: Json | null
+          created_at?: string
+          id?: string
+          message?: string
+          plant_id?: string | null
+          resolved_at?: string | null
+          severity?: string
+          status?: string
+          triggered_at?: string
+        }
+        Relationships: []
+      }
       sungrow_tokens: {
         Row: {
           access_token: string
@@ -795,6 +927,105 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      system_backups: {
+        Row: {
+          backup_id: string
+          backup_type: string
+          created_at: string
+          id: string
+          metadata: Json | null
+          size_mb: number
+          status: string
+          table_details: Json | null
+          tables_included: string[]
+          updated_at: string
+        }
+        Insert: {
+          backup_id: string
+          backup_type: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          size_mb?: number
+          status?: string
+          table_details?: Json | null
+          tables_included?: string[]
+          updated_at?: string
+        }
+        Update: {
+          backup_id?: string
+          backup_type?: string
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          size_mb?: number
+          status?: string
+          table_details?: Json | null
+          tables_included?: string[]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      system_metrics: {
+        Row: {
+          collected_at: string
+          created_at: string
+          id: string
+          metric_data: Json
+          metric_type: string
+        }
+        Insert: {
+          collected_at?: string
+          created_at?: string
+          id?: string
+          metric_data: Json
+          metric_type: string
+        }
+        Update: {
+          collected_at?: string
+          created_at?: string
+          id?: string
+          metric_data?: Json
+          metric_type?: string
+        }
+        Relationships: []
+      }
+      system_restore_logs: {
+        Row: {
+          backup_id: string
+          completed_at: string | null
+          created_at: string
+          errors: Json | null
+          id: string
+          restore_id: string
+          started_at: string
+          status: string
+          tables_restored: Json | null
+        }
+        Insert: {
+          backup_id: string
+          completed_at?: string | null
+          created_at?: string
+          errors?: Json | null
+          id?: string
+          restore_id: string
+          started_at: string
+          status: string
+          tables_restored?: Json | null
+        }
+        Update: {
+          backup_id?: string
+          completed_at?: string | null
+          created_at?: string
+          errors?: Json | null
+          id?: string
+          restore_id?: string
+          started_at?: string
+          status?: string
+          tables_restored?: Json | null
+        }
+        Relationships: []
       }
       ticket_history: {
         Row: {
