@@ -51,7 +51,7 @@ export const AutomatedReportsPanel: React.FC = () => {
       const { data, error } = await supabase.functions.invoke('report-generator', {
         body: { 
           action: 'get_reports',
-          report_type: reportType,
+          report_type: reportType === 'all' ? undefined : reportType,
           limit: 50
         }
       });
