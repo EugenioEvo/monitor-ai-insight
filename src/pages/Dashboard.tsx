@@ -7,6 +7,8 @@ import { SimplifiedDigitalTwin } from '@/components/dashboard/SimplifiedDigitalT
 import { PlantSyncManager } from '@/components/plants/PlantSyncManager';
 import { InvoicePlantMapping } from '@/components/invoices/InvoicePlantMapping';
 import { SystemHealthDashboard } from '@/components/alerts/SystemHealthDashboard';
+import { EnhancedValidationPanel } from '@/components/invoices/EnhancedValidationPanel';
+import { PerformanceOverview } from '@/components/monitoring/PerformanceOverview';
 import { MetricCard } from '@/components/dashboard/MetricCard';
 import { EnergyChart } from '@/components/dashboard/EnergyChart';
 import { AlertsList } from '@/components/dashboard/AlertsList';
