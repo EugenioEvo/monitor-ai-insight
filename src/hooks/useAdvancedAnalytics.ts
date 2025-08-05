@@ -125,26 +125,35 @@ export const useAdvancedAnalytics = () => {
 
   const runAnalyticsEngine = async () => {
     try {
-      const { error } = await supabase.functions.invoke('analytics-engine', {
+      console.log('Running analytics engine...');
+      const { data, error } = await supabase.functions.invoke('analytics-engine', {
         body: { action: 'calculate_trends' }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Analytics engine error:', error);
+        throw error;
+      }
+
+      console.log('Analytics engine result:', data);
 
       // Invalidar cache para recarregar dados
       queryClient.invalidateQueries({ queryKey: ['analytics-trends'] });
       
       toast({
-        title: "Análise executada",
-        description: "Análise de tendências calculada com sucesso.",
+        title: "Analytics Engine executado",
+        description: `Calculadas ${data?.trends_calculated || 0} tendências para ${data?.plants_analyzed?.length || 0} plantas.`,
       });
+      
+      return data;
     } catch (error) {
       console.error('Error running analytics engine:', error);
       toast({
-        title: "Erro na análise",
-        description: "Não foi possível executar a análise.",
+        title: "Erro no Analytics Engine",
+        description: error.message || "Não foi possível executar a análise.",
         variant: "destructive",
       });
+      throw error;
     }
   };
 
