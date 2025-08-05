@@ -50,14 +50,12 @@ export const useAnalyticsTrends = (period: string = '30_days') => {
   return useQuery({
     queryKey: ['analytics-trends', period],
     queryFn: async (): Promise<AnalyticsTrend[]> => {
-      const { data, error } = await supabase
-        .from('analytics_trends')
-        .select('*')
-        .eq('period', period)
-        .order('calculated_at', { ascending: false });
+      const { data, error } = await supabase.functions.invoke('analytics-engine', {
+        body: { action: 'get_trends', period }
+      });
 
       if (error) throw error;
-      return data || [];
+      return data?.trends || [];
     },
     staleTime: 5 * 60 * 1000, // 5 minutos
     refetchInterval: 10 * 60 * 1000, // 10 minutos
@@ -68,19 +66,12 @@ export const useSmartAlerts = (status?: string) => {
   return useQuery({
     queryKey: ['smart-alerts', status],
     queryFn: async (): Promise<SmartAlert[]> => {
-      let query = supabase
-        .from('smart_alerts')
-        .select('*')
-        .order('triggered_at', { ascending: false })
-        .limit(100);
+      const { data, error } = await supabase.functions.invoke('smart-alerts', {
+        body: { action: 'get_alerts', status, limit: 100 }
+      });
 
-      if (status) {
-        query = query.eq('status', status);
-      }
-
-      const { data, error } = await query;
       if (error) throw error;
-      return data || [];
+      return data?.alerts || [];
     },
     staleTime: 2 * 60 * 1000, // 2 minutos
     refetchInterval: 5 * 60 * 1000, // 5 minutos
@@ -91,14 +82,12 @@ export const useMetricsCache = () => {
   return useQuery({
     queryKey: ['metrics-cache'],
     queryFn: async (): Promise<CacheEntry[]> => {
-      const { data, error } = await supabase
-        .from('metrics_cache')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(50);
+      const { data, error } = await supabase.functions.invoke('cache-optimizer', {
+        body: { action: 'get_cache_stats' }
+      });
 
       if (error) throw error;
-      return data || [];
+      return data?.cache_entries || [];
     },
     staleTime: 30 * 1000, // 30 segundos
     refetchInterval: 60 * 1000, // 1 minuto

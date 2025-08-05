@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
-import { TrendingUp, TrendingDown, Minus, RefreshCw, Activity, Zap, AlertTriangle } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, BarChart3, Play, RefreshCw } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useAnalyticsTrends, useAdvancedAnalytics } from '@/hooks/useAdvancedAnalytics';
 
 interface TrendData {
+  id: string;
   plant_id: string;
   metric_type: string;
   period: string;
@@ -22,214 +25,211 @@ interface TrendData {
   calculated_at: string;
 }
 
-interface PlantInfo {
-  id: string;
-  name: string;
-  capacity_kwp: number;
-}
-
 export const AdvancedAnalytics: React.FC = () => {
   const [trends, setTrends] = useState<TrendData[]>([]);
-  const [plants, setPlants] = useState<PlantInfo[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [selectedPeriod, setSelectedPeriod] = useState('30_days');
+  const [isRunning, setIsRunning] = useState(false);
   const { toast } = useToast();
-
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      // Buscar plantas
-      const { data: plantsData, error: plantsError } = await supabase
-        .from('plants')
-        .select('id, name, capacity_kwp')
-        .eq('status', 'active');
-
-      if (plantsError) throw plantsError;
-      setPlants(plantsData || []);
-
-      // Buscar tendências (usando query manual)
-      const { data: trendsData, error: trendsError } = await supabase
-        .rpc('exec_sql', { 
-          query: `SELECT * FROM analytics_trends WHERE period = '${selectedPeriod}' ORDER BY calculated_at DESC` 
-        });
-
-      if (trendsError) throw trendsError;
-      setTrends(trendsData || []);
-
-    } catch (error) {
-      console.error('Error fetching analytics data:', error);
-      toast({
-        title: "Erro ao carregar análises",
-        description: "Não foi possível carregar os dados de análise avançada.",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const runAnalysis = async () => {
-    setLoading(true);
-    try {
-      const { error } = await supabase.functions.invoke('analytics-engine', {
-        body: { action: 'calculate_trends' }
-      });
-
-      if (error) throw error;
-
-      toast({
-        title: "Análise executada",
-        description: "Nova análise de tendências foi calculada com sucesso.",
-      });
-
-      // Recarregar dados
-      await fetchData();
-    } catch (error) {
-      console.error('Error running analysis:', error);
-      toast({
-        title: "Erro na análise",
-        description: "Não foi possível executar a análise de tendências.",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { runAnalyticsEngine } = useAdvancedAnalytics();
+  const { data: analyticsTrends, refetch: refetchTrends } = useAnalyticsTrends();
 
   useEffect(() => {
-    fetchData();
-  }, [selectedPeriod]);
+    fetchTrends();
+  }, []);
+
+  // Buscar dados de tendências via edge function
+  const fetchTrends = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke('analytics-engine', {
+        body: { action: 'get_trends', limit: 10 }
+      });
+      
+      if (error) throw error;
+      setTrends(data?.trends || []);
+    } catch (error) {
+      console.error('Erro ao buscar tendências:', error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível carregar as tendências.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Executar análise de tendências
+  const runAnalysis = async () => {
+    setIsRunning(true);
+    try {
+      await runAnalyticsEngine();
+      await fetchTrends();
+      refetchTrends();
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  // Preparar dados para gráficos
+  const chartData = trends.map(trend => ({
+    plant: `Planta ${trend.plant_id.substring(0, 8)}`,
+    percentage: trend.trend_data.percentage,
+    avg_power: trend.trend_data.avg_power,
+    avg_energy: trend.trend_data.avg_energy,
+    direction: trend.trend_data.direction
+  }));
 
   const getTrendIcon = (direction: string) => {
     switch (direction) {
-      case 'up': return <TrendingUp className="h-4 w-4 text-green-600" />;
-      case 'down': return <TrendingDown className="h-4 w-4 text-red-600" />;
-      default: return <Minus className="h-4 w-4 text-gray-600" />;
+      case 'up': return <TrendingUp className="h-4 w-4 text-green-500" />;
+      case 'down': return <TrendingDown className="h-4 w-4 text-red-500" />;
+      default: return <Minus className="h-4 w-4 text-yellow-500" />;
     }
   };
 
   const getTrendColor = (direction: string) => {
     switch (direction) {
-      case 'up': return 'text-green-600';
-      case 'down': return 'text-red-600';
-      default: return 'text-gray-600';
+      case 'up': return 'bg-green-100 text-green-800';
+      case 'down': return 'bg-red-100 text-red-800';
+      default: return 'bg-yellow-100 text-yellow-800';
     }
   };
-
-  // Preparar dados para gráficos
-  const chartData = trends.map(trend => {
-    const plant = plants.find(p => p.id === trend.plant_id);
-    return {
-      plantName: plant?.name || `Planta ${trend.plant_id.slice(0, 8)}`,
-      avgPower: trend.trend_data.avg_power,
-      avgEnergy: trend.trend_data.avg_energy,
-      percentage: trend.trend_data.percentage,
-      direction: trend.trend_data.direction,
-      efficiency: plant?.capacity_kwp ? (trend.trend_data.avg_power / (plant.capacity_kwp * 1000)) * 100 : 0
-    };
-  });
-
-  const performanceData = chartData.map(item => ({
-    name: item.plantName,
-    performance: Math.round(item.efficiency),
-    trend: item.percentage
-  }));
-
-  const trendDistribution = [
-    { name: 'Crescimento', value: trends.filter(t => t.trend_data.direction === 'up').length, color: '#10b981' },
-    { name: 'Declínio', value: trends.filter(t => t.trend_data.direction === 'down').length, color: '#ef4444' },
-    { name: 'Estável', value: trends.filter(t => t.trend_data.direction === 'stable').length, color: '#6b7280' }
-  ];
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold">Análise Avançada</h2>
+          <h2 className="text-3xl font-bold tracking-tight">Análise Avançada</h2>
           <p className="text-muted-foreground">
-            Análise de tendências e performance das plantas solares
+            Tendências energéticas e análise preditiva baseada em IA
           </p>
         </div>
-        <Button onClick={runAnalysis} disabled={loading}>
-          <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-          Executar Análise
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={fetchTrends}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Atualizar
+          </Button>
+          <Button onClick={runAnalysis} disabled={isRunning}>
+            {isRunning ? (
+              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Play className="h-4 w-4 mr-2" />
+            )}
+            {isRunning ? 'Analisando...' : 'Executar Análise'}
+          </Button>
+        </div>
       </div>
 
-      <Tabs value={selectedPeriod} onValueChange={setSelectedPeriod}>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Tendências Identificadas</CardTitle>
+            <BarChart3 className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{trends.length}</div>
+            <p className="text-xs text-muted-foreground">
+              +{trends.filter(t => t.trend_data.direction === 'up').length} positivas
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Média de Performance</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {trends.length > 0 
+                ? `${(trends.reduce((acc, t) => acc + t.trend_data.percentage, 0) / trends.length).toFixed(1)}%`
+                : '0%'
+              }
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Variação média mensal
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Pontos de Dados</CardTitle>
+            <BarChart3 className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {trends.reduce((acc, t) => acc + t.trend_data.data_points, 0).toLocaleString()}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Total analisado
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Tabs defaultValue="trends" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="7_days">7 Dias</TabsTrigger>
-          <TabsTrigger value="30_days">30 Dias</TabsTrigger>
-          <TabsTrigger value="90_days">90 Dias</TabsTrigger>
+          <TabsTrigger value="trends">Tendências</TabsTrigger>
+          <TabsTrigger value="charts">Gráficos</TabsTrigger>
+          <TabsTrigger value="predictions">Previsões</TabsTrigger>
         </TabsList>
 
-        <TabsContent value={selectedPeriod} className="space-y-6">
-          {/* Cartões de resumo */}
-          <div className="grid gap-4 md:grid-cols-3">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total de Plantas</CardTitle>
-                <Zap className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{plants.length}</div>
-                <p className="text-xs text-muted-foreground">
-                  {trends.length} com análise disponível
-                </p>
-              </CardContent>
-            </Card>
+        <TabsContent value="trends" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Tendências Recentes</CardTitle>
+              <CardDescription>
+                Análise das tendências de performance das plantas nos últimos 30 dias
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {trends.map((trend) => (
+                  <div key={trend.id} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="flex items-center space-x-4">
+                      {getTrendIcon(trend.trend_data.direction)}
+                      <div>
+                        <h4 className="text-sm font-medium">
+                          Planta {trend.plant_id.substring(0, 8)}
+                        </h4>
+                        <p className="text-sm text-muted-foreground">
+                          {trend.metric_type} - {trend.period}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <Badge className={getTrendColor(trend.trend_data.direction)}>
+                        {trend.trend_data.direction === 'up' ? '+' : trend.trend_data.direction === 'down' ? '-' : ''}
+                        {trend.trend_data.percentage.toFixed(1)}%
+                      </Badge>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {trend.trend_data.avg_power}W médio
+                      </p>
+                    </div>
+                  </div>
+                ))}
+                {trends.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    Nenhuma tendência encontrada. Execute uma análise para gerar dados.
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Performance Média</CardTitle>
-                <Activity className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {chartData.length > 0 
-                    ? Math.round(chartData.reduce((sum, item) => sum + item.efficiency, 0) / chartData.length)
-                    : 0
-                  }%
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  da capacidade instalada
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Tendência Geral</CardTitle>
-                <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {trendDistribution[0].value > trendDistribution[1].value ? 'Positiva' : 'Atenção'}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {trendDistribution[0].value} crescendo, {trendDistribution[1].value} em declínio
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Gráficos */}
-          <div className="grid gap-6 md:grid-cols-2">
+        <TabsContent value="charts" className="space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card>
               <CardHeader>
-                <CardTitle>Performance por Planta</CardTitle>
-                <CardDescription>
-                  Eficiência atual vs capacidade instalada
-                </CardDescription>
+                <CardTitle>Variação de Performance</CardTitle>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={performanceData}>
+                  <BarChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" angle={-45} textAnchor="end" height={80} />
+                    <XAxis dataKey="plant" />
                     <YAxis />
                     <Tooltip />
-                    <Bar dataKey="performance" fill="hsl(var(--primary))" />
+                    <Bar dataKey="percentage" fill="#8884d8" />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -237,91 +237,58 @@ export const AdvancedAnalytics: React.FC = () => {
 
             <Card>
               <CardHeader>
-                <CardTitle>Distribuição de Tendências</CardTitle>
-                <CardDescription>
-                  Status das tendências de performance
-                </CardDescription>
+                <CardTitle>Potência Média</CardTitle>
               </CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie
-                      data={trendDistribution}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={({ name, value }) => `${name}: ${value}`}
-                      outerRadius={80}
-                      fill="#8884d8"
-                      dataKey="value"
-                    >
-                      {trendDistribution.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
+                  <LineChart data={chartData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="plant" />
+                    <YAxis />
                     <Tooltip />
-                  </PieChart>
+                    <Line type="monotone" dataKey="avg_power" stroke="#82ca9d" />
+                  </LineChart>
                 </ResponsiveContainer>
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
 
-          {/* Lista detalhada de tendências */}
+        <TabsContent value="predictions" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Análise Detalhada por Planta</CardTitle>
+              <CardTitle>Previsões de Performance</CardTitle>
               <CardDescription>
-                Tendências e métricas de performance individual
+                Projeções baseadas nas tendências identificadas
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {trends.map((trend) => {
-                  const plant = plants.find(p => p.id === trend.plant_id);
+                {trends.slice(0, 5).map((trend) => {
+                  const projectedChange = trend.trend_data.percentage * 1.2; // Projeção simples
                   return (
-                    <div key={trend.plant_id} className="flex items-center justify-between p-4 border rounded-lg">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-medium">
-                            {plant?.name || `Planta ${trend.plant_id.slice(0, 8)}`}
-                          </h4>
-                          {getTrendIcon(trend.trend_data.direction)}
-                        </div>
-                        <p className="text-sm text-muted-foreground">
-                          Capacidade: {plant?.capacity_kwp || 0} kWp
-                        </p>
-                      </div>
-                      
-                      <div className="text-right space-y-1">
-                        <div className={`font-medium ${getTrendColor(trend.trend_data.direction)}`}>
-                          {trend.trend_data.percentage.toFixed(1)}%
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          Média: {Math.round(trend.trend_data.avg_power / 1000)}kW
-                        </div>
-                      </div>
-
-                      <div className="text-right space-y-1">
-                        <Badge variant={trend.trend_data.direction === 'up' ? 'default' : 
-                                     trend.trend_data.direction === 'down' ? 'destructive' : 'secondary'}>
-                          {trend.trend_data.direction === 'up' ? 'Crescimento' :
-                           trend.trend_data.direction === 'down' ? 'Declínio' : 'Estável'}
+                    <div key={trend.id} className="p-4 border rounded-lg">
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="text-sm font-medium">
+                          Planta {trend.plant_id.substring(0, 8)}
+                        </h4>
+                        <Badge variant={projectedChange > 0 ? "default" : "destructive"}>
+                          {projectedChange > 0 ? '+' : ''}{projectedChange.toFixed(1)}%
                         </Badge>
-                        <div className="text-xs text-muted-foreground">
-                          {trend.trend_data.data_points} pontos de dados
-                        </div>
                       </div>
+                      <Progress 
+                        value={Math.abs(projectedChange)} 
+                        className="h-2" 
+                      />
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Projeção para próximo mês baseada na tendência atual
+                      </p>
                     </div>
                   );
                 })}
-                
-                {trends.length === 0 && !loading && (
+                {trends.length === 0 && (
                   <div className="text-center py-8 text-muted-foreground">
-                    Nenhuma análise disponível para o período selecionado.
-                    <br />
-                    <Button variant="outline" onClick={runAnalysis} className="mt-2">
-                      Executar primeira análise
-                    </Button>
+                    Execute uma análise para gerar previsões.
                   </div>
                 )}
               </div>
