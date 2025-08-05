@@ -19,10 +19,21 @@ import {
   XCircle, 
   Plus,
   Search,
-  Filter
+  Filter,
+  Activity,
+  Database,
+  Zap,
+  Shield
 } from "lucide-react";
 import { useAlerts } from "@/hooks/useAlerts";
 import { useTickets } from "@/hooks/useTickets";
+import RealTimeSystemMonitor from "@/components/monitoring/RealTimeSystemMonitor";
+import BackupManager from "@/components/backup/BackupManager";
+import DataOptimizer from "@/components/optimization/DataOptimizer";
+import { AdvancedAnalytics } from "@/components/analytics/AdvancedAnalytics";
+import { SmartAlertsManager } from "@/components/alerts/SmartAlertsManager";
+import { MetricsCacheManager } from "@/components/performance/MetricsCacheManager";
+import { AutomatedReportsPanel } from "@/components/reports/AutomatedReportsPanel";
 
 const statusColors = {
   open: 'bg-red-100 text-red-800',
@@ -145,9 +156,25 @@ export default function Maintenance() {
       </div>
 
       <Tabs defaultValue="tickets" className="space-y-4">
-        <TabsList>
+        <TabsList className="grid w-full grid-cols-9">
           <TabsTrigger value="tickets">Tickets</TabsTrigger>
           <TabsTrigger value="alerts">Alertas</TabsTrigger>
+          <TabsTrigger value="monitor">
+            <Activity className="h-4 w-4 mr-1" />
+            Monitor
+          </TabsTrigger>
+          <TabsTrigger value="backup">
+            <Database className="h-4 w-4 mr-1" />
+            Backup
+          </TabsTrigger>
+          <TabsTrigger value="optimizer">
+            <Zap className="h-4 w-4 mr-1" />
+            Otimizar
+          </TabsTrigger>
+          <TabsTrigger value="analytics">Analytics</TabsTrigger>
+          <TabsTrigger value="smart-alerts">Alertas IA</TabsTrigger>
+          <TabsTrigger value="cache">Cache</TabsTrigger>
+          <TabsTrigger value="reports">Relatórios</TabsTrigger>
         </TabsList>
 
         <TabsContent value="tickets" className="space-y-4">
@@ -295,6 +322,34 @@ export default function Maintenance() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="monitor">
+          <RealTimeSystemMonitor />
+        </TabsContent>
+
+        <TabsContent value="backup">
+          <BackupManager />
+        </TabsContent>
+
+        <TabsContent value="optimizer">
+          <DataOptimizer />
+        </TabsContent>
+
+        <TabsContent value="analytics">
+          <AdvancedAnalytics />
+        </TabsContent>
+
+        <TabsContent value="smart-alerts">
+          <SmartAlertsManager />
+        </TabsContent>
+
+        <TabsContent value="cache">
+          <MetricsCacheManager />
+        </TabsContent>
+
+        <TabsContent value="reports">
+          <AutomatedReportsPanel />
         </TabsContent>
       </Tabs>
     </div>
