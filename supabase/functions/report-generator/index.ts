@@ -109,7 +109,7 @@ serve(async (req) => {
           : 0;
 
         const report = {
-          report_type: 'monthly',
+          report_type: report_type,
           plant_id: plant.id,
           period_start: lastMonth.toISOString(),
           period_end: thisMonth.toISOString(),

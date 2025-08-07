@@ -12,6 +12,7 @@ import { format as formatDate } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/components/ui/dropdown-menu';
 
 interface AutomatedReport {
   id: string;
@@ -54,6 +55,7 @@ export const AutomatedReportsPanel: React.FC = () => {
         body: { 
           action: 'get_reports',
           report_type: reportType === 'all' ? undefined : reportType,
+          plant_id: selectedPlant === 'all' ? undefined : selectedPlant,
           limit: 50
         }
       });
@@ -204,7 +206,7 @@ export const AutomatedReportsPanel: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-  }, [reportType]);
+  }, [reportType, selectedPlant]);
 
   const getReportTypeIcon = (type: string) => {
     switch (type) {
@@ -406,14 +408,22 @@ export const AutomatedReportsPanel: React.FC = () => {
                           {formatDate(new Date(report.generated_at), 'dd/MM/yyyy HH:mm', { locale: ptBR })}
                         </TableCell>
                         <TableCell>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => downloadReport(report)}
-                          >
-                            <Download className="h-3 w-3 mr-1" />
-                            Baixar
-                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button size="sm" variant="outline">
+                                <Download className="h-3 w-3 mr-1" />
+                                Baixar
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => downloadReport(report, 'pdf')}>
+                                PDF
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => downloadReport(report, 'json')}>
+                                JSON
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </TableCell>
                       </TableRow>
                     );
