@@ -1,3 +1,4 @@
+
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
@@ -30,6 +31,8 @@ import {
   RefreshCw,
   Calendar
 } from 'lucide-react';
+import { LiveBadge } from '@/components/dashboard/LiveBadge';
+import { useRealtimeDashboard } from '@/hooks/useRealtimeDashboard';
 
 type Period = 'today' | 'week' | 'month';
 type PeriodSelectorType = 'DAY' | 'MONTH' | 'YEAR';
@@ -37,6 +40,9 @@ type PeriodSelectorType = 'DAY' | 'MONTH' | 'YEAR';
 export default function Dashboard() {
   const [selectedPeriod, setSelectedPeriod] = useState<Period>('today');
   const [chartPeriod, setChartPeriod] = useState<PeriodSelectorType>('DAY');
+
+  // Inicializa assinaturas em tempo real do dashboard
+  const { connected, lastEventAt } = useRealtimeDashboard();
 
   const { data: session } = useQuery({
     queryKey: ['session'],
@@ -97,15 +103,18 @@ export default function Dashboard() {
               Monitoramento em tempo real das suas usinas
             </p>
           </div>
-          <Button
-            variant="outline" 
-            size="sm"
-            onClick={() => refetchMetrics()}
-            disabled={metricsLoading}
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${metricsLoading ? 'animate-spin' : ''}`} />
-            Atualizar
-          </Button>
+          <div className="flex items-center gap-2">
+            <LiveBadge connected={connected} lastEventAt={lastEventAt} />
+            <Button
+              variant="outline" 
+              size="sm"
+              onClick={() => refetchMetrics()}
+              disabled={metricsLoading}
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${metricsLoading ? 'animate-spin' : ''}`} />
+              Atualizar
+            </Button>
+          </div>
         </div>
 
         <Tabs defaultValue="overview" className="w-full">
