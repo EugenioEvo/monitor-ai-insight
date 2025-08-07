@@ -190,7 +190,7 @@ export default function Dashboard() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <EnergyChart />
+                    <EnergyChart period={selectedPeriod} />
                   </CardContent>
                 </Card>
               </div>
