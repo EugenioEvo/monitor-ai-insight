@@ -175,6 +175,37 @@ serve(async (req) => {
       });
     }
 
+    if (action === 'update_alert') {
+      const { alert_id, status } = await req.json().catch(() => ({}));
+
+      if (!alert_id || !status) {
+        return new Response(JSON.stringify({ error: 'Missing alert_id or status' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      const update: Record<string, any> = { status };
+      const now = new Date().toISOString();
+      if (status === 'acknowledged') update.acknowledged_at = now;
+      if (status === 'resolved') update.resolved_at = now;
+
+      const { data, error } = await supabaseClient
+        .from('smart_alerts')
+        .update(update)
+        .eq('id', alert_id)
+        .select('*')
+        .single();
+
+      if (error) {
+        throw new Error(`Error updating smart alert: ${error.message}`);
+      }
+
+      return new Response(JSON.stringify({ success: true, alert: data }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     return new Response(JSON.stringify({ error: 'Invalid action' }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
