@@ -255,10 +255,21 @@ class SungrowAPI {
       throw new Error(`Autenticação falhou: ${errorMsg} (${response.result_code})`);
     }
 
-    this.token = response.token;
-    this.tokenExpires = Date.now() + ((response.expire_time || 3600) * 1000);
+    const tokenFromTop = (response as any)?.token;
+    const tokenFromData = (response as any)?.result_data?.token;
+    const expireFromTop = (response as any)?.expire_time;
+    const expireFromData = (response as any)?.result_data?.expire_time || (response as any)?.result_data?.expires_in;
+
+    this.token = tokenFromTop || tokenFromData || null;
+    if (!this.token) {
+      console.error('Authentication succeeded but token was not present in response', { hasResultData: !!(response as any)?.result_data });
+      throw new Error('Autenticação bem-sucedida, porém a API não retornou o token. Tente novamente e verifique as credenciais.');
+    }
+
+    this.tokenExpires = Date.now() + (((expireFromTop || expireFromData) || 3600) * 1000);
     
     console.log('Authentication successful', {
+      tokenSource: tokenFromData ? 'result_data' : 'top_level',
       tokenExpires: new Date(this.tokenExpires).toISOString()
     });
 
