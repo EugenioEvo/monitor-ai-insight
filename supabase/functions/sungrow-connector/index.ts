@@ -135,7 +135,11 @@ class SungrowAPI {
         'Content-Type': 'application/json',
         'User-Agent': 'Sungrow-Monitor/1.0'
       };
-
+      // Add Accept-Language when available to improve compatibility
+      const acceptLang = this.getValidLanguage();
+      if (acceptLang) {
+        headers['Accept-Language'] = acceptLang.replace('_', '-');
+      }
       // Adicionar x-access-key obrigatório - com validação especial para E912
       if (this.config.accessKey) {
         headers['x-access-key'] = this.config.accessKey.trim();
@@ -286,15 +290,17 @@ class SungrowAPI {
       // Test a simple API call without language parameter first
       let testData: any = {
         appkey: this.config.appkey.trim(),
-        token: token
+        token: token,
+        page_no: 1,
+        page_size: 1
       };
 
-      console.log('Testing connection without language parameter');
+      console.log('Testing connection (with pagination, no language)');
       let response = await this.makeRequest('/openapi/getStationList', testData);
       
-      // Se falhar por causa do idioma, tentar com idiomas suportados
-      if (response.result_code === '010') {
-        console.log('Language error in test, trying with supported language');
+      if (response.result_code !== '1') {
+        // Try with language fallback as some regions require it
+        console.log('Initial test failed, retrying with language parameter');
         testData.lang = this.getValidLanguage();
         response = await this.makeRequest('/openapi/getStationList', testData);
       }
