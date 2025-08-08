@@ -910,7 +910,11 @@ export type Database = {
           config_hash: string
           created_at: string
           expires_at: string
+          plant_id: string | null
+          provider: string
           refresh_token: string | null
+          scope: string | null
+          token_type: string | null
           updated_at: string
           user_id: string
         }
@@ -919,7 +923,11 @@ export type Database = {
           config_hash: string
           created_at?: string
           expires_at: string
+          plant_id?: string | null
+          provider?: string
           refresh_token?: string | null
+          scope?: string | null
+          token_type?: string | null
           updated_at?: string
           user_id: string
         }
@@ -928,7 +936,11 @@ export type Database = {
           config_hash?: string
           created_at?: string
           expires_at?: string
+          plant_id?: string | null
+          provider?: string
           refresh_token?: string | null
+          scope?: string | null
+          token_type?: string | null
           updated_at?: string
           user_id?: string
         }
