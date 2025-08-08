@@ -30,7 +30,9 @@ export const useSungrowOverview = (plant: Plant) => {
       const { data, error } = await supabase.functions.invoke('sungrow-connector', {
         body: {
           action: 'get_station_real_kpi',
-          config: config
+          config: { plantId: config.plantId, baseUrl: config.baseUrl },
+          plantId: plant.id,
+          use_saved: true
         },
         headers: { Authorization: `Bearer ${session?.session?.access_token}` }
       });
@@ -75,8 +77,10 @@ export const useSungrowEnergyData = (plant: Plant, period: 'day' | 'month' | 'ye
       const { data, error } = await supabase.functions.invoke('sungrow-connector', {
         body: {
           action: 'get_station_energy',
-          config: config,
-          period: period
+          config: { plantId: config.plantId, baseUrl: config.baseUrl },
+          period: period,
+          plantId: plant.id,
+          use_saved: true
         },
         headers: { Authorization: `Bearer ${session?.session?.access_token}` }
       });

@@ -608,6 +608,53 @@ export type Database = {
           },
         ]
       }
+      plant_credentials: {
+        Row: {
+          access_key: string | null
+          appkey: string | null
+          base_url: string | null
+          created_at: string
+          id: string
+          password: string | null
+          plant_id: string
+          provider: string
+          updated_at: string
+          username: string | null
+        }
+        Insert: {
+          access_key?: string | null
+          appkey?: string | null
+          base_url?: string | null
+          created_at?: string
+          id?: string
+          password?: string | null
+          plant_id: string
+          provider: string
+          updated_at?: string
+          username?: string | null
+        }
+        Update: {
+          access_key?: string | null
+          appkey?: string | null
+          base_url?: string | null
+          created_at?: string
+          id?: string
+          password?: string | null
+          plant_id?: string
+          provider?: string
+          updated_at?: string
+          username?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plant_credentials_plant_id_fkey"
+            columns: ["plant_id"]
+            isOneToOne: false
+            referencedRelation: "plants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       plants: {
         Row: {
           api_credentials: Json | null

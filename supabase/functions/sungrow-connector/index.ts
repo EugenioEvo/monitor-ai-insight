@@ -680,19 +680,57 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { action, config, plantId, period, deviceType } = await req.json();
+    const { action, config = {}, plantId, period, deviceType, use_saved } = await req.json();
     
+    const effectivePlantId = config.plantId || plantId;
+
     console.log('Sungrow connector action:', action, {
       hasConfig: !!config,
-      plantId,
+      plantId: effectivePlantId,
       period,
       deviceType,
       hasAccessKey: !!config?.accessKey,
       hasAppkey: !!config?.appkey,
-      configuredLanguage: config?.language || 'auto-detect'
+      configuredLanguage: config?.language || 'auto-detect',
+      use_saved: !!use_saved
     });
 
-    const api = new SungrowAPI(config, supabase);
+    // Optionally load saved credentials from DB if requested or if critical fields are missing
+    let mergedConfig = { ...config } as SungrowConfig;
+    try {
+      const needsSaved = !!use_saved || !config?.appkey || !config?.accessKey || !config?.username || !config?.password;
+      if (needsSaved) {
+        if (!effectivePlantId) {
+          throw new Error('plantId é obrigatório para usar credenciais salvas');
+        }
+        const { data: saved, error: savedErr } = await supabase
+          .from('plant_credentials')
+          .select('username, password, appkey, access_key, base_url')
+          .eq('plant_id', effectivePlantId)
+          .eq('provider', 'sungrow')
+          .maybeSingle();
+        if (savedErr) {
+          console.warn('Could not load saved credentials:', savedErr.message);
+        }
+        if (saved) {
+          console.log('Using saved credentials for plant', { plantId: effectivePlantId, hasAppkey: !!saved.appkey, hasAccessKey: !!saved.access_key });
+          mergedConfig = {
+            authMode: 'direct',
+            baseUrl: saved.base_url || config.baseUrl,
+            appkey: (config.appkey || saved.appkey || '').trim(),
+            accessKey: (config.accessKey || saved.access_key || '').trim(),
+            username: (config.username || saved.username || '').trim(),
+            password: (config.password || saved.password || '').trim(),
+            plantId: effectivePlantId,
+            language: config.language
+          } as SungrowConfig;
+        }
+      }
+    } catch (e) {
+      console.warn('Saved credentials merging warning:', e instanceof Error ? e.message : e);
+    }
+
+    const api = new SungrowAPI(mergedConfig as SungrowConfig, supabase);
 
     switch (action) {
       case 'test_connection':

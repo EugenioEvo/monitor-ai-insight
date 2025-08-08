@@ -18,6 +18,7 @@ import { SungrowConnectionTest } from './SungrowConnectionTest';
 import { SungrowPlantDiscovery } from './SungrowPlantDiscovery';
 import { PlantConfigurationValidator } from './PlantConfigurationValidator';
 import { getDetailedErrorMessage } from '@/utils/errorHandling';
+import { upsertSungrowCredentials } from '@/services/plantCredentials';
 
 interface MonitoringSetupProps {
   plant: Plant;
@@ -59,12 +60,11 @@ export const MonitoringSetup = ({ plant, onUpdate }: MonitoringSetupProps) => {
       const config = systemType === 'solaredge' ? solarEdgeConfig : sungrowConfig;
       const functionName = systemType === 'solaredge' ? 'solaredge-connector' : 'sungrow-connector';
       
-      const { data, error } = await supabase.functions.invoke(functionName, {
-        body: {
-          action: 'test_connection',
-          config
-        }
-      });
+      const body = systemType === 'sungrow'
+        ? { action: 'test_connection', config: {}, plantId: plant.id, use_saved: true }
+        : { action: 'test_connection', config };
+      
+      const { data, error } = await supabase.functions.invoke(functionName, { body });
 
       if (error) throw error;
 
@@ -104,6 +104,24 @@ export const MonitoringSetup = ({ plant, onUpdate }: MonitoringSetupProps) => {
         .eq('id', plant.id);
 
       if (error) throw error;
+
+      if (systemType === 'sungrow') {
+        try {
+          await upsertSungrowCredentials(plant.id, {
+            username: sungrowConfig.username,
+            password: sungrowConfig.password,
+            appkey: sungrowConfig.appkey,
+            accessKey: sungrowConfig.accessKey,
+            baseUrl: sungrowConfig.baseUrl,
+          });
+        } catch (credErr: any) {
+          toast({
+            title: "Aviso: credenciais não salvas",
+            description: credErr.message || "Verifique suas permissões.",
+            variant: "destructive",
+          });
+        }
+      }
 
       toast({
         title: "Configuração salva!",
