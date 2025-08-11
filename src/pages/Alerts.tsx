@@ -4,12 +4,12 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Bell, CheckCircle, Clock, RefreshCw, AlertTriangle, XCircle, TrendingDown, Search } from 'lucide-react';
+import { Bell, CheckCircle, Clock, RefreshCw, AlertTriangle, XCircle, TrendingDown } from 'lucide-react';
 import { SmartAlertsManager } from '@/components/alerts/SmartAlertsManager';
+import { AlertsFilters } from '@/components/alerts/AlertsFilters';
+import { AlertCard } from '@/components/alerts/AlertCard';
+import { useToast } from '@/hooks/use-toast';
 
 interface AlertRow {
   id: string;
@@ -43,6 +43,8 @@ export default function Alerts() {
   const [status, setStatus] = useState<string>('');
   const [severity, setSeverity] = useState<'low' | 'medium' | 'high' | 'critical' | ''>('');
   const [searchTerm, setSearchTerm] = useState('');
+
+  const { toast } = useToast();
 
   // Dados de plantas
   const { data: plants } = useQuery<Plant[]>({
@@ -102,18 +104,39 @@ export default function Alerts() {
   }, [alerts]);
 
   const acknowledgeAlert = async (alertId: string) => {
-    try {
-      const { data: userRes } = await supabase.auth.getUser();
-      const userId = userRes.user?.id || 'ui';
-      const { error } = await supabase
-        .from('alerts')
-        .update({ status: 'acknowledged', acknowledged_by: userId })
-        .eq('id', alertId);
-      if (error) throw error;
-      refetch();
-    } catch (e) {
-      console.error('Erro ao reconhecer alerta:', e);
+    const { data: userRes, error: userErr } = await supabase.auth.getUser();
+    if (userErr || !userRes?.user?.id) {
+      toast({
+        title: 'Autenticação necessária',
+        description: 'Faça login para reconhecer alertas.',
+        variant: 'destructive',
+      });
+      return;
     }
+
+    const userId = userRes.user.id;
+
+    const { error } = await supabase
+      .from('alerts')
+      .update({ status: 'acknowledged', acknowledged_by: userId })
+      .eq('id', alertId);
+
+    if (error) {
+      console.error('Erro ao reconhecer alerta:', error);
+      toast({
+        title: 'Erro ao reconhecer',
+        description: error.message,
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    toast({
+      title: 'Alerta reconhecido',
+      description: 'O alerta foi marcado como reconhecido.',
+    });
+
+    refetch();
   };
 
   const clearFilters = () => {
@@ -151,73 +174,18 @@ export default function Alerts() {
 
         <TabsContent value="sistema" className="space-y-6">
           {/* Filtros */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Filtros</CardTitle>
-              <CardDescription>Refine os alertas exibidos</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                <div className="space-y-1">
-                  <Label>Planta</Label>
-                  <Select value={plantId} onValueChange={(v) => setPlantId(v)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Todas" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={''}>Todas</SelectItem>
-                      {plants?.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-1">
-                  <Label>Status</Label>
-                  <Select value={status} onValueChange={(v) => setStatus(v)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Todos" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={''}>Todos</SelectItem>
-                      <SelectItem value="open">Aberto</SelectItem>
-                      <SelectItem value="acknowledged">Reconhecido</SelectItem>
-                      <SelectItem value="resolved">Resolvido</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-1">
-                  <Label>Severidade</Label>
-                  <Select value={severity} onValueChange={(v) => setSeverity(v as any)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Todas" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={''}>Todas</SelectItem>
-                      <SelectItem value="low">Baixa</SelectItem>
-                      <SelectItem value="medium">Média</SelectItem>
-                      <SelectItem value="high">Alta</SelectItem>
-                      <SelectItem value="critical">Crítica</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-1 md:col-span-2">
-                  <Label>Busca</Label>
-                  <div className="flex items-center gap-2">
-                    <Search className="w-4 h-4 text-muted-foreground" />
-                    <Input placeholder="Mensagem ou tipo" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-4 flex gap-2">
-                <Button variant="outline" onClick={clearFilters}>Limpar</Button>
-              </div>
-            </CardContent>
-          </Card>
+          <AlertsFilters
+            plants={plants}
+            plantId={plantId}
+            status={status}
+            severity={severity}
+            searchTerm={searchTerm}
+            onChangePlant={setPlantId}
+            onChangeStatus={setStatus}
+            onChangeSeverity={(v) => setSeverity(v as any)}
+            onChangeSearch={setSearchTerm}
+            onClear={clearFilters}
+          />
 
           {/* Stats */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -264,43 +232,16 @@ export default function Alerts() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {alerts.map((alert) => {
-                    const SeverityIcon = severityConfig[alert.severity]?.icon || Bell;
-                    const typeMeta = typeConfig[alert.type] || { label: alert.type, icon: Bell, color: 'text-muted-foreground' };
-                    return (
-                      <div key={alert.id} className={`border rounded-lg p-4 ${alert.status === 'acknowledged' ? 'opacity-80' : ''}`}>
-                        <div className="flex items-start justify-between">
-                          <div className="flex items-start gap-3 flex-1">
-                            <SeverityIcon className="w-5 h-5 mt-0.5 text-muted-foreground" />
-                            <div className="flex-1 space-y-2">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <Badge className={severityConfig[alert.severity]?.color} variant="outline">
-                                  {severityConfig[alert.severity]?.label || alert.severity}
-                                </Badge>
-                                <div className={`flex items-center gap-1 text-sm ${typeMeta.color}`}>
-                                  <typeMeta.icon className="w-4 h-4" />
-                                  {typeMeta.label}
-                                </div>
-                                <span className="text-sm text-muted-foreground">{getPlantName(alert.plant_id)}</span>
-                                {alert.status && (
-                                  <Badge variant="secondary">{alert.status.toUpperCase()}</Badge>
-                                )}
-                              </div>
-                              <p className="font-medium">{alert.message}</p>
-                              <div className="flex items-center justify-between">
-                                <span className="text-xs text-muted-foreground">{new Date(alert.timestamp).toLocaleString('pt-BR')}</span>
-                                {alert.status !== 'acknowledged' && alert.status !== 'resolved' && (
-                                  <Button variant="outline" size="sm" onClick={() => acknowledgeAlert(alert.id)}>
-                                    <CheckCircle className="w-4 h-4 mr-2" /> Reconhecer
-                                  </Button>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {alerts.map((alert) => (
+                    <AlertCard
+                      key={alert.id}
+                      alert={alert}
+                      getPlantName={getPlantName}
+                      severityConfig={severityConfig}
+                      typeConfig={typeConfig}
+                      onAcknowledge={acknowledgeAlert}
+                    />
+                  ))}
                 </div>
               )}
             </CardContent>
