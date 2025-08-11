@@ -39,9 +39,9 @@ const typeConfig: Record<string, { label: string; icon: any; color: string }> = 
 
 export default function Alerts() {
   // Filtros
-  const [plantId, setPlantId] = useState<string | undefined>(undefined);
-  const [status, setStatus] = useState<string | undefined>(undefined);
-  const [severity, setSeverity] = useState<'low' | 'medium' | 'high' | 'critical' | undefined>(undefined);
+  const [plantId, setPlantId] = useState<string>('');
+  const [status, setStatus] = useState<string>('');
+  const [severity, setSeverity] = useState<'low' | 'medium' | 'high' | 'critical' | ''>('');
   const [searchTerm, setSearchTerm] = useState('');
 
   // Dados de plantas
@@ -117,9 +117,9 @@ export default function Alerts() {
   };
 
   const clearFilters = () => {
-    setPlantId(undefined);
-    setStatus(undefined);
-    setSeverity(undefined);
+    setPlantId('');
+    setStatus('');
+    setSeverity('');
     setSearchTerm('');
   };
 
