@@ -46,12 +46,12 @@ export const AlertsFilters: React.FC<AlertsFiltersProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <div className="space-y-1">
             <Label>Planta</Label>
-            <Select value={plantId} onValueChange={onChangePlant}>
+            <Select value={plantId} onValueChange={(v) => onChangePlant(v === 'all' ? '' : v)}>
               <SelectTrigger>
                 <SelectValue placeholder="Todas" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={''}>Todas</SelectItem>
+                <SelectItem value={'all'}>Todas</SelectItem>
                 {plants?.map((p) => (
                   <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
                 ))}
@@ -61,12 +61,12 @@ export const AlertsFilters: React.FC<AlertsFiltersProps> = ({
 
           <div className="space-y-1">
             <Label>Status</Label>
-            <Select value={status} onValueChange={onChangeStatus}>
+            <Select value={status} onValueChange={(v) => onChangeStatus(v === 'all' ? '' : v)}>
               <SelectTrigger>
                 <SelectValue placeholder="Todos" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={''}>Todos</SelectItem>
+                <SelectItem value={'all'}>Todos</SelectItem>
                 <SelectItem value="open">Aberto</SelectItem>
                 <SelectItem value="acknowledged">Reconhecido</SelectItem>
                 <SelectItem value="resolved">Resolvido</SelectItem>
@@ -76,12 +76,12 @@ export const AlertsFilters: React.FC<AlertsFiltersProps> = ({
 
           <div className="space-y-1">
             <Label>Severidade</Label>
-            <Select value={severity} onValueChange={(v) => onChangeSeverity(v as Severity)}>
+            <Select value={severity} onValueChange={(v) => onChangeSeverity(v === 'all' ? '' as Severity : (v as Severity))}>
               <SelectTrigger>
                 <SelectValue placeholder="Todas" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={''}>Todas</SelectItem>
+                <SelectItem value={'all'}>Todas</SelectItem>
                 <SelectItem value="low">Baixa</SelectItem>
                 <SelectItem value="medium">Média</SelectItem>
                 <SelectItem value="high">Alta</SelectItem>
