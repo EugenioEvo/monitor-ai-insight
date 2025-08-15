@@ -19,6 +19,12 @@ export interface SungrowConfig {
   refreshToken?: string;
   tokenExpiresAt?: number;
   authorizedPlants?: string[];
+  language?: string;
+  // OAuth 2.0 specific fields
+  clientId?: string;
+  clientSecret?: string;
+  scope?: string;
+  cloudId?: string;
 }
 
 export interface SungrowAuthResponse {

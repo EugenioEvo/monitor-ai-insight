@@ -19,6 +19,12 @@ interface SungrowConfig {
   tokenExpiresAt?: number;
   authorizedPlants?: string[];
   language?: string;
+  // OAuth 2.0 specific
+  clientId?: string;
+  clientSecret?: string;
+  redirectUri?: string;
+  authorizationCode?: string;
+  scope?: string;
 }
 
 interface SungrowAuthResponse {
@@ -39,6 +45,19 @@ interface SungrowOAuth2Response {
     expires_in: number;
     auth_ps_list: string[];
     auth_user: number;
+  };
+}
+
+interface SungrowTokenRefreshResponse {
+  req_serial_num: string;
+  result_code: string;
+  result_msg: string;
+  result_data?: {
+    access_token: string;
+    refresh_token: string;
+    code: string;
+    token_type: string;
+    expires_in: number;
   };
 }
 
@@ -208,13 +227,164 @@ class SungrowAPI {
       accessKeyLength: this.config.accessKey?.length || 0
     });
 
-    if (this.config.authMode === 'oauth2' && this.config.accessToken) {
-      if (Date.now() < (this.config.tokenExpiresAt || 0)) {
-        this.token = this.config.accessToken;
-        this.tokenExpires = this.config.tokenExpiresAt || 0;
-        return this.token;
+    // Handle OAuth 2.0 authentication
+    if (this.config.authMode === 'oauth2') {
+      return await this.authenticateOAuth2();
+    }
+
+    // Handle direct login authentication (existing logic)
+    return await this.authenticateDirectLogin();
+  }
+
+  private async authenticateOAuth2(): Promise<string> {
+    // If we have a valid access token, use it
+    if (this.config.accessToken && Date.now() < (this.config.tokenExpiresAt || 0)) {
+      this.token = this.config.accessToken;
+      this.tokenExpires = this.config.tokenExpiresAt || 0;
+      return this.token;
+    }
+
+    // If we have a refresh token, try to refresh
+    if (this.config.refreshToken) {
+      try {
+        const refreshedTokens = await this.refreshAccessToken();
+        if (refreshedTokens) {
+          return refreshedTokens.access_token;
+        }
+      } catch (error) {
+        console.warn('Token refresh failed, will need re-authorization:', error);
       }
     }
+
+    // If we have an authorization code, exchange it for tokens
+    if (this.config.authorizationCode) {
+      const tokens = await this.exchangeAuthorizationCode();
+      if (tokens) {
+        return tokens.access_token;
+      }
+    }
+
+    throw new Error('OAuth 2.0 authentication failed: No valid tokens or authorization code available');
+  }
+
+  private async refreshAccessToken(): Promise<any> {
+    if (!this.config.refreshToken) {
+      throw new Error('No refresh token available');
+    }
+
+    console.log('Refreshing OAuth 2.0 access token');
+
+    const refreshData = {
+      refresh_token: this.config.refreshToken,
+      appkey: this.config.appkey
+    };
+
+    const response = await this.makeRequest('/openapi/apiManage/refreshToken', refreshData);
+
+    if (response.result_code === '1' && response.result_data) {
+      const tokenData = response.result_data;
+      
+      // Update configuration with new tokens
+      this.config.accessToken = tokenData.access_token;
+      this.config.refreshToken = tokenData.refresh_token;
+      this.config.tokenExpiresAt = Date.now() + (tokenData.expires_in * 1000);
+      
+      this.token = tokenData.access_token;
+      this.tokenExpires = this.config.tokenExpiresAt;
+
+      // Save tokens to database
+      await this.saveTokensToDatabase(tokenData);
+
+      console.log('OAuth 2.0 token refreshed successfully');
+      return tokenData;
+    }
+
+    throw new Error(`Token refresh failed: ${response.result_msg}`);
+  }
+
+  private async exchangeAuthorizationCode(): Promise<any> {
+    if (!this.config.authorizationCode || !this.config.redirectUri) {
+      throw new Error('Authorization code and redirect URI are required');
+    }
+
+    console.log('Exchanging authorization code for tokens');
+
+    const tokenData = {
+      appkey: this.config.appkey,
+      grant_type: 'authorization_code',
+      code: this.config.authorizationCode,
+      redirect_uri: this.config.redirectUri
+    };
+
+    const response = await this.makeRequest('/openapi/apiManage/token', tokenData);
+
+    if (response.result_code === '1' && response.result_data) {
+      const tokenData = response.result_data;
+      
+      // Update configuration with new tokens
+      this.config.accessToken = tokenData.access_token;
+      this.config.refreshToken = tokenData.refresh_token;
+      this.config.tokenExpiresAt = Date.now() + (tokenData.expires_in * 1000);
+      this.config.authorizedPlants = tokenData.auth_ps_list || [];
+      
+      this.token = tokenData.access_token;
+      this.tokenExpires = this.config.tokenExpiresAt;
+
+      // Save tokens to database
+      await this.saveTokensToDatabase(tokenData);
+
+      console.log('OAuth 2.0 tokens obtained successfully', {
+        authorizedPlants: tokenData.auth_ps_list?.length || 0
+      });
+      
+      return tokenData;
+    }
+
+    throw new Error(`Authorization code exchange failed: ${response.result_msg}`);
+  }
+
+  private async saveTokensToDatabase(tokenData: any): Promise<void> {
+    try {
+      const { error } = await this.supabase
+        .from('sungrow_tokens')
+        .upsert({
+          user_id: tokenData.auth_user || 'system',
+          plant_id: this.config.plantId || null,
+          provider: 'sungrow',
+          access_token: tokenData.access_token,
+          refresh_token: tokenData.refresh_token,
+          expires_at: new Date(this.config.tokenExpiresAt || Date.now() + 172800000).toISOString(), // 2 days default
+          config_hash: this.generateConfigHash()
+        });
+
+      if (error) {
+        console.error('Failed to save tokens to database:', error);
+      } else {
+        console.log('Tokens saved to database successfully');
+      }
+    } catch (error) {
+      console.error('Error saving tokens to database:', error);
+    }
+  }
+
+  private generateConfigHash(): string {
+    const configStr = JSON.stringify({
+      appkey: this.config.appkey,
+      baseUrl: this.config.baseUrl,
+      authMode: this.config.authMode
+    });
+    
+    // Simple hash function for config identification
+    let hash = 0;
+    for (let i = 0; i < configStr.length; i++) {
+      const char = configStr.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    return hash.toString();
+  }
+
+  private async authenticateDirectLogin(): Promise<string> {
 
     // Tentar autenticação sem parâmetro lang primeiro
     let authData: any = {
@@ -223,7 +393,7 @@ class SungrowAPI {
       user_password: this.config.password?.trim()
     };
 
-    console.log('Attempting authentication without language parameter');
+    console.log('Attempting direct login authentication without language parameter');
 
     let response = await this.makeRequest('/openapi/login', authData);
     
@@ -278,6 +448,73 @@ class SungrowAPI {
     });
 
     return this.token;
+  }
+
+  // OAuth 2.0 utility methods
+  generateOAuthURL(redirectUri: string, state?: string): string {
+    const baseUrl = this.config.baseUrl || 'https://gateway.isolarcloud.com.hk';
+    const params = new URLSearchParams({
+      applicationId: this.config.appkey,
+      redirectUrl: redirectUri
+    });
+    
+    if (state) {
+      params.append('state', state);
+    }
+
+    // Note: cloudId should be obtained from the application configuration
+    const cloudId = 'YOUR_ACCOUNT_BELONG_TO_CLOUD'; // This should be configurable
+    
+    return `${baseUrl}/authorized-app?cloudId=${cloudId}&${params.toString()}`;
+  }
+
+  async exchangeAuthorizationCodeStandalone(code: string, redirectUri: string): Promise<any> {
+    try {
+      const tempConfig = { ...this.config, authorizationCode: code, redirectUri };
+      const tempApi = new SungrowAPI(tempConfig, this.supabase);
+      
+      const result = await tempApi.exchangeAuthorizationCode();
+      
+      return {
+        success: true,
+        tokens: {
+          access_token: result.access_token,
+          refresh_token: result.refresh_token,
+          expires_in: result.expires_in,
+          token_type: result.token_type,
+          authorized_plants: result.auth_ps_list || []
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to exchange authorization code'
+      };
+    }
+  }
+
+  async refreshTokenStandalone(refreshToken: string): Promise<any> {
+    try {
+      const tempConfig = { ...this.config, refreshToken };
+      const tempApi = new SungrowAPI(tempConfig, this.supabase);
+      
+      const result = await tempApi.refreshAccessToken();
+      
+      return {
+        success: true,
+        tokens: {
+          access_token: result.access_token,
+          refresh_token: result.refresh_token,
+          expires_in: result.expires_in,
+          token_type: result.token_type
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to refresh token'
+      };
+    }
   }
 
   async testConnection(): Promise<{ success: boolean; message: string }> {
@@ -743,6 +980,27 @@ serve(async (req) => {
         const discoveryResult = await api.discoverPlantsEnhanced();
         return new Response(JSON.stringify(discoveryResult), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+
+      case 'generate_oauth_url':
+        const { redirectUri, state } = await req.json();
+        const oauthUrl = api.generateOAuthURL(redirectUri, state);
+        return new Response(JSON.stringify({ success: true, authUrl: oauthUrl }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+
+      case 'exchange_code':
+        const { code, redirectUri: exchangeRedirectUri } = await req.json();
+        const exchangeResult = await api.exchangeAuthorizationCodeStandalone(code, exchangeRedirectUri);
+        return new Response(JSON.stringify(exchangeResult), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+
+      case 'refresh_token':
+        const { refreshToken } = await req.json();
+        const refreshResult = await api.refreshTokenStandalone(refreshToken);
+        return new Response(JSON.stringify(refreshResult), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
 
       case 'get_station_real_kpi':
