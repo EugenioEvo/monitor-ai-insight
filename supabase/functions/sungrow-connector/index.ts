@@ -408,7 +408,8 @@ class SungrowAPI {
     let authData: any = {
       appkey: this.config.appkey.trim(),
       user_account: this.config.username?.trim(),
-      user_password: this.config.password?.trim()
+      user_password: this.config.password?.trim(),
+      sys_code: '901'  // Parâmetro obrigatório para algumas versões da API
     };
 
     console.log('Attempting direct login authentication without language parameter');
@@ -426,6 +427,7 @@ class SungrowAPI {
             appkey: this.config.appkey.trim(),
             user_account: this.config.username?.trim(),
             user_password: this.config.password?.trim(),
+            sys_code: '901',  // Parâmetro obrigatório
             lang: lang
           };
           
