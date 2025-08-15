@@ -1,6 +1,20 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.0';
 
+/**
+ * Default configuration values loaded from environment variables. These allow the
+ * connector to operate without requiring every request to provide a complete
+ * configuration object. Secret values such as the app key and access key
+ * should be set in the environment (e.g. via project settings in Supabase) and
+ * **must not** be hard coded in the code base. When both the incoming request
+ * and the database lack a value, the defaults defined here take effect.
+ */
+const DEFAULT_SUNGROW_USERNAME = Deno.env.get('SUNGROW_USERNAME') || undefined;
+const DEFAULT_SUNGROW_PASSWORD = Deno.env.get('SUNGROW_PASSWORD') || undefined;
+const DEFAULT_SUNGROW_APPKEY   = Deno.env.get('SUNGROW_APPKEY')   || '';
+const DEFAULT_SUNGROW_ACCESSKEY = Deno.env.get('SUNGROW_ACCESSKEY') || '';
+const DEFAULT_SUNGROW_BASEURL  = Deno.env.get('SUNGROW_BASE_URL') || 'https://gateway.isolarcloud.com.hk';
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -907,6 +921,78 @@ class SungrowAPI {
   }
 }
 
+async function performSyncData(plantId: string, api: SungrowAPI, supabase: any) {
+  const startTime = Date.now();
+  let dataPointsSynced = 0;
+  try {
+    // fetch energy data for the last day
+    const energyResult = await api.getStationEnergy(plantId, 'day');
+    if (!energyResult.success || !energyResult.data?.list) {
+      throw new Error(energyResult.error || 'Falha ao obter energia');
+    }
+
+    // transform Sungrow energy points into rows for the `readings` table
+    const readings = energyResult.data.list.map((pt: any) => {
+      const timestamp = new Date(pt.time).toISOString();
+      return {
+        plant_id: plantId,
+        timestamp,
+        energy_kwh: pt.energy > 0 ? pt.energy / 1000 : 0, // convert Wh to kWh
+        power_w: pt.power || 0,
+        created_at: new Date().toISOString()
+      };
+    });
+
+    // upsert readings (ignore duplicates on plant_id + timestamp)
+    if (readings.length > 0) {
+      const { error } = await supabase.from('readings').upsert(readings, {
+        onConflict: 'plant_id,timestamp',
+        ignoreDuplicates: true
+      });
+      if (error) throw new Error(`Erro ao inserir dados: ${error.message}`);
+      dataPointsSynced = readings.length;
+    }
+
+    // update last sync timestamp on the plant
+    await supabase.from('plants')
+      .update({ last_sync: new Date().toISOString() })
+      .eq('id', plantId);
+
+    // log success
+    await supabase.from('sync_logs').insert({
+      plant_id: plantId,
+      system_type: 'sungrow',
+      status: 'success',
+      message: `Sincronizados ${dataPointsSynced} pontos de dados`,
+      data_points_synced: dataPointsSynced,
+      sync_duration_ms: Date.now() - startTime
+    });
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        message: `Sincronizados ${dataPointsSynced} pontos de dados`,
+        dataPointsSynced
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    // log the error
+    await supabase.from('sync_logs').insert({
+      plant_id: plantId,
+      system_type: 'sungrow',
+      status: 'error',
+      message: error.message,
+      data_points_synced: dataPointsSynced,
+      sync_duration_ms: Date.now() - startTime
+    });
+    return new Response(
+      JSON.stringify({ success: false, error: error.message }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -966,6 +1052,28 @@ serve(async (req) => {
     } catch (e) {
       console.warn('Saved credentials merging warning:', e instanceof Error ? e.message : e);
     }
+
+    // Apply environment defaults when necessary
+    mergedConfig = {
+      authMode: mergedConfig.authMode || 'direct',
+      username: mergedConfig.username || DEFAULT_SUNGROW_USERNAME,
+      password: mergedConfig.password || DEFAULT_SUNGROW_PASSWORD,
+      appkey:   mergedConfig.appkey   || DEFAULT_SUNGROW_APPKEY,
+      accessKey: mergedConfig.accessKey || DEFAULT_SUNGROW_ACCESSKEY,
+      baseUrl:  mergedConfig.baseUrl  || DEFAULT_SUNGROW_BASEURL,
+      plantId:  mergedConfig.plantId || effectivePlantId,
+      language: mergedConfig.language,
+      // OAuth 2.0 fields
+      accessToken: mergedConfig.accessToken,
+      refreshToken: mergedConfig.refreshToken,
+      tokenExpiresAt: mergedConfig.tokenExpiresAt,
+      authorizedPlants: mergedConfig.authorizedPlants,
+      clientId: mergedConfig.clientId,
+      clientSecret: mergedConfig.clientSecret,
+      redirectUri: mergedConfig.redirectUri,
+      authorizationCode: mergedConfig.authorizationCode,
+      scope: mergedConfig.scope
+    };
 
     const api = new SungrowAPI(mergedConfig as SungrowConfig, supabase);
 
@@ -1027,15 +1135,14 @@ serve(async (req) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
 
-      case 'sync_data':
-        // Implementation for data synchronization would go here
-        return new Response(JSON.stringify({ 
-          success: true, 
-          message: 'Sincronização não implementada ainda',
-          dataPointsSynced: 0
-        }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        });
+      case 'sync_data': {
+        // ensure plantId is available
+        if (!effectivePlantId) {
+          throw new Error('plantId é obrigatório para sincronização');
+        }
+        const api = new SungrowAPI(mergedConfig, supabase);
+        return await performSyncData(effectivePlantId, api, supabase);
+      }
 
       default:
         return new Response(JSON.stringify({ 
