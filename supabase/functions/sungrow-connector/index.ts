@@ -2,18 +2,10 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.0';
 
 /**
- * Default configuration values loaded from environment variables. These allow the
- * connector to operate without requiring every request to provide a complete
- * configuration object. Secret values such as the app key and access key
- * should be set in the environment (e.g. via project settings in Supabase) and
- * **must not** be hard coded in the code base. When both the incoming request
- * and the database lack a value, the defaults defined here take effect.
+ * IMPORTANTE: As credenciais devem ser fornecidas a cada requisição.
+ * Não usamos mais defaults das variáveis de ambiente para forçar
+ * o uso de credenciais frescas em cada operação.
  */
-const DEFAULT_SUNGROW_USERNAME = Deno.env.get('SUNGROW_USERNAME') || undefined;
-const DEFAULT_SUNGROW_PASSWORD = Deno.env.get('SUNGROW_PASSWORD') || undefined;
-const DEFAULT_SUNGROW_APPKEY   = Deno.env.get('SUNGROW_APPKEY')   || '';
-const DEFAULT_SUNGROW_ACCESSKEY = Deno.env.get('SUNGROW_ACCESSKEY') || '';
-const DEFAULT_SUNGROW_BASEURL  = Deno.env.get('SUNGROW_BASE_URL') || 'https://gateway.isolarcloud.com.hk';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -1065,15 +1057,15 @@ serve(async (req) => {
       console.warn('Saved credentials merging warning:', e instanceof Error ? e.message : e);
     }
 
-    // Apply environment defaults when necessary
+    // Não usar defaults de ambiente - sempre exigir credenciais frescas
     mergedConfig = {
       authMode: mergedConfig.authMode || 'direct',
-      username: mergedConfig.username || DEFAULT_SUNGROW_USERNAME,
-      password: mergedConfig.password || DEFAULT_SUNGROW_PASSWORD,
-      appkey:   mergedConfig.appkey   || DEFAULT_SUNGROW_APPKEY,
-      accessKey: mergedConfig.accessKey || DEFAULT_SUNGROW_ACCESSKEY,
-      baseUrl:  mergedConfig.baseUrl  || DEFAULT_SUNGROW_BASEURL,
-      plantId:  mergedConfig.plantId || effectivePlantId,
+      username: mergedConfig.username,
+      password: mergedConfig.password, 
+      appkey: mergedConfig.appkey,
+      accessKey: mergedConfig.accessKey,
+      baseUrl: mergedConfig.baseUrl || 'https://gateway.isolarcloud.com.hk',
+      plantId: mergedConfig.plantId || effectivePlantId,
       language: mergedConfig.language,
       // OAuth 2.0 fields
       accessToken: mergedConfig.accessToken,
@@ -1086,6 +1078,16 @@ serve(async (req) => {
       authorizationCode: mergedConfig.authorizationCode,
       scope: mergedConfig.scope
     };
+
+    // Validar se as credenciais obrigatórias foram fornecidas
+    if (!mergedConfig.username || !mergedConfig.password || !mergedConfig.appkey || !mergedConfig.accessKey) {
+      throw new Error(`Credenciais obrigatórias não fornecidas. Necessário: username, password, appkey, accessKey. Recebido: ${JSON.stringify({
+        hasUsername: !!mergedConfig.username,
+        hasPassword: !!mergedConfig.password,
+        hasAppkey: !!mergedConfig.appkey,
+        hasAccessKey: !!mergedConfig.accessKey
+      })}`);
+    }
 
     const api = new SungrowAPI(mergedConfig as SungrowConfig, supabase);
 
