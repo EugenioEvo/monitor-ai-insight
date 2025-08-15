@@ -10,6 +10,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.0';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Max-Age': '86400'
 };
 
 interface SungrowConfig {
@@ -25,6 +27,7 @@ interface SungrowConfig {
   tokenExpiresAt?: number;
   authorizedPlants?: string[];
   language?: string;
+  sysCode?: string;
   // OAuth 2.0 specific
   clientId?: string;
   clientSecret?: string;
@@ -332,14 +335,14 @@ class SungrowAPI {
 
     console.log('Exchanging authorization code for tokens');
 
-    const tokenData = {
+    const tokenPayload = {
       appkey: this.config.appkey,
       grant_type: 'authorization_code',
       code: this.config.authorizationCode,
       redirect_uri: this.config.redirectUri
     };
 
-    const response = await this.makeRequest('/openapi/apiManage/token', tokenData);
+    const response = await this.makeRequest('/openapi/apiManage/token', tokenPayload);
 
     if (response.result_code === '1' && response.result_data) {
       const tokenData = response.result_data;
@@ -414,7 +417,7 @@ class SungrowAPI {
       appkey: this.config.appkey.trim(),
       user_account: this.config.username?.trim(),
       user_password: this.config.password?.trim(),
-      sys_code: '901'  // Parâmetro obrigatório para algumas versões da API
+      sys_code: this.config.sysCode || '901'  // Configurável, mantendo '901' como default
     };
 
     console.log('Attempting direct login authentication without language parameter');
@@ -432,7 +435,7 @@ class SungrowAPI {
             appkey: this.config.appkey.trim(),
             user_account: this.config.username?.trim(),
             user_password: this.config.password?.trim(),
-            sys_code: '901',  // Parâmetro obrigatório
+            sys_code: this.config.sysCode || '901',  // Configurável
             lang: lang
           };
           
@@ -1006,15 +1009,36 @@ async function performSyncData(plantId: string, api: SungrowAPI, supabase: any) 
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeaders });
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    if (!supabaseUrl || !supabaseKey) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY ausentes no ambiente'
+      }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { action, config = {}, plantId, period, deviceType, use_saved } = await req.json();
+    // 🔴 LER UMA ÚNICA VEZ
+    const body = await req.json().catch(() => ({}));
+    const {
+      action,
+      config = {},
+      plantId,
+      period,
+      deviceType,
+      use_saved,
+      // campos usados pelos outros cases:
+      redirectUri,
+      state,
+      code,
+      refreshToken
+    } = body;
     
     const effectivePlantId = config.plantId || plantId;
 
@@ -1111,26 +1135,26 @@ serve(async (req) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
 
-      case 'generate_oauth_url':
-        const { redirectUri, state } = await req.json();
+      case 'generate_oauth_url': {
         const oauthUrl = api.generateOAuthURL(redirectUri, state);
-        return new Response(JSON.stringify({ success: true, authUrl: oauthUrl }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        return new Response(JSON.stringify({ success: true, authUrl: oauthUrl }), { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         });
+      }
 
-      case 'exchange_code':
-        const { code, redirectUri: exchangeRedirectUri } = await req.json();
-        const exchangeResult = await api.exchangeAuthorizationCodeStandalone(code, exchangeRedirectUri);
-        return new Response(JSON.stringify(exchangeResult), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      case 'exchange_code': {
+        const exchangeResult = await api.exchangeAuthorizationCodeStandalone(code, redirectUri);
+        return new Response(JSON.stringify(exchangeResult), { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         });
+      }
 
-      case 'refresh_token':
-        const { refreshToken } = await req.json();
+      case 'refresh_token': {
         const refreshResult = await api.refreshTokenStandalone(refreshToken);
-        return new Response(JSON.stringify(refreshResult), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        return new Response(JSON.stringify(refreshResult), { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         });
+      }
 
       case 'get_station_real_kpi':
         const kpiResult = await api.getStationRealKpi(config.plantId || plantId);
@@ -1177,11 +1201,10 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Sungrow connector error:', error);
-    return new Response(JSON.stringify({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Erro interno do servidor'
-    }), {
-      status: 500,
+    const message = error instanceof Error ? error.message : 'Erro interno do servidor';
+    const status = /credenciais obrigatórias|plantId é obrigatório/i.test(message) ? 400 : 500;
+    return new Response(JSON.stringify({ success: false, error: message }), {
+      status,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   }
