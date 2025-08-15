@@ -152,6 +152,11 @@ class SungrowAPI {
       languageParam: data.lang || 'not included'
     });
 
+    // Garantir que o parâmetro sys_code seja sempre enviado (requisito de algumas regiões)
+    if (data && typeof data === 'object' && data.sys_code === undefined) {
+      data.sys_code = '901';
+    }
+
     // Validar configuração antes de fazer a requisição
     this.validateConfig();
 
