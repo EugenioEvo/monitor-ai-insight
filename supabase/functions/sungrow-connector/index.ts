@@ -175,11 +175,23 @@ class SungrowAPI {
       }
       // Adicionar x-access-key obrigatório - com validação especial para E912
       if (this.config.accessKey) {
-        headers['x-access-key'] = this.config.accessKey.trim();
+        const accessKey = this.config.accessKey.trim();
+        
+        // Validar se é uma chave de acesso válida (não contém quebras de linha ou texto longo)
+        if (accessKey.includes('\n') || accessKey.includes('\r') || accessKey.length > 100) {
+          console.error('CRITICAL: Invalid access key format detected!', {
+            hasNewlines: accessKey.includes('\n') || accessKey.includes('\r'),
+            length: accessKey.length,
+            preview: accessKey.substring(0, 50) + '...'
+          });
+          throw new Error('Access Key inválida: parece conter texto em vez de uma chave de API válida. Verifique se você copiou a chave correta do portal Sungrow.');
+        }
+        
+        headers['x-access-key'] = accessKey;
         console.log('Adding x-access-key header:', {
           keyExists: true,
-          keyLength: this.config.accessKey.trim().length,
-          keyPrefix: `${this.config.accessKey.trim().substring(0, 8)}...`
+          keyLength: accessKey.length,
+          keyPrefix: `${accessKey.substring(0, 8)}...`
         });
       } else {
         console.error('CRITICAL: x-access-key is missing!');
