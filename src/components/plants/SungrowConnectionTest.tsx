@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,6 +25,7 @@ export const SungrowConnectionTest = ({ onConnectionSuccess }: SungrowConnection
   const [loading, setLoading] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
   const [errorDetails, setErrorDetails] = useState<string>('');
+  const [oauthLoading, setOauthLoading] = useState(false);
   
   const [config, setConfig] = useState<SungrowConfig>({
     authMode: 'direct',
@@ -121,6 +122,100 @@ export const SungrowConnectionTest = ({ onConnectionSuccess }: SungrowConnection
       setLoading(false);
     });
   };
+
+  // OAuth 2.0 fallback: generate auth URL and handle callback
+  const redirectUri = `${window.location.origin}/plants?oauth=callback`;
+
+  const generateOAuthAuthorization = async () => {
+    if (!config.appkey || !config.accessKey) {
+      toast({
+        title: 'Configuração incompleta',
+        description: 'Preencha App Key e Access Key para continuar.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    try {
+      setOauthLoading(true);
+      const state = `sungrow_oauth_${Date.now()}`;
+      const { data, error } = await supabase.functions.invoke('sungrow-connector', {
+        body: {
+          action: 'generate_oauth_url',
+          config: { authMode: 'oauth2', appkey: config.appkey, accessKey: config.accessKey, baseUrl: '' },
+          redirectUri,
+          state,
+        },
+      });
+      if (error) throw new Error(error.message);
+      if (data.success && data.authUrl) {
+        window.location.href = data.authUrl as string;
+      } else {
+        throw new Error(data.error || 'Falha ao gerar URL de autorização');
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      toast({ title: 'Erro na autorização', description: message, variant: 'destructive' });
+    } finally {
+      setOauthLoading(false);
+    }
+  };
+
+  const exchangeAuthorizationCode = async (code: string) => {
+    try {
+      setOauthLoading(true);
+      const { data, error } = await supabase.functions.invoke('sungrow-connector', {
+        body: {
+          action: 'exchange_code',
+          config: { authMode: 'oauth2', appkey: config.appkey, accessKey: config.accessKey, baseUrl: '' },
+          code,
+          redirectUri,
+        },
+      });
+      if (error) throw new Error(error.message);
+      if (data.success && data.tokens) {
+        const tokenData = data.tokens as {
+          access_token: string; refresh_token: string; expires_in: number; authorized_plants?: string[];
+        };
+        const oauthConfig: SungrowConfig = {
+          authMode: 'oauth2',
+          appkey: config.appkey,
+          accessKey: config.accessKey,
+          accessToken: tokenData.access_token,
+          refreshToken: tokenData.refresh_token,
+          tokenExpiresAt: Date.now() + tokenData.expires_in * 1000,
+          authorizedPlants: tokenData.authorized_plants || [],
+          username: '', password: '', plantId: '', baseUrl: ''
+        } as any;
+        setConnectionStatus('success');
+        toast({ title: 'Autorização concluída!', description: `Plantas autorizadas: ${oauthConfig.authorizedPlants?.length || 0}` });
+        onConnectionSuccess?.(oauthConfig);
+      } else {
+        throw new Error(data.error || 'Falha na troca do código por tokens');
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erro desconhecido';
+      setConnectionStatus('error');
+      setErrorDetails(message);
+      toast({ title: 'Erro na autorização', description: message, variant: 'destructive' });
+    } finally {
+      setOauthLoading(false);
+      // limpar query params
+      const cleanUrl = window.location.origin + window.location.pathname;
+      window.history.replaceState({}, document.title, cleanUrl);
+    }
+  };
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const error = params.get('error');
+    if (error) {
+      setConnectionStatus('error');
+      setErrorDetails(`Autorização negada: ${error}`);
+    } else if (code) {
+      exchangeAuthorizationCode(code);
+    }
+  }, []);
 
   const getStatusIcon = () => {
     switch (connectionStatus) {
@@ -227,6 +322,19 @@ export const SungrowConnectionTest = ({ onConnectionSuccess }: SungrowConnection
                 <br />• Verifique se a Access Key está correta
                 <br />• Confirme se o OpenAPI está habilitado no iSolarCloud  
                 <br />• Considere usar OAuth 2.0 se o login direto não funcionar
+                <div className="mt-3">
+                  <Button 
+                    variant="outline"
+                    onClick={generateOAuthAuthorization}
+                    disabled={oauthLoading || !config.appkey || !config.accessKey}
+                    className="h-8"
+                  >
+                    {oauthLoading ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : null}
+                    Autorizar via OAuth 2.0
+                  </Button>
+                </div>
               </div>
             )}
             {errorDetails.includes('E912') && (
