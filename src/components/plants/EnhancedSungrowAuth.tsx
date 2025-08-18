@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Shield, Key, Info, CheckCircle } from 'lucide-react';
 import { SungrowConnectionTest } from './SungrowConnectionTest';
-import { SungrowOAuthFlow } from './SungrowOAuthFlow';
+import { SungrowOAuth2Setup } from './SungrowOAuth2Setup';
 import type { SungrowConfig } from '@/types/sungrow';
 
 interface EnhancedSungrowAuthProps {
@@ -112,9 +112,8 @@ export const EnhancedSungrowAuth = ({ onAuthSuccess, initialConfig = {} }: Enhan
                   </AlertDescription>
                 </Alert>
                 
-                <SungrowOAuthFlow
-                  onAuthSuccess={handleOAuthSuccess}
-                  initialConfig={initialConfig}
+                <SungrowOAuth2Setup
+                  onSuccess={handleOAuthSuccess}
                 />
               </div>
             </TabsContent>
