@@ -483,10 +483,10 @@ class SungrowAPI {
     // Use Sungrow's web3 OAuth portal
     const oauthBaseUrl = 'https://web3.isolarcloud.com.hk/#/authorized-app';
     
-    // Use correct parameters based on Sungrow OAuth 2.0 spec
+    // Use user's actual appkey as applicationId
     const params = new URLSearchParams({
       cloudId: '2', // Standard cloudId for iSolarCloud
-      applicationId: '1252', // Standard applicationId for third-party apps
+      applicationId: this.config.appkey, // Use user's registered application key
       redirectUrl: redirectUri
     });
     
@@ -495,7 +495,12 @@ class SungrowAPI {
     }
     
     const fullUrl = `${oauthBaseUrl}?${params.toString()}`;
-    console.log('Generated OAuth URL:', fullUrl);
+    console.log('Generated OAuth URL with appkey as applicationId:', {
+      cloudId: '2',
+      applicationId: this.config.appkey,
+      redirectUrl: redirectUri,
+      fullUrl
+    });
     
     return fullUrl;
   }
