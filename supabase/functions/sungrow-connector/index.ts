@@ -1132,14 +1132,34 @@ serve(async (req) => {
       scope: mergedConfig.scope
     };
 
-    // Validar se as credenciais obrigatórias foram fornecidas
-    if (!mergedConfig.username || !mergedConfig.password || !mergedConfig.appkey || !mergedConfig.accessKey) {
-      throw new Error(`Credenciais obrigatórias não fornecidas. Necessário: username, password, appkey, accessKey. Recebido: ${JSON.stringify({
-        hasUsername: !!mergedConfig.username,
-        hasPassword: !!mergedConfig.password,
-        hasAppkey: !!mergedConfig.appkey,
-        hasAccessKey: !!mergedConfig.accessKey
-      })}`);
+    // Validação por ação
+    const oauthActions = ['generate_oauth_url', 'exchange_code', 'refresh_token'];
+    if (!oauthActions.includes(action)) {
+      if (!mergedConfig.username || !mergedConfig.password || !mergedConfig.appkey || !mergedConfig.accessKey) {
+        throw new Error(`Credenciais obrigatórias não fornecidas. Necessário: username, password, appkey, accessKey. Recebido: ${JSON.stringify({
+          hasUsername: !!mergedConfig.username,
+          hasPassword: !!mergedConfig.password,
+          hasAppkey: !!mergedConfig.appkey,
+          hasAccessKey: !!mergedConfig.accessKey
+        })}`);
+      }
+    } else {
+      // Requisitos mínimos para fluxos OAuth
+      if (action === 'generate_oauth_url') {
+        if (!mergedConfig.appkey) {
+          throw new Error('App Key (applicationId) é obrigatória para gerar a URL de autorização');
+        }
+      }
+      if (action === 'exchange_code') {
+        if (!mergedConfig.appkey || !code || !redirectUri) {
+          throw new Error('Para exchange_code informe appkey, code e redirectUri');
+        }
+      }
+      if (action === 'refresh_token') {
+        if (!mergedConfig.appkey || !refreshToken) {
+          throw new Error('Para refresh_token informe appkey e refreshToken');
+        }
+      }
     }
 
     const api = new SungrowAPI(mergedConfig as SungrowConfig, supabase);
