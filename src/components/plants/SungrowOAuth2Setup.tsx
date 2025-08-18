@@ -52,7 +52,7 @@ export const SungrowOAuth2Setup = ({ onSuccess, plantId }: SungrowOAuth2SetupPro
   const [config, setConfig] = useState<OAuthConfig>({
     appkey: '',
     accessKey: '',
-    baseUrl: 'https://gateway.isolarcloud.com',
+    baseUrl: '', // Empty for OAuth - uses web3.isolarcloud.com.hk
     redirectUri: `${window.location.origin}/plants?oauth=callback`
   });
 
@@ -338,10 +338,12 @@ export const SungrowOAuth2Setup = ({ onSuccess, plantId }: SungrowOAuth2SetupPro
               <Info className="h-4 w-4" />
               <AlertDescription>
                 <strong>Plano OAuth 2.0 da Sungrow:</strong>
-                <br />1. Configure as credenciais da aplicação
-                <br />2. Gere URL de autorização
-                <br />3. Autorize no portal iSolarCloud
+                <br />1. Configure App Key e Access Key da sua aplicação registrada
+                <br />2. Registre a Redirect URI no portal iSolarCloud
+                <br />3. Gere URL de autorização e autorize no portal
                 <br />4. Receba tokens de acesso automaticamente
+                <br />
+                <br /><strong>⚠️ Importante:</strong> Certifique-se de que sua aplicação está registrada no iSolarCloud e tem permissões OpenAPI habilitadas.
               </AlertDescription>
             </Alert>
 
@@ -386,7 +388,8 @@ export const SungrowOAuth2Setup = ({ onSuccess, plantId }: SungrowOAuth2SetupPro
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Registre esta URL no portal iSolarCloud → Manage Application
+                <strong>Registre esta URL no portal iSolarCloud:</strong>
+                <br />Developer Center → Manage Application → Redirect URI/Callback URL
               </p>
             </div>
 

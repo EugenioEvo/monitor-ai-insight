@@ -77,7 +77,11 @@ export const SungrowConnectionTest = ({ onConnectionSuccess }: SungrowConnection
         const { data, error } = await supabase.functions.invoke('sungrow-connector', {
           body: {
             action: 'test_connection',
-            config: testConfig
+            config: {
+              authMode: 'direct',
+              baseUrl: '', // Clear baseUrl for direct authentication  
+              ...testConfig
+            }
           }
         });
 
@@ -216,6 +220,29 @@ export const SungrowConnectionTest = ({ onConnectionSuccess }: SungrowConnection
           <div className="p-3 bg-red-50 border border-red-200 rounded-md">
             <p className="text-sm text-red-800 font-medium">Detalhes do erro:</p>
             <p className="text-sm text-red-700 mt-1">{errorDetails}</p>
+            
+            {errorDetails.includes('E900') && (
+              <div className="mt-2 text-xs text-red-600">
+                <strong>Possíveis soluções:</strong>
+                <br />• Verifique se a Access Key está correta
+                <br />• Confirme se o OpenAPI está habilitado no iSolarCloud  
+                <br />• Considere usar OAuth 2.0 se o login direto não funcionar
+              </div>
+            )}
+            {errorDetails.includes('E912') && (
+              <div className="mt-2 text-xs text-red-600">
+                <strong>Ação recomendada:</strong>
+                <br />• Copie novamente a Access Key Value do portal iSolarCloud
+                <br />• Certifique-se de não incluir espaços ou texto extra
+              </div>
+            )}
+            {errorDetails.includes('Method Not Allowed') && (
+              <div className="mt-2 text-xs text-red-600">
+                <strong>Problema identificado:</strong>
+                <br />• Base URL incorreta - tente deixar vazia ou use OAuth 2.0
+                <br />• Para login direto, use: gateway.isolarcloud.com.hk
+              </div>
+            )}
           </div>
         )}
 
@@ -236,7 +263,9 @@ export const SungrowConnectionTest = ({ onConnectionSuccess }: SungrowConnection
         <div className="text-sm text-muted-foreground space-y-1">
           <p><strong>Dica:</strong> Você pode obter suas credenciais no portal Sungrow:</p>
           <p>• Usuário e Senha: mesmos do seu login no iSolarCloud</p>
-          <p>• App Key e Access Key: obtidos na seção de aplicações do portal</p>
+          <p>• App Key e Access Key: obtidos na seção Developer Center do portal</p>
+          <p>• Para OAuth 2.0: registre sua aplicação e configure a Redirect URI</p>
+          <p><strong>Problemas comuns:</strong> E900 = credenciais inválidas, E912 = Access Key incorreta</p>
         </div>
       </CardContent>
     </Card>

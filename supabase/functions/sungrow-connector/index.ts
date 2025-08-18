@@ -480,20 +480,24 @@ class SungrowAPI {
 
   // OAuth 2.0 utility methods
   generateOAuthURL(redirectUri: string, state?: string): string {
-    const baseUrl = this.config.baseUrl || 'https://gateway.isolarcloud.com.hk';
+    // Use Sungrow's web3 OAuth portal
+    const oauthBaseUrl = 'https://web3.isolarcloud.com.hk/#/authorized-app';
+    
+    // Use correct parameters based on Sungrow OAuth 2.0 spec
     const params = new URLSearchParams({
-      applicationId: this.config.appkey,
+      cloudId: '2', // Standard cloudId for iSolarCloud
+      applicationId: '1252', // Standard applicationId for third-party apps
       redirectUrl: redirectUri
     });
     
     if (state) {
       params.append('state', state);
     }
-
-    // Note: cloudId should be obtained from the application configuration
-    const cloudId = 'YOUR_ACCOUNT_BELONG_TO_CLOUD'; // This should be configurable
     
-    return `${baseUrl}/authorized-app?cloudId=${cloudId}&${params.toString()}`;
+    const fullUrl = `${oauthBaseUrl}?${params.toString()}`;
+    console.log('Generated OAuth URL:', fullUrl);
+    
+    return fullUrl;
   }
 
   async exchangeAuthorizationCodeStandalone(code: string, redirectUri: string): Promise<any> {
@@ -585,12 +589,24 @@ class SungrowAPI {
     } catch (error) {
       console.error('Connection test failed:', error);
       
-      // Melhor guidance para erro E912
-      if (error instanceof Error && error.message.includes('E912')) {
-        return { 
-          success: false, 
-          message: `Chave de acesso inválida: Verifique se você copiou corretamente a "Access Key Value" do portal Sungrow iSolarCloud. ${error.message}`
-        };
+      // Melhor guidance para erros específicos
+      if (error instanceof Error) {
+        if (error.message.includes('E912')) {
+          return { 
+            success: false, 
+            message: `Chave de acesso inválida (E912): Verifique se você copiou corretamente a "Access Key Value" do portal Sungrow iSolarCloud. ${error.message}`
+          };
+        } else if (error.message.includes('E900')) {
+          return { 
+            success: false, 
+            message: `Não autorizado (E900): Credenciais inválidas ou OpenAPI não habilitado. Verifique suas credenciais e permissões no portal iSolarCloud.`
+          };
+        } else if (error.message.includes('Method Not Allowed')) {
+          return { 
+            success: false, 
+            message: `Método não permitido: Base URL incorreta para login direto. Use 'https://gateway.isolarcloud.com.hk' ou tente OAuth 2.0.`
+          };
+        }
       }
       
       return { 
@@ -1095,7 +1111,8 @@ serve(async (req) => {
       password: mergedConfig.password, 
       appkey: mergedConfig.appkey,
       accessKey: mergedConfig.accessKey,
-      baseUrl: mergedConfig.baseUrl || 'https://gateway.isolarcloud.com.hk',
+      // Set correct baseUrl based on auth mode
+      baseUrl: mergedConfig.authMode === 'oauth2' ? '' : (mergedConfig.baseUrl || 'https://gateway.isolarcloud.com.hk'),
       plantId: mergedConfig.plantId || effectivePlantId,
       language: mergedConfig.language,
       // OAuth 2.0 fields
