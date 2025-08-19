@@ -22,15 +22,15 @@ export const useRealtimeDashboard = (): RealtimeStatus => {
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const createdHereRef = useRef(false);
   useEffect(() => {
-    // Cleanup any existing channel first
-    if (channelRef.current) {
-      supabase.removeChannel(channelRef.current);
-      channelRef.current = null;
-    }
+    // Garantir idempotência: não remover canal existente aqui; o cleanup cuidará disso
+
 
     // Canal único para o dashboard - use um identificador estável e evite subscribe duplicado
     const channelName = 'dashboard-realtime';
-    const existing = (supabase.getChannels?.() || []).find((ch: any) => (ch as any).topic === channelName);
+    const existing = (supabase.getChannels?.() || []).find((ch: any) => {
+      const t = (ch as any).topic || '';
+      return t === channelName || t.endsWith(channelName);
+    });
 
     let channel = existing as any;
     createdHereRef.current = false;
