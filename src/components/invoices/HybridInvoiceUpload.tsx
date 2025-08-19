@@ -55,9 +55,9 @@ export const HybridInvoiceUpload: React.FC = () => {
   const { toast } = useToast();
 
   const validateFile = (file: File): string | null => {
-    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png'];
     if (!validTypes.includes(file.type)) {
-      return 'Tipo de arquivo não suportado. Use JPG, PNG ou PDF.';
+      return 'Tipo de arquivo não suportado. Use JPG ou PNG.';
     }
     
     const maxSize = 10 * 1024 * 1024; // 10MB
@@ -217,7 +217,7 @@ export const HybridInvoiceUpload: React.FC = () => {
                   Arraste sua fatura aqui ou clique para selecionar
                 </p>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Suporta JPG, PNG e PDF • Máximo 10MB
+                  Suporta JPG e PNG • Máximo 10MB
                 </p>
               </div>
 
@@ -255,7 +255,7 @@ export const HybridInvoiceUpload: React.FC = () => {
               <input
                 id="file-upload"
                 type="file"
-                accept=".jpg,.jpeg,.png,.pdf"
+                accept=".jpg,.jpeg,.png"
                 onChange={(e) => handleFileUpload(e.target.files)}
                 className="hidden"
                 disabled={uploading}

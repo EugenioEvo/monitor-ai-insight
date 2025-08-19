@@ -43,6 +43,19 @@ serve(async (req) => {
       );
     }
 
+    // Detectar PDF (começa com "JVBERi0") e retornar erro amigável
+    try {
+      const header = atob(base64Data.substring(0, 16));
+      if (header.startsWith('%PDF-')) {
+        return new Response(
+          JSON.stringify({ error: 'PDF ainda não suportado nesta rota. Envie JPG/PNG por enquanto.' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    } catch (_) {
+      // ignore header parse errors
+    }
+
     console.log('Starting hybrid OCR process for:', fileName);
     const startTime = Date.now();
 
@@ -149,7 +162,7 @@ Responda APENAS com um JSON válido, sem texto adicional:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4.1-2025-04-14',
+        model: 'gpt-5-2025-08-07',
         messages: [
           {
             role: 'system',
@@ -160,8 +173,7 @@ Responda APENAS com um JSON válido, sem texto adicional:
             content: analysisPrompt
           }
         ],
-        max_tokens: 2000,
-        temperature: 0.1
+        max_completion_tokens: 2000
       }),
     });
 
