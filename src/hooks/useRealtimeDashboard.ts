@@ -140,10 +140,19 @@ export const useRealtimeDashboard = (): RealtimeStatus => {
         }
       );
 
-      channel.subscribe((status: any) => {
-        console.log('[Realtime] dashboard channel status:', status);
-        setConnected(status === 'SUBSCRIBED');
-      });
+      try {
+        channel.subscribe((status: any) => {
+          console.log('[Realtime] dashboard channel status:', status);
+          setConnected(status === 'SUBSCRIBED');
+        });
+      } catch (e: any) {
+        const msg = String(e?.message || e);
+        if (msg.toLowerCase().includes('subscribe') && msg.toLowerCase().includes('multiple')) {
+          console.warn('[Realtime] subscribe already called for this channel, skipping.');
+        } else {
+          console.error('[Realtime] error subscribing channel:', e);
+        }
+      }
     } else {
       // Já existe um canal subscrito; não chamar subscribe novamente
       try {
