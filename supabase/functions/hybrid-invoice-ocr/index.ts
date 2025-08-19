@@ -229,7 +229,21 @@ Responda APENAS com um JSON válido, sem texto adicional:
       
       // Extrair JSON do conteúdo (caso venha com texto adicional)
       const jsonMatch = gptContent.match(/\{[\s\S]*\}/);
-      const jsonString = jsonMatch ? jsonMatch[0] : gptContent;
+      let jsonString = jsonMatch ? jsonMatch[0] : gptContent;
+      
+      // Sanitização: remover cercas de código, vírgulas finais e resolver somas "a + b + c"
+      jsonString = jsonString.replace(/```json|```/g, '');
+      // Remover vírgulas finais antes de } ou ]
+      jsonString = jsonString.replace(/,\s*([}\]])/g, '$1');
+      // Resolver expressões aritméticas numéricas
+      const sumExprRegex = /:\s*(-?\d+(?:\.\d+)?(?:\s*\+\s*-?\d+(?:\.\d+)?)+)\s*(,|\n|\r|\s*[}\]])/g;
+      jsonString = jsonString.replace(sumExprRegex, (_m, expr, suffix) => {
+        const sum = expr
+          .split('+')
+          .map((n) => parseFloat(n.trim()))
+          .reduce((a, b) => a + b, 0);
+        return `: ${Number.isFinite(sum) ? sum : 0}${suffix}`;
+      });
       
       structuredData = JSON.parse(jsonString);
       
@@ -241,7 +255,7 @@ Responda APENAS com um JSON válido, sem texto adicional:
         total_processing_time_ms: totalProcessingTime,
         extracted_text_length: extractedText.length,
         pages_processed: allExtractedTexts.length,
-        processing_engine: 'hybrid_google_vision_chatgpt',
+        processing_engine: 'multi_engine_ocr',
         timestamp: new Date().toISOString()
       };
 
@@ -252,7 +266,7 @@ Responda APENAS com um JSON válido, sem texto adicional:
       return new Response(
         JSON.stringify({ 
           error: 'Failed to parse ChatGPT response', 
-          details: parseError.message,
+          details: (parseError as Error).message,
           raw_response: gptData.choices[0].message.content 
         }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -282,7 +296,7 @@ Responda APENAS com um JSON válido, sem texto adicional:
           leitura_anterior: structuredData.leitura_anterior || null,
           confidence_score: visionConfidence,
           processing_time_ms: totalProcessingTime,
-          extraction_method: 'hybrid_google_vision_chatgpt',
+          extraction_method: 'multi_engine_ocr',
           valor_tusd: structuredData.valor_tusd || null,
           valor_te: structuredData.valor_te || null,
           icms_valor: structuredData.icms || null,
@@ -371,7 +385,7 @@ Responda APENAS com um JSON válido, sem texto adicional:
             pages_processed: allExtractedTexts.length,
             processing_time_ms: totalProcessingTime,
             confidence_score: visionConfidence,
-            extraction_method: 'hybrid_google_vision_chatgpt'
+            extraction_method: 'multi_engine_ocr'
           },
           raw_data: structuredData
         };
