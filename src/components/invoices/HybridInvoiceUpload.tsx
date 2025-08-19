@@ -5,8 +5,10 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import * as pdfjsLib from 'pdfjs-dist';
 import { 
   Upload, 
   FileText, 
@@ -15,8 +17,12 @@ import {
   CheckCircle, 
   AlertCircle,
   Clock,
-  Zap
+  Zap,
+  FileImage
 } from 'lucide-react';
+
+// Configure PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js`;
 
 interface ProcessingStats {
   vision_confidence: number;
@@ -24,6 +30,7 @@ interface ProcessingStats {
   gpt_processing_time_ms: number;
   total_processing_time_ms: number;
   text_length: number;
+  pages_processed: number;
 }
 
 interface StructuredData {
@@ -38,6 +45,7 @@ interface StructuredData {
   processing_metadata?: {
     processing_engine: string;
     timestamp: string;
+    pages_processed: number;
   };
 }
 
@@ -46,23 +54,26 @@ interface HybridResult {
   structured_data: StructuredData;
   raw_text: string;
   processing_stats: ProcessingStats;
+  pages_processed: number;
 }
 
 export const HybridInvoiceUpload: React.FC = () => {
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [result, setResult] = useState<HybridResult | null>(null);
+  const [processingProgress, setProcessingProgress] = useState(0);
+  const [processingStep, setProcessingStep] = useState('');
   const { toast } = useToast();
 
   const validateFile = (file: File): string | null => {
-    const validTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
     if (!validTypes.includes(file.type)) {
-      return 'Tipo de arquivo não suportado. Use JPG ou PNG.';
+      return 'Tipo de arquivo não suportado. Use JPG, PNG ou PDF.';
     }
     
-    const maxSize = 10 * 1024 * 1024; // 10MB
+    const maxSize = 20 * 1024 * 1024; // 20MB para PDFs
     if (file.size > maxSize) {
-      return 'Arquivo muito grande. Máximo 10MB.';
+      return 'Arquivo muito grande. Máximo 20MB.';
     }
     
     return null;
@@ -81,9 +92,46 @@ export const HybridInvoiceUpload: React.FC = () => {
     });
   };
 
+  const convertPdfToImages = async (file: File): Promise<string[]> => {
+    setProcessingStep('Convertendo PDF para imagens...');
+    
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    const numPages = pdf.numPages;
+    
+    console.log(`PDF has ${numPages} pages`);
+    const images: string[] = [];
+    
+    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+      setProcessingProgress((pageNum - 1) / numPages * 50); // 50% for PDF conversion
+      setProcessingStep(`Convertendo página ${pageNum} de ${numPages}...`);
+      
+      const page = await pdf.getPage(pageNum);
+      const viewport = page.getViewport({ scale: 2.0 }); // Higher scale for better quality
+      
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d')!;
+      canvas.height = viewport.height;
+      canvas.width = viewport.width;
+      
+      await page.render({
+        canvasContext: context,
+        viewport: viewport,
+        canvas: canvas
+      }).promise;
+      
+      const base64Data = canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
+      images.push(base64Data);
+    }
+    
+    return images;
+  };
+
   const processInvoice = async (file: File) => {
     try {
       setUploading(true);
+      setProcessingProgress(0);
+      setProcessingStep('Validando arquivo...');
       
       const validationError = validateFile(file);
       if (validationError) {
@@ -95,12 +143,27 @@ export const HybridInvoiceUpload: React.FC = () => {
         return;
       }
 
-      const base64Data = await convertFileToBase64(file);
+      let base64Images: string[];
+      
+      if (file.type === 'application/pdf') {
+        // Convert PDF to images
+        base64Images = await convertPdfToImages(file);
+      } else {
+        // Single image file
+        setProcessingStep('Convertendo imagem...');
+        const base64Data = await convertFileToBase64(file);
+        base64Images = [base64Data];
+        setProcessingProgress(50);
+      }
+
+      setProcessingStep('Processando com OCR híbrido...');
+      setProcessingProgress(60);
 
       const { data, error } = await supabase.functions.invoke('hybrid-invoice-ocr', {
         body: {
-          base64Data,
-          fileName: file.name
+          base64Images, // Array of images instead of single image
+          fileName: file.name,
+          isPdf: file.type === 'application/pdf'
         }
       });
 
@@ -123,10 +186,11 @@ export const HybridInvoiceUpload: React.FC = () => {
         return;
       }
 
+      setProcessingProgress(100);
       setResult(data);
       toast({
         title: "Fatura processada com sucesso!",
-        description: `Dados extraídos em ${(data.processing_stats.total_processing_time_ms / 1000).toFixed(1)}s`,
+        description: `${data.pages_processed || 1} página(s) processada(s) em ${(data.processing_stats.total_processing_time_ms / 1000).toFixed(1)}s`,
       });
 
     } catch (error) {
@@ -138,6 +202,8 @@ export const HybridInvoiceUpload: React.FC = () => {
       });
     } finally {
       setUploading(false);
+      setProcessingProgress(0);
+      setProcessingStep('');
     }
   };
 
@@ -217,11 +283,16 @@ export const HybridInvoiceUpload: React.FC = () => {
                   Arraste sua fatura aqui ou clique para selecionar
                 </p>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Suporta JPG e PNG • Máximo 10MB
+                  Suporta JPG, PNG e PDF • Máximo 20MB
                 </p>
               </div>
 
-              <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground">
+              <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                <Badge variant="outline" className="gap-1">
+                  <FileImage className="h-3 w-3" />
+                  PDF → Imagens
+                </Badge>
+                <span>→</span>
                 <Badge variant="outline" className="gap-1">
                   <Eye className="h-3 w-3" />
                   Google Vision
@@ -229,7 +300,7 @@ export const HybridInvoiceUpload: React.FC = () => {
                 <span>→</span>
                 <Badge variant="outline" className="gap-1">
                   <Brain className="h-3 w-3" />
-                  ChatGPT Analysis
+                  ChatGPT
                 </Badge>
               </div>
 
@@ -255,11 +326,21 @@ export const HybridInvoiceUpload: React.FC = () => {
               <input
                 id="file-upload"
                 type="file"
-                accept=".jpg,.jpeg,.png"
+                accept=".jpg,.jpeg,.png,.pdf"
                 onChange={(e) => handleFileUpload(e.target.files)}
                 className="hidden"
                 disabled={uploading}
               />
+              
+              {uploading && (
+                <div className="mt-4 w-full max-w-md">
+                  <div className="flex items-center justify-between text-sm mb-2">
+                    <span className="text-muted-foreground">{processingStep}</span>
+                    <span className="font-medium">{Math.round(processingProgress)}%</span>
+                  </div>
+                  <Progress value={processingProgress} className="w-full" />
+                </div>
+              )}
             </div>
           </div>
         </CardContent>
@@ -272,6 +353,11 @@ export const HybridInvoiceUpload: React.FC = () => {
             <CardTitle className="flex items-center gap-2">
               <CheckCircle className="h-5 w-5 text-green-500" />
               Resultado do Processamento
+              {result.pages_processed > 1 && (
+                <Badge variant="secondary" className="ml-2">
+                  {result.pages_processed} páginas
+                </Badge>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">

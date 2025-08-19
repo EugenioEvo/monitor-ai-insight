@@ -34,84 +34,90 @@ serve(async (req) => {
       );
     }
 
-    const { base64Data, fileName } = await req.json();
+    const { base64Images, fileName, isPdf } = await req.json();
 
-    if (!base64Data) {
+    if (!base64Images || !Array.isArray(base64Images) || base64Images.length === 0) {
       return new Response(
-        JSON.stringify({ error: 'No base64 data provided' }),
+        JSON.stringify({ error: 'No base64 images provided' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Detectar PDF (começa com "JVBERi0") e retornar erro amigável
-    try {
-      const header = atob(base64Data.substring(0, 16));
-      if (header.startsWith('%PDF-')) {
-        return new Response(
-          JSON.stringify({ error: 'PDF ainda não suportado nesta rota. Envie JPG/PNG por enquanto.' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-    } catch (_) {
-      // ignore header parse errors
-    }
-
-    console.log('Starting hybrid OCR process for:', fileName);
+    console.log('Starting hybrid OCR process for:', fileName, `(${base64Images.length} ${isPdf ? 'pages' : 'images'})`);
     const startTime = Date.now();
 
-    // Fase 1: Google Vision OCR para extração de texto
+    // Fase 1: Google Vision OCR para extração de texto de todas as páginas
     console.log('Phase 1: Google Vision OCR extraction...');
     const visionStartTime = Date.now();
     
-    const visionResponse = await fetch(
-      `https://vision.googleapis.com/v1/images:annotate?key=${googleApiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          requests: [{
-            image: { content: base64Data },
-            features: [{ type: 'TEXT_DETECTION', maxResults: 1 }]
-          }]
-        })
-      }
-    );
-
-    if (!visionResponse.ok) {
-      const errorText = await visionResponse.text();
-      console.error('Google Vision API error:', errorText);
-      return new Response(
-        JSON.stringify({ error: 'Google Vision API failed', details: errorText }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    let allExtractedTexts: string[] = [];
+    let totalVisionConfidence = 0;
+    
+    // Process each image/page
+    for (let i = 0; i < base64Images.length; i++) {
+      console.log(`Processing ${isPdf ? 'page' : 'image'} ${i + 1} of ${base64Images.length}`);
+      
+      const visionResponse = await fetch(
+        `https://vision.googleapis.com/v1/images:annotate?key=${googleApiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            requests: [{
+              image: { content: base64Images[i] },
+              features: [{ type: 'TEXT_DETECTION', maxResults: 1 }]
+            }]
+          })
+        }
       );
+
+      if (!visionResponse.ok) {
+        const errorText = await visionResponse.text();
+        console.error(`Google Vision API error for ${isPdf ? 'page' : 'image'} ${i + 1}:`, errorText);
+        continue; // Skip this page but continue with others
+      }
+
+      const visionData = await visionResponse.json();
+      
+      if (visionData.responses?.[0]?.textAnnotations?.[0]?.description) {
+        const pageText = visionData.responses[0].textAnnotations[0].description;
+        const pageConfidence = visionData.responses[0].textAnnotations[0].confidence || 0.9;
+        
+        allExtractedTexts.push(`--- ${isPdf ? `PÁGINA ${i + 1}` : `IMAGEM ${i + 1}`} ---\n${pageText}`);
+        totalVisionConfidence += pageConfidence;
+        
+        console.log(`${isPdf ? 'Page' : 'Image'} ${i + 1}: ${pageText.length} characters extracted`);
+      } else {
+        console.log(`No text detected in ${isPdf ? 'page' : 'image'} ${i + 1}`);
+      }
     }
-
-    const visionData = await visionResponse.json();
-    const visionProcessingTime = Date.now() - visionStartTime;
-
-    if (!visionData.responses?.[0]?.textAnnotations?.[0]?.description) {
-      console.log('No text detected by Google Vision');
+    
+    if (allExtractedTexts.length === 0) {
+      console.log('No text detected in any page/image');
       return new Response(
-        JSON.stringify({ error: 'No text detected in image' }),
+        JSON.stringify({ error: 'No text detected in any page/image' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const extractedText = visionData.responses[0].textAnnotations[0].description;
-    const visionConfidence = visionData.responses[0].textAnnotations[0].confidence || 0.9;
+    const extractedText = allExtractedTexts.join('\n\n');
+    const visionConfidence = totalVisionConfidence / allExtractedTexts.length;
+    const visionProcessingTime = Date.now() - visionStartTime;
 
     console.log('Google Vision OCR completed in', visionProcessingTime, 'ms');
-    console.log('Extracted text length:', extractedText.length, 'characters');
+    console.log(`Processed ${allExtractedTexts.length} ${isPdf ? 'pages' : 'images'}, total text length:`, extractedText.length, 'characters');
 
     // Fase 2: ChatGPT para análise e estruturação dos dados
     console.log('Phase 2: ChatGPT analysis...');
     const gptStartTime = Date.now();
 
     const analysisPrompt = `
-Analise o seguinte texto extraído de uma fatura de energia elétrica brasileira e extraia TODOS os dados possíveis em formato JSON estruturado.
+Analise o seguinte texto extraído de uma fatura de energia elétrica brasileira ${isPdf && allExtractedTexts.length > 1 ? `(${allExtractedTexts.length} páginas)` : ''} e extraia TODOS os dados possíveis em formato JSON estruturado.
 
-TEXTO EXTRAÍDO:
+TEXTO EXTRAÍDO DE ${isPdf && allExtractedTexts.length > 1 ? `${allExtractedTexts.length} PÁGINAS` : 'FATURA'}:
 ${extractedText}
+
+${isPdf && allExtractedTexts.length > 1 ? 'IMPORTANTE: O texto acima contém múltiplas páginas da mesma fatura. Consolide todas as informações das páginas para extrair os dados da fatura completa.' : ''}
 
 Extraia os seguintes campos (todos os que conseguir encontrar):
 - Informações básicas (UC, referência, data emissão, data vencimento)
@@ -210,6 +216,7 @@ Responda APENAS com um JSON válido, sem texto adicional:
         gpt_processing_time_ms: gptProcessingTime,
         total_processing_time_ms: totalProcessingTime,
         extracted_text_length: extractedText.length,
+        pages_processed: allExtractedTexts.length,
         processing_engine: 'hybrid_google_vision_chatgpt',
         timestamp: new Date().toISOString()
       };
@@ -257,12 +264,14 @@ Responda APENAS com um JSON válido, sem texto adicional:
         success: true,
         structured_data: structuredData,
         raw_text: extractedText,
+        pages_processed: allExtractedTexts.length,
         processing_stats: {
           vision_confidence: visionConfidence,
           vision_processing_time_ms: visionProcessingTime,
           gpt_processing_time_ms: gptProcessingTime,
           total_processing_time_ms: totalProcessingTime,
-          text_length: extractedText.length
+          text_length: extractedText.length,
+          pages_processed: allExtractedTexts.length
         }
       }),
       {
