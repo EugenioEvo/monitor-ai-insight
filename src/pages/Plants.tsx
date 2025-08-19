@@ -11,6 +11,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { MonitoringSetup } from '@/components/plants/MonitoringSetup';
 import { PlantDiscovery } from '@/components/plants/PlantDiscovery';
 import { SungrowDebugPanel } from '@/components/plants/SungrowDebugPanel';
+import { SungrowOAuthCallbackHandler } from '@/components/plants/SungrowOAuthCallbackHandler';
 import type { Plant } from '@/types';
 
 export default function Plants() {
@@ -85,6 +86,7 @@ export default function Plants() {
 
   return (
     <div className="space-y-6">
+      <SungrowOAuthCallbackHandler />
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold">Plantas Solares</h1>
