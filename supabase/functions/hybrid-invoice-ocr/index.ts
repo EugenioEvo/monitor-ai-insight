@@ -192,7 +192,7 @@ Responda APENAS com um JSON válido, sem texto adicional:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-5-2025-08-07',
+        model: 'gpt-4o-mini',
         messages: [
           {
             role: 'system',
@@ -203,7 +203,7 @@ Responda APENAS com um JSON válido, sem texto adicional:
             content: analysisPrompt
           }
         ],
-        max_completion_tokens: 2000
+        max_tokens: 2000
       }),
     });
 
