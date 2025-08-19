@@ -259,25 +259,168 @@ Responda APENAS com um JSON válido, sem texto adicional:
       );
     }
 
-    // Salvar no Supabase (opcional)
+    // Salvar no Supabase e conectar com beneficiários
     if (supabaseUrl && supabaseKey) {
       try {
         const supabase = createClient(supabaseUrl, supabaseKey);
         
-        await supabase.from('invoices').insert({
-          file_name: fileName,
+        // Preparar dados da fatura
+        const invoiceData = {
+          file_url: fileName,
+          uc_code: structuredData.uc || '',
+          reference_month: structuredData.referencia || '',
+          status: 'processed',
+          energy_kwh: structuredData.consumo_kwh || 0,
+          demand_kw: structuredData.demanda_kw || 0,
+          total_r$: structuredData.valor_total || 0,
+          taxes_r$: (structuredData.icms || 0) + (structuredData.pis_cofins || 0),
           extracted_data: structuredData,
-          raw_text: extractedText,
-          processing_engine: 'hybrid_google_vision_chatgpt',
+          data_emissao: structuredData.data_emissao ? new Date(structuredData.data_emissao).toISOString().split('T')[0] : null,
+          data_vencimento: structuredData.data_vencimento ? new Date(structuredData.data_vencimento).toISOString().split('T')[0] : null,
+          data_leitura: structuredData.data_leitura ? new Date(structuredData.data_leitura).toISOString().split('T')[0] : null,
+          leitura_atual: structuredData.leitura_atual || null,
+          leitura_anterior: structuredData.leitura_anterior || null,
           confidence_score: visionConfidence,
           processing_time_ms: totalProcessingTime,
-          created_at: new Date().toISOString()
+          extraction_method: 'hybrid_google_vision_chatgpt',
+          valor_tusd: structuredData.valor_tusd || null,
+          valor_te: structuredData.valor_te || null,
+          icms_valor: structuredData.icms || null,
+          pis_valor: structuredData.pis_cofins ? structuredData.pis_cofins / 2 : null,
+          cofins_valor: structuredData.pis_cofins ? structuredData.pis_cofins / 2 : null,
+          bandeira_tipo: structuredData.bandeira_tipo || null,
+          bandeira_valor: structuredData.bandeira_valor || null,
+          historico_consumo: structuredData.historico_consumo || [],
+          tarifa_te_tusd: structuredData.tarifa_energia || null,
+          tarifa_demanda_tusd: structuredData.tarifa_tusd || null
+        };
+
+        // Inserir fatura
+        const { data: invoiceResult, error: invoiceError } = await supabase
+          .from('invoices')
+          .insert(invoiceData)
+          .select()
+          .single();
+
+        if (invoiceError) {
+          console.error('Error inserting invoice:', invoiceError);
+          throw invoiceError;
+        }
+
+        console.log('Invoice data saved to Supabase:', invoiceResult.id);
+
+        // Buscar beneficiários com o mesmo UC
+        const { data: beneficiaries, error: benefError } = await supabase
+          .from('beneficiaries')
+          .select('*')
+          .eq('uc_code', structuredData.uc || '');
+
+        if (!benefError && beneficiaries && beneficiaries.length > 0) {
+          console.log(`Found ${beneficiaries.length} beneficiaries for UC ${structuredData.uc}`);
+          
+          // Atualizar customer_unit_id na fatura se houver beneficiários
+          await supabase
+            .from('invoices')
+            .update({ customer_unit_id: beneficiaries[0].id })
+            .eq('id', invoiceResult.id);
+        }
+
+        // Gerar análise inteligente da fatura
+        const analysisPrompt = `
+        Analise os dados extraídos desta fatura de energia elétrica e gere insights, anomalias e recomendações:
+
+        Dados da Fatura:
+        ${JSON.stringify(structuredData, null, 2)}
+
+        Forneça uma análise em formato JSON com:
+        1. Resumo executivo da fatura
+        2. Anomalias detectadas (consumo fora do padrão, valores inconsistentes, etc.)
+        3. Recomendações para otimização de custos
+        4. Insights sobre padrão de consumo
+        5. Alertas importantes
+
+        Responda apenas com um JSON válido no formato:
+        {
+          "executive_summary": "string",
+          "anomalies": [{"type": "string", "description": "string", "severity": "low|medium|high"}],
+          "recommendations": [{"category": "string", "description": "string", "potential_savings": "string"}],
+          "consumption_insights": "string",
+          "important_alerts": ["string"],
+          "cost_analysis": {"total_cost": number, "cost_breakdown": {}, "comparison_notes": "string"}
+        }`;
+
+        const analysisResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${openaiApiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            messages: [
+              { role: 'system', content: 'Você é um especialista em análise de faturas de energia elétrica. Forneça análises detalhadas e insights valiosos.' },
+              { role: 'user', content: analysisPrompt }
+            ],
+            max_tokens: 1500
+          }),
         });
 
-        console.log('Invoice data saved to Supabase');
+        let aiInsights = null;
+        let analysisReport = {
+          processing_summary: {
+            pages_processed: allExtractedTexts.length,
+            processing_time_ms: totalProcessingTime,
+            confidence_score: visionConfidence,
+            extraction_method: 'hybrid_google_vision_chatgpt'
+          },
+          raw_data: structuredData
+        };
+
+        if (analysisResponse.ok) {
+          const analysisData = await analysisResponse.json();
+          try {
+            const analysisContent = analysisData.choices[0].message.content;
+            const jsonMatch = analysisContent.match(/\{[\s\S]*\}/);
+            const jsonString = jsonMatch ? jsonMatch[0] : analysisContent;
+            aiInsights = JSON.parse(jsonString);
+            
+            analysisReport.ai_analysis = aiInsights;
+            console.log('AI analysis generated successfully');
+          } catch (parseError) {
+            console.error('Error parsing AI analysis:', parseError);
+            aiInsights = { error: 'Failed to parse AI analysis', raw_content: analysisData.choices[0].message.content };
+          }
+        }
+
+        // Salvar análise da fatura
+        const { error: analysisError } = await supabase
+          .from('invoice_analyses')
+          .insert({
+            invoice_id: invoiceResult.id,
+            analysis_report: analysisReport,
+            chat_report: `Processamento híbrido concluído com sucesso.\n\nResumo:\n- ${allExtractedTexts.length} ${isPdf && allExtractedTexts.length > 1 ? 'páginas processadas' : 'imagem processada'}\n- Tempo total: ${totalProcessingTime}ms\n- Confiança OCR: ${(visionConfidence * 100).toFixed(1)}%\n- UC identificada: ${structuredData.uc || 'Não identificada'}\n- Valor total: R$ ${structuredData.valor_total || 'Não identificado'}\n\nBeneficiários encontrados: ${beneficiaries?.length || 0}`,
+            ai_insights: aiInsights,
+            anomalies_detected: aiInsights?.anomalies || [],
+            recommendations: aiInsights?.recommendations || []
+          });
+
+        if (analysisError) {
+          console.error('Error saving analysis:', analysisError);
+        } else {
+          console.log('Invoice analysis saved successfully');
+        }
+
       } catch (supabaseError) {
         console.error('Error saving to Supabase:', supabaseError);
         // Não falhar se o Supabase der erro, continuar com a resposta
+        return new Response(
+          JSON.stringify({ 
+            error: 'Database error', 
+            details: supabaseError.message,
+            extracted_data: structuredData
+          }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       }
     }
 

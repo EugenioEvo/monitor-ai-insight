@@ -3,10 +3,11 @@ import { memo } from "react";
 import { FileText, Download, Eye, Brain, CheckCircle, Zap } from "lucide-react";
 import { MultiEngineInvoiceUpload } from "@/components/invoices/MultiEngineInvoiceUpload";
 import { HybridInvoiceUpload } from "@/components/invoices/HybridInvoiceUpload";
+import { InvoiceAnalysisViewer } from '@/components/invoices/InvoiceAnalysisViewer';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton";
 import { mockInvoices } from "@/data/mockData";
@@ -173,9 +174,10 @@ export default memo(function Invoices() {
         </div>
 
         <Tabs defaultValue="hybrid" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="hybrid">OCR Híbrido</TabsTrigger>
             <TabsTrigger value="upload">Multi-Engine</TabsTrigger>
+            <TabsTrigger value="analyses">Análises</TabsTrigger>
             <TabsTrigger value="processed">Faturas Processadas</TabsTrigger>
             <TabsTrigger value="analytics">Analytics & Performance</TabsTrigger>
           </TabsList>
@@ -189,6 +191,12 @@ export default memo(function Invoices() {
           <TabsContent value="upload" className="space-y-6">
             <ErrorBoundary fallback={<LoadingSkeleton rows={4} />}>
               <MultiEngineInvoiceUpload />
+            </ErrorBoundary>
+          </TabsContent>
+
+          <TabsContent value="analyses" className="space-y-6">
+            <ErrorBoundary fallback={<LoadingSkeleton rows={4} />}>
+              <InvoiceAnalysisViewer />
             </ErrorBoundary>
           </TabsContent>
 
