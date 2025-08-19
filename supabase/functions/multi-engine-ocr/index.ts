@@ -75,21 +75,28 @@ serve(async (req) => {
       });
     }
 
-    // Default configuration with available engines
+    // Force Google Vision as primary and only OCR engine
     const ocrConfig: MultiEngineConfig = {
-      primary_engine: availableEngines[0],
-      fallback_engines: availableEngines.slice(1),
-      ab_testing_enabled: true,
-      ab_test_split: 20,
-      confidence_threshold: 0.85,
-      max_retries: 2,
+      primary_engine: 'google_vision',
+      fallback_engines: [], // No fallbacks - only Google Vision
+      ab_testing_enabled: false,
+      ab_test_split: 0,
+      confidence_threshold: 0.75, // Lower threshold since we're only using one engine
+      max_retries: 1,
       ...config
     };
 
-    // Ensure primary engine is available
-    if (!availableEngines.includes(ocrConfig.primary_engine)) {
-      ocrConfig.primary_engine = availableEngines[0];
-      console.log(`[OCR] Primary engine not available, using: ${ocrConfig.primary_engine}`);
+    // Ensure Google Vision is available
+    if (!availableEngines.includes('google_vision')) {
+      console.error('[OCR] Google Vision not available - required for processing');
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: 'Google Vision API não está configurado. Este é o único engine suportado.',
+        error_type: 'ConfigurationError'
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // Download file
@@ -140,34 +147,21 @@ serve(async (req) => {
     
     console.log(`[OCR] File processed: ${fileData.size} bytes`);
 
-    // Process with primary engine
-    console.log(`[OCR] Processing with primary engine: ${ocrConfig.primary_engine}`);
-    let finalResult = await processWithEngine(ocrConfig.primary_engine, base64);
+    // Process with Google Vision only
+    console.log('[OCR] Processing with Google Vision OCR...');
+    let finalResult = await processWithEngine('google_vision', base64);
 
-    // If primary failed or has low confidence, try fallbacks
-    if ((finalResult.error || finalResult.confidence_score < ocrConfig.confidence_threshold) && ocrConfig.fallback_engines.length > 0) {
-      console.log(`[OCR] Primary result insufficient, trying fallbacks`);
-      
-      for (const fallbackEngine of ocrConfig.fallback_engines) {
-        try {
-          console.log(`[OCR] Trying fallback engine: ${fallbackEngine}`);
-          const fallbackResult = await processWithEngine(fallbackEngine, base64);
-          
-          if (!fallbackResult.error && fallbackResult.confidence_score > finalResult.confidence_score) {
-            console.log(`[OCR] Fallback engine ${fallbackEngine} performed better`);
-            finalResult = fallbackResult;
-            break;
-          }
-        } catch (fallbackErr) {
-          console.error(`[OCR] Fallback engine ${fallbackEngine} failed:`, fallbackErr);
-        }
-      }
-    }
-
-    // If all engines failed, use mock data for development
+    // If Google Vision failed, return error (no fallbacks)
     if (finalResult.error || !finalResult.text) {
-      console.log('[OCR] All engines failed, using mock data for development');
-      finalResult = createMockOCRResult();
+      console.error('[OCR] Google Vision failed:', finalResult.error);
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: `Falha no processamento com Google Vision: ${finalResult.error || 'Texto não detectado'}`,
+        error_type: 'OCRError'
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // Extract structured data
@@ -249,18 +243,20 @@ serve(async (req) => {
 function validateAPIKeys(): string[] {
   const availableEngines: string[] = [];
   
-  if (openAIApiKey && openAIApiKey.trim() && openAIApiKey !== 'your-openai-key-here') {
-    availableEngines.push('openai');
-    console.log('[OCR] OpenAI API key configured');
-  }
-  
+  // Only validate Google Vision for OCR
   if (googleCloudApiKey && googleCloudApiKey.trim() && googleCloudApiKey !== 'your-google-key-here') {
     availableEngines.push('google_vision');
     console.log('[OCR] Google Vision API key configured');
+  } else {
+    console.error('[OCR] Google Vision API key not configured or invalid');
   }
   
-  // Always have tesseract as fallback (mock implementation)
-  availableEngines.push('tesseract');
+  // Check OpenAI for validation/structuring (not OCR)
+  if (openAIApiKey && openAIApiKey.trim() && openAIApiKey !== 'your-openai-key-here') {
+    console.log('[OCR] OpenAI API key configured for data validation');
+  } else {
+    console.log('[OCR] OpenAI not available - will use basic extraction');
+  }
   
   return availableEngines;
 }
@@ -440,25 +436,14 @@ Data Vencimento: 20/12/2024`,
 }
 
 async function extractStructuredData(text: string): Promise<any> {
-  // Safe extraction with fallback to mock data
-  if (!openAIApiKey || !text || openAIApiKey === 'your-openai-key-here') {
-    console.log('[OCR] Using mock structured data');
-    return {
-      uc_code: '1234567890',
-      reference_month: '2024-12',
-      energy_kwh: 1250,
-      demand_kw: 25,
-      total_r$: 890.45,
-      taxes_r$: 178.09,
-      icms_valor: 125.67,
-      pis_valor: 12.45,
-      cofins_valor: 39.97,
-      data_vencimento: '2024-12-20'
-    };
+  // Enhanced validation and extraction with OpenAI
+  if (!openAIApiKey || openAIApiKey === 'your-openai-key-here') {
+    console.log('[OCR] OpenAI not available - using basic regex extraction');
+    return extractWithRegex(text);
   }
 
   try {
-    console.log('[OCR] Extracting structured data with OpenAI...');
+    console.log('[OCR] Validating and extracting structured data with OpenAI...');
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -466,41 +451,134 @@ async function extractStructuredData(text: string): Promise<any> {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5-mini-2025-08-07', // Use newer model for better accuracy
         messages: [
           {
             role: 'system',
-            content: `Extract structured data from this Brazilian electricity invoice text. Return ONLY valid JSON with the following fields: uc_code, reference_month, energy_kwh, demand_kw, total_r$, taxes_r$, icms_valor, pis_valor, cofins_valor, data_vencimento. Use null for missing values. For dates, use YYYY-MM-DD format.`
+            content: `Você é um especialista em faturas brasileiras de energia elétrica. Extraia e valide os dados estruturados do texto fornecido. 
+
+INSTRUÇÕES:
+1. Identifique e extraia apenas valores corretos e válidos
+2. Valide se os valores fazem sentido (ex: demanda não pode ser maior que consumo em casos normais)
+3. Converta datas para formato YYYY-MM-DD
+4. Retorne APENAS JSON válido com os campos: uc_code, reference_month, energy_kwh, demand_kw, total_r$, taxes_r$, icms_valor, pis_valor, cofins_valor, data_vencimento, data_emissao, data_leitura
+5. Use null para valores não encontrados ou inválidos
+6. Valores monetários devem ser números (sem R$ ou vírgulas)
+
+VALIDAÇÕES:
+- UC deve ter formato válido (números)
+- Valores monetários devem ser positivos
+- Datas devem estar em ordem lógica (leitura <= emissão <= vencimento)
+- Consumo deve ser um valor realista (0-50000 kWh)
+- Demanda deve ser realista (0-5000 kW)`
           },
           {
             role: 'user',
-            content: text
+            content: `Texto da fatura de energia elétrica brasileira:\n\n${text}`
           }
         ],
-        max_tokens: 2000
+        max_completion_tokens: 1000
       }),
     });
 
     if (!response.ok) {
-      throw new Error(`OpenAI extraction error: ${response.status}`);
+      const errorText = await response.text();
+      console.error('[OCR] OpenAI validation error:', errorText);
+      throw new Error(`OpenAI validation error: ${response.status}`);
     }
 
     const result = await response.json();
     const jsonString = result.choices[0]?.message?.content || '{}';
-    const parsedData = JSON.parse(jsonString);
     
-    console.log('[OCR] Structured data extraction completed successfully');
-    return parsedData;
+    // Clean up the response to ensure it's valid JSON
+    const cleanedJson = jsonString.replace(/```json|```/g, '').trim();
+    const parsedData = JSON.parse(cleanedJson);
+    
+    // Additional validation
+    const validatedData = validateExtractedData(parsedData);
+    
+    console.log('[OCR] OpenAI validation and extraction completed successfully');
+    return validatedData;
   } catch (parseError) {
-    console.error('[OCR] Error parsing extracted data:', parseError);
-    // Return mock data as fallback
-    return {
-      uc_code: '1234567890',
-      reference_month: '2024-12',
-      energy_kwh: 1250,
-      demand_kw: 25,
-      total_r$: 890.45,
-      taxes_r$: 178.09
-    };
+    console.error('[OCR] Error in OpenAI validation:', parseError);
+    // Fallback to regex extraction
+    console.log('[OCR] Falling back to regex extraction');
+    return extractWithRegex(text);
   }
+}
+
+function extractWithRegex(text: string): any {
+  console.log('[OCR] Using regex-based extraction as fallback');
+  
+  // Basic regex patterns for common invoice fields
+  const patterns = {
+    uc_code: /(?:UC[:\s]*|Unidade[:\s]*|Código[:\s]*)(\d{8,15})/i,
+    energy_kwh: /(?:Consumo|kWh)[:\s]*(\d+(?:[,\.]\d+)?)/i,
+    demand_kw: /(?:Demanda|kW)[:\s]*(\d+(?:[,\.]\d+)?)/i,
+    total_r$: /(?:Total|Valor Total|R\$)[:\s]*R?\$?\s*(\d+(?:[,\.]\d+)?)/i,
+    data_vencimento: /(?:Vencimento|Venc)[:\s]*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i
+  };
+
+  const extracted: any = {};
+  
+  for (const [key, pattern] of Object.entries(patterns)) {
+    const match = text.match(pattern);
+    if (match) {
+      let value = match[1];
+      if (key.includes('kwh') || key.includes('kw') || key.includes('r$')) {
+        value = parseFloat(value.replace(',', '.'));
+      }
+      if (key.includes('data_')) {
+        // Convert date to YYYY-MM-DD format
+        const dateParts = value.split(/[\/\-]/);
+        if (dateParts.length === 3) {
+          const year = dateParts[2].length === 2 ? '20' + dateParts[2] : dateParts[2];
+          value = `${year}-${dateParts[1].padStart(2, '0')}-${dateParts[0].padStart(2, '0')}`;
+        }
+      }
+      extracted[key] = value;
+    }
+  }
+
+  // Set defaults for missing required fields
+  return {
+    uc_code: extracted.uc_code || 'REGEX_EXTRACT',
+    reference_month: new Date().toISOString().slice(0, 7),
+    energy_kwh: extracted.energy_kwh || 0,
+    demand_kw: extracted.demand_kw || 0,
+    total_r$: extracted.total_r$ || 0,
+    taxes_r$: 0,
+    icms_valor: null,
+    pis_valor: null,
+    cofins_valor: null,
+    data_vencimento: extracted.data_vencimento || null,
+    data_emissao: null,
+    data_leitura: null,
+    ...extracted
+  };
+}
+
+function validateExtractedData(data: any): any {
+  // Basic validation and cleanup
+  const validated = { ...data };
+
+  // Ensure numeric fields are properly formatted
+  const numericFields = ['energy_kwh', 'demand_kw', 'total_r$', 'taxes_r$', 'icms_valor', 'pis_valor', 'cofins_valor'];
+  numericFields.forEach(field => {
+    if (validated[field] !== null && validated[field] !== undefined) {
+      const num = parseFloat(String(validated[field]).replace(',', '.'));
+      validated[field] = isNaN(num) ? null : num;
+    }
+  });
+
+  // Validate ranges
+  if (validated.energy_kwh && (validated.energy_kwh < 0 || validated.energy_kwh > 50000)) {
+    console.warn(`[OCR] Suspicious energy consumption: ${validated.energy_kwh} kWh`);
+  }
+  
+  if (validated.demand_kw && (validated.demand_kw < 0 || validated.demand_kw > 5000)) {
+    console.warn(`[OCR] Suspicious demand: ${validated.demand_kw} kW`);
+  }
+
+   return validated;
 }
