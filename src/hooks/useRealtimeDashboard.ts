@@ -22,8 +22,14 @@ export const useRealtimeDashboard = (): RealtimeStatus => {
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   useEffect(() => {
+    // Cleanup any existing channel first
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
+      channelRef.current = null;
+    }
+
     // Canal único para o dashboard
-    const channel = supabase.channel('dashboard-realtime');
+    const channel = supabase.channel(`dashboard-realtime-${Date.now()}`);
 
     // Leituras: atualizar métricas e gráficos
     channel.on(
