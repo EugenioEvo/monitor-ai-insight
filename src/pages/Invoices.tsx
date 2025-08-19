@@ -2,6 +2,7 @@
 import { memo } from "react";
 import { FileText, Download, Eye, Brain, CheckCircle, Zap } from "lucide-react";
 import { MultiEngineInvoiceUpload } from "@/components/invoices/MultiEngineInvoiceUpload";
+import { HybridInvoiceUpload } from "@/components/invoices/HybridInvoiceUpload";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -171,12 +172,19 @@ export default memo(function Invoices() {
           </div>
         </div>
 
-        <Tabs defaultValue="upload" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="upload">Upload & Processamento</TabsTrigger>
+        <Tabs defaultValue="hybrid" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="hybrid">OCR Híbrido</TabsTrigger>
+            <TabsTrigger value="upload">Multi-Engine</TabsTrigger>
             <TabsTrigger value="processed">Faturas Processadas</TabsTrigger>
             <TabsTrigger value="analytics">Analytics & Performance</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="hybrid" className="space-y-6">
+            <ErrorBoundary fallback={<LoadingSkeleton rows={4} />}>
+              <HybridInvoiceUpload />
+            </ErrorBoundary>
+          </TabsContent>
 
           <TabsContent value="upload" className="space-y-6">
             <ErrorBoundary fallback={<LoadingSkeleton rows={4} />}>
