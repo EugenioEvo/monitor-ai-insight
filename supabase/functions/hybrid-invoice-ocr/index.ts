@@ -255,7 +255,7 @@ Responda APENAS com um JSON válido, sem texto adicional:
         total_processing_time_ms: totalProcessingTime,
         extracted_text_length: extractedText.length,
         pages_processed: allExtractedTexts.length,
-        processing_engine: 'multi_engine_ocr',
+        processing_engine: 'hybrid',
         timestamp: new Date().toISOString()
       };
 
@@ -296,7 +296,7 @@ Responda APENAS com um JSON válido, sem texto adicional:
           leitura_anterior: structuredData.leitura_anterior || null,
           confidence_score: visionConfidence,
           processing_time_ms: totalProcessingTime,
-          extraction_method: 'multi_engine_ocr',
+          extraction_method: 'hybrid',
           valor_tusd: structuredData.valor_tusd || null,
           valor_te: structuredData.valor_te || null,
           icms_valor: structuredData.icms || null,
@@ -385,7 +385,7 @@ Responda APENAS com um JSON válido, sem texto adicional:
             pages_processed: allExtractedTexts.length,
             processing_time_ms: totalProcessingTime,
             confidence_score: visionConfidence,
-            extraction_method: 'multi_engine_ocr'
+            extraction_method: 'hybrid'
           },
           raw_data: structuredData
         };
