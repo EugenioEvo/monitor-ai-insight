@@ -17,7 +17,7 @@ import { logger } from '@/services/logger';
 import type { SolarEdgeConfig } from '@/types/monitoring';
 import type { SungrowConfig } from '@/types/sungrow';
 import { SungrowConnectionTest } from './SungrowConnectionTest';
-import { SungrowPlantDiscovery } from './SungrowPlantDiscovery';
+import { SungrowPlantDiscovery } from './SungrowDiscovery';
 
 interface DiscoveredPlant {
   id: string;

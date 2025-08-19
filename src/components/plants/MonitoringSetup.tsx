@@ -14,7 +14,7 @@ import type { Plant } from '@/types';
 import type { SolarEdgeConfig } from '@/types/monitoring';
 import type { SungrowConfig } from '@/types/sungrow';
 import { SungrowConnectionTest } from './SungrowConnectionTest';
-import { SungrowPlantDiscovery } from './SungrowPlantDiscovery';
+import { SungrowPlantDiscovery } from './SungrowDiscovery';
 import { SungrowProfileSelector } from './SungrowProfileSelector';
 import { SungrowProfileService, type SungrowCredentialProfile } from '@/services/sungrowProfileService';
 import { PlantConfigurationValidator } from './PlantConfigurationValidator';
@@ -326,7 +326,6 @@ export const MonitoringSetup = ({ plant, onUpdate }: MonitoringSetupProps) => {
             )}
             
             <SungrowPlantDiscovery 
-              config={getEffectiveConfig()}
               onPlantsSelected={(plants) => {
                 if (configMode === 'manual' && plants.length > 0) {
                   setSungrowConfig(prev => ({ ...prev, plantId: plants[0].id }));
