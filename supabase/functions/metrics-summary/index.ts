@@ -43,8 +43,8 @@ serve(async (req) => {
       );
     }
 
-    const url = new URL(req.url);
-    const period = url.searchParams.get('period') || 'today';
+    const requestBody = await req.json().catch(() => ({}));
+    const period = requestBody.period || 'today';
 
     // Calcular data de início baseado no período
     let startDate: string;
