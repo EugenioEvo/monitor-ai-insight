@@ -101,6 +101,18 @@ export const useRealtimeDashboard = (): RealtimeStatus => {
       }
     );
 
+    // Tickets: atualizar métricas
+    channel.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'tickets' },
+      (payload) => {
+        console.log('[Realtime] tickets event:', payload.eventType, payload);
+        setLastEventAt(new Date());
+        queryClient.invalidateQueries({ queryKey: ['tickets'] });
+        queryClient.invalidateQueries({ queryKey: ['metrics-summary'] });
+      }
+    );
+
     // Plants: novas plantas e atualizações de status
     channel.on(
       'postgres_changes',
