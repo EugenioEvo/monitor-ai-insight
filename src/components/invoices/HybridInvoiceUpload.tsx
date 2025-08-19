@@ -21,11 +21,13 @@ import {
   FileImage
 } from 'lucide-react';
 
-// Configure PDF.js worker with fallback
+// Configure PDF.js worker using local ESM worker (Vite)
 try {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js`;
+  // Prefer setting workerPort with an instantiated module worker (recommended for modern bundlers)
+  const worker = new Worker(new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url), { type: 'module' });
+  (pdfjsLib as any).GlobalWorkerOptions.workerPort = worker;
 } catch (error) {
-  console.warn('PDF.js worker configuration failed, using fallback');
+  console.warn('PDF.js worker configuration (module) failed, will fallback to fake worker if needed:', error);
 }
 
 interface ProcessingStats {
@@ -102,16 +104,7 @@ export const HybridInvoiceUpload: React.FC = () => {
       
       const arrayBuffer = await file.arrayBuffer();
       
-      // Configure worker if not already set
-      if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js`;
-      }
-      
-      const pdf = await pdfjsLib.getDocument({ 
-        data: arrayBuffer,
-        cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/cmaps/',
-        cMapPacked: true
-      }).promise;
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
       const numPages = pdf.numPages;
       
       console.log(`PDF has ${numPages} pages`);
