@@ -904,6 +904,54 @@ export type Database = {
         }
         Relationships: []
       }
+      sungrow_credential_profiles: {
+        Row: {
+          access_key: string
+          appkey: string
+          auth_mode: string
+          base_url: string | null
+          created_at: string
+          description: string | null
+          id: string
+          is_default: boolean | null
+          name: string
+          password: string | null
+          updated_at: string
+          user_id: string
+          username: string | null
+        }
+        Insert: {
+          access_key: string
+          appkey: string
+          auth_mode?: string
+          base_url?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_default?: boolean | null
+          name: string
+          password?: string | null
+          updated_at?: string
+          user_id: string
+          username?: string | null
+        }
+        Update: {
+          access_key?: string
+          appkey?: string
+          auth_mode?: string
+          base_url?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_default?: boolean | null
+          name?: string
+          password?: string | null
+          updated_at?: string
+          user_id?: string
+          username?: string | null
+        }
+        Relationships: []
+      }
       sungrow_tokens: {
         Row: {
           access_token: string

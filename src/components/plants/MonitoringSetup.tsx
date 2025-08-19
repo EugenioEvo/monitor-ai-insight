@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -16,6 +15,8 @@ import type { SolarEdgeConfig } from '@/types/monitoring';
 import type { SungrowConfig } from '@/types/sungrow';
 import { SungrowConnectionTest } from './SungrowConnectionTest';
 import { SungrowPlantDiscovery } from './SungrowPlantDiscovery';
+import { SungrowProfileSelector } from './SungrowProfileSelector';
+import { SungrowProfileService, type SungrowCredentialProfile } from '@/services/sungrowProfileService';
 import { PlantConfigurationValidator } from './PlantConfigurationValidator';
 import { getDetailedErrorMessage } from '@/utils/errorHandling';
 import { upsertSungrowCredentials } from '@/services/plantCredentials';
@@ -29,11 +30,13 @@ export const MonitoringSetup = ({ plant, onUpdate }: MonitoringSetupProps) => {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  
   const [systemType, setSystemType] = useState<'manual' | 'solaredge' | 'sungrow'>(
     plant.monitoring_system || 'manual'
   );
   const [syncEnabled, setSyncEnabled] = useState(plant.sync_enabled || false);
-  const [activeTab, setActiveTab] = useState('config');
   
   // SolarEdge config
   const [solarEdgeConfig, setSolarEdgeConfig] = useState<SolarEdgeConfig>({
@@ -42,86 +45,133 @@ export const MonitoringSetup = ({ plant, onUpdate }: MonitoringSetupProps) => {
     ...(systemType === 'solaredge' && plant.api_credentials ? plant.api_credentials as SolarEdgeConfig : {})
   });
 
-  // Sungrow config
+  // Profile system for Sungrow
+  const [selectedProfile, setSelectedProfile] = useState<SungrowCredentialProfile | null>(null);
+  const [configMode, setConfigMode] = useState<'profile' | 'manual'>('profile');
   const [sungrowConfig, setSungrowConfig] = useState<SungrowConfig>({
-    authMode: 'direct',
     username: '',
     password: '',
     appkey: '',
     accessKey: '',
     plantId: '',
     baseUrl: 'https://gateway.isolarcloud.com.hk',
-    ...(systemType === 'sungrow' && plant.api_credentials ? plant.api_credentials as SungrowConfig : {})
+    authMode: 'direct'
   });
 
-  const testConnection = async () => {
-    setTesting(true);
-    try {
-      const config = systemType === 'solaredge' ? solarEdgeConfig : sungrowConfig;
-      const functionName = systemType === 'solaredge' ? 'solaredge-connector' : 'sungrow-connector';
-      
-      const body = systemType === 'sungrow'
-        ? { action: 'test_connection', config: {}, plantId: plant.id, use_saved: true }
-        : { action: 'test_connection', config };
-      
-      const { data, error } = await supabase.functions.invoke(functionName, { body });
+  const getEffectiveConfig = (): SungrowConfig => {
+    if (configMode === 'profile' && selectedProfile) {
+      return SungrowProfileService.profileToConfig(selectedProfile);
+    }
+    return sungrowConfig;
+  };
 
-      if (error) throw error;
+  const testConnection = async () => {
+    try {
+      setTesting(true);
+      setTestResult(null);
+
+      const config = getEffectiveConfig();
+
+      const { data, error } = await supabase.functions.invoke('sungrow-connector', {
+        body: {
+          action: 'test_connection',
+          config
+        }
+      });
+
+      if (error) {
+        throw new Error(`Erro na conexão: ${error.message}`);
+      }
 
       if (data.success) {
-        toast({
-          title: "Conexão bem-sucedida!",
-          description: data.message,
-        });
+        setTestResult({ success: true, message: data.message || 'Conexão bem-sucedida!' });
       } else {
-        throw new Error(data.message);
+        setTestResult({ 
+          success: false, 
+          message: data.error || 'Falha na conexão'
+        });
       }
-    } catch (error: any) {
-      toast({
-        title: "Erro na conexão",
-        description: error.message,
-        variant: "destructive",
+    } catch (error) {
+      setTestResult({ 
+        success: false, 
+        message: error instanceof Error ? error.message : 'Erro desconhecido'
       });
     } finally {
       setTesting(false);
     }
   };
 
+  const syncNow = async () => {
+    try {
+      setSyncing(true);
+
+      const config = getEffectiveConfig();
+
+      const { data, error } = await supabase.functions.invoke('sungrow-connector', {
+        body: {
+          action: 'sync_now',
+          config,
+          plantId: plant.id
+        }
+      });
+
+      if (error) {
+        throw new Error(`Erro na sincronização: ${error.message}`);
+      }
+
+      toast({
+        title: "Sincronização iniciada",
+        description: data.message || "Sincronização em andamento...",
+      });
+
+      onUpdate();
+    } catch (error) {
+      toast({
+        title: "Erro na sincronização",
+        description: error instanceof Error ? error.message : 'Erro desconhecido',
+        variant: "destructive",
+      });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const saveConfiguration = async () => {
     setLoading(true);
     try {
-      const config = systemType === 'solaredge' ? solarEdgeConfig : sungrowConfig;
+      const plantId = systemType === 'sungrow' ? getEffectiveConfig().plantId : 
+                     systemType === 'solaredge' ? solarEdgeConfig.siteId : '';
       
+      const effectiveConfig = getEffectiveConfig();
+      
+      const updatedConfig = {
+        ...plant.api_credentials,
+        ...effectiveConfig,
+        plantId: plantId
+      };
+
+      // Save Sungrow credentials separately
+      if (systemType === 'sungrow') {
+        await upsertSungrowCredentials(plant.id, {
+          username: effectiveConfig.username,
+          password: effectiveConfig.password,
+          appkey: effectiveConfig.appkey,
+          accessKey: effectiveConfig.accessKey,
+          baseUrl: effectiveConfig.baseUrl
+        });
+      }
+
       const { error } = await supabase
         .from('plants')
         .update({
           monitoring_system: systemType,
-          api_credentials: systemType === 'manual' ? null : config as any,
+          api_credentials: systemType === 'manual' ? null : updatedConfig,
           sync_enabled: syncEnabled,
-          api_site_id: systemType === 'solaredge' ? solarEdgeConfig.siteId : 
-                      systemType === 'sungrow' ? sungrowConfig.plantId : null
+          api_site_id: plantId
         })
         .eq('id', plant.id);
 
       if (error) throw error;
-
-      if (systemType === 'sungrow') {
-        try {
-          await upsertSungrowCredentials(plant.id, {
-            username: sungrowConfig.username,
-            password: sungrowConfig.password,
-            appkey: sungrowConfig.appkey,
-            accessKey: sungrowConfig.accessKey,
-            baseUrl: sungrowConfig.baseUrl,
-          });
-        } catch (credErr: any) {
-          toast({
-            title: "Aviso: credenciais não salvas",
-            description: credErr.message || "Verifique suas permissões.",
-            variant: "destructive",
-          });
-        }
-      }
 
       toast({
         title: "Configuração salva!",
@@ -129,7 +179,6 @@ export const MonitoringSetup = ({ plant, onUpdate }: MonitoringSetupProps) => {
       });
       
       onUpdate();
-      setActiveTab('config');
     } catch (error: any) {
       toast({
         title: "Erro ao salvar",
@@ -138,62 +187,6 @@ export const MonitoringSetup = ({ plant, onUpdate }: MonitoringSetupProps) => {
       });
     } finally {
       setLoading(false);
-    }
-  };
-
-  const syncNow = async () => {
-    if (systemType === 'manual') return;
-    
-    setLoading(true);
-    try {
-      const functionName = systemType === 'solaredge' ? 'solaredge-connector' : 'sungrow-connector';
-      
-      const { data, error } = await supabase.functions.invoke(functionName, {
-        body: {
-          action: 'sync_data',
-          plantId: plant.id
-        }
-      });
-
-      if (error) throw error;
-
-      if (data.success) {
-        toast({
-          title: "Sincronização concluída!",
-          description: data.message,
-        });
-        onUpdate();
-      } else {
-        throw new Error(data.message);
-      }
-    } catch (error: any) {
-      toast({
-        title: "Erro na sincronização",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSungrowConnectionSuccess = (config: SungrowConfig) => {
-    setSungrowConfig(config);
-    setActiveTab('discovery');
-  };
-
-  const handleSungrowPlantsSelected = (plants: any[]) => {
-    if (plants.length > 0) {
-      const selectedPlant = plants[0]; // Use primeira planta selecionada
-      setSungrowConfig(prev => ({
-        ...prev,
-        plantId: selectedPlant.id
-      }));
-      setActiveTab('config');
-      toast({
-        title: "Planta selecionada!",
-        description: `Planta "${selectedPlant.name}" configurada para sincronização.`,
-      });
     }
   };
 
@@ -286,106 +279,61 @@ export const MonitoringSetup = ({ plant, onUpdate }: MonitoringSetupProps) => {
           </div>
         )}
 
-        {/* Configuração Sungrow Melhorada */}
+        {/* Configuração Sungrow com Sistema de Perfis */}
         {systemType === 'sungrow' && (
-          <div className="space-y-4">
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="config" className="flex items-center gap-2">
-                  <Settings className="w-4 h-4" />
-                  Configuração
-                </TabsTrigger>
-                <TabsTrigger value="test">Teste</TabsTrigger>
-                <TabsTrigger value="discovery">Descoberta</TabsTrigger>
-              </TabsList>
-              
-              <TabsContent value="config" className="space-y-4">
-                <div className="p-4 border rounded-lg">
-                  <h4 className="font-medium mb-4">Configuração Manual Sungrow</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="sg-username">Usuário</Label>
-                      <Input
-                        id="sg-username"
-                        value={sungrowConfig.username}
-                        onChange={(e) => setSungrowConfig(prev => ({ ...prev, username: e.target.value }))}
-                        placeholder="Seu usuário Sungrow"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="sg-password">Senha</Label>
-                      <Input
-                        id="sg-password"
-                        type="password"
-                        value={sungrowConfig.password}
-                        onChange={(e) => setSungrowConfig(prev => ({ ...prev, password: e.target.value }))}
-                        placeholder="Sua senha Sungrow"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="sg-appkey">App Key</Label>
-                      <Input
-                        id="sg-appkey"
-                        value={sungrowConfig.appkey}
-                        onChange={(e) => setSungrowConfig(prev => ({ ...prev, appkey: e.target.value }))}
-                        placeholder="Chave da aplicação"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="sg-accesskey">Access Key Value</Label>
-                      <Input
-                        id="sg-accesskey"
-                        type="password"
-                        value={sungrowConfig.accessKey}
-                        onChange={(e) => setSungrowConfig(prev => ({ ...prev, accessKey: e.target.value }))}
-                        placeholder="Valor da chave de acesso"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="sg-plant-id">Plant ID</Label>
-                      <Input
-                        id="sg-plant-id"
-                        value={sungrowConfig.plantId}
-                        onChange={(e) => setSungrowConfig(prev => ({ ...prev, plantId: e.target.value }))}
-                        placeholder="ID da planta"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </TabsContent>
-              
-              <TabsContent value="test">
-                <SungrowConnectionTest onConnectionSuccess={handleSungrowConnectionSuccess} />
-              </TabsContent>
-              
-              <TabsContent value="discovery">
-                {sungrowConfig.username && sungrowConfig.appkey && sungrowConfig.accessKey ? (
-                  <SungrowPlantDiscovery 
-                    config={sungrowConfig} 
-                    onPlantsSelected={handleSungrowPlantsSelected}
-                  />
-                ) : (
-                  <Card>
-                    <CardContent className="pt-6">
-                      <div className="text-center">
-                        <AlertCircle className="w-12 h-12 text-yellow-500 mx-auto mb-4" />
-                        <h3 className="font-medium mb-2">Credenciais necessárias</h3>
-                        <p className="text-sm text-muted-foreground mb-4">
-                          Configure e teste suas credenciais primeiro para descobrir plantas automaticamente.
-                        </p>
-                        <Button 
-                          variant="outline" 
-                          onClick={() => setActiveTab('test')}
-                        >
-                          Ir para Teste de Conexão
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-              </TabsContent>
-            </Tabs>
-          </div>
+          <>
+            <SungrowProfileSelector
+              onProfileSelect={setSelectedProfile}
+              selectedProfile={selectedProfile}
+            />
+            
+            <div className="flex items-center gap-4 p-4 border rounded-lg">
+              <div className="flex items-center space-x-2">
+                <input
+                  type="radio"
+                  id="profile-mode"
+                  name="config-mode"
+                  checked={configMode === 'profile'}
+                  onChange={() => setConfigMode('profile')}
+                  className="h-4 w-4"
+                />
+                <label htmlFor="profile-mode" className="text-sm font-medium">
+                  Usar perfil selecionado
+                </label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="radio"
+                  id="manual-mode"
+                  name="config-mode"
+                  checked={configMode === 'manual'}
+                  onChange={() => setConfigMode('manual')}
+                  className="h-4 w-4"
+                />
+                <label htmlFor="manual-mode" className="text-sm font-medium">
+                  Configuração manual
+                </label>
+              </div>
+            </div>
+
+            {configMode === 'manual' && (
+              <SungrowConnectionTest 
+                onConnectionSuccess={(config) => {
+                  setSungrowConfig(config);
+                  setTestResult({ success: true, message: 'Conexão configurada com sucesso!' });
+                }}
+              />
+            )}
+            
+            <SungrowPlantDiscovery 
+              config={getEffectiveConfig()}
+              onPlantsSelected={(plants) => {
+                if (configMode === 'manual' && plants.length > 0) {
+                  setSungrowConfig(prev => ({ ...prev, plantId: plants[0].id }));
+                }
+              }}
+            />
+          </>
         )}
 
         {/* Sincronização automática */}
@@ -404,6 +352,22 @@ export const MonitoringSetup = ({ plant, onUpdate }: MonitoringSetupProps) => {
         {systemType !== 'manual' && plant.last_sync && (
           <div className="text-sm text-muted-foreground">
             Última sincronização: {new Date(plant.last_sync).toLocaleString('pt-BR')}
+          </div>
+        )}
+
+        {/* Status de teste */}
+        {testResult && (
+          <div className={`p-4 rounded-lg border ${testResult.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+            <div className="flex items-center gap-2">
+              {testResult.success ? (
+                <CheckCircle className="h-4 w-4 text-green-600" />
+              ) : (
+                <AlertCircle className="h-4 w-4 text-red-600" />
+              )}
+              <span className={testResult.success ? 'text-green-800' : 'text-red-800'}>
+                {testResult.message}
+              </span>
+            </div>
           </div>
         )}
 
@@ -426,8 +390,8 @@ export const MonitoringSetup = ({ plant, onUpdate }: MonitoringSetupProps) => {
           </Button>
 
           {systemType !== 'manual' && syncEnabled && (
-            <Button variant="outline" onClick={syncNow} disabled={loading}>
-              {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+            <Button variant="outline" onClick={syncNow} disabled={syncing}>
+              {syncing && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Sincronizar Agora
             </Button>
           )}
