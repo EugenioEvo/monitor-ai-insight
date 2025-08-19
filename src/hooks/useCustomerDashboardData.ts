@@ -57,14 +57,39 @@ export const useCustomerDashboardData = (customerId: string, selectedPeriod: str
 
         if (invoicesError) throw invoicesError;
 
-        invoices?.forEach(invoice => {
+        invoices?.forEach((invoice: any) => {
           const month = invoice.reference_month;
           if (!monthlyConsumption[month]) {
             monthlyConsumption[month] = { consumption: 0, cost: 0 };
           }
-          monthlyConsumption[month].consumption += invoice.energy_kwh;
-          monthlyConsumption[month].cost += invoice["total_r$"];
+          monthlyConsumption[month].consumption += Number(invoice.energy_kwh) || 0;
+          monthlyConsumption[month].cost += Number(invoice["total_r$"]) || 0;
         });
+      } else {
+        // Fallback: se não houver UCs cadastradas, buscar pelas UCs das plantas do cliente
+        const ucCodes = (plants || [])
+          .map((p: any) => p.consumer_unit_code)
+          .filter((c: any): c is string => !!c);
+
+        if (ucCodes.length > 0) {
+          const { data: invoicesByUc, error: invUcErr } = await supabase
+            .from("invoices")
+            .select("reference_month, energy_kwh, \"total_r$\", uc_code")
+            .in("uc_code", ucCodes)
+            .eq("status", "processed")
+            .order("reference_month", { ascending: false });
+
+          if (invUcErr) throw invUcErr;
+
+          invoicesByUc?.forEach((invoice: any) => {
+            const month = invoice.reference_month;
+            if (!monthlyConsumption[month]) {
+              monthlyConsumption[month] = { consumption: 0, cost: 0 };
+            }
+            monthlyConsumption[month].consumption += Number(invoice.energy_kwh) || 0;
+            monthlyConsumption[month].cost += Number(invoice["total_r$"]) || 0;
+          });
+        }
       }
 
       // 6. Buscar dados de geração
