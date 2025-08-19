@@ -20,7 +20,7 @@ export const useRealtimeDashboard = (): RealtimeStatus => {
   const [connected, setConnected] = useState(false);
   const [lastEventAt, setLastEventAt] = useState<Date | null>(null);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
-
+  const createdHereRef = useRef(false);
   useEffect(() => {
     // Cleanup any existing channel first
     if (channelRef.current) {
@@ -28,119 +28,134 @@ export const useRealtimeDashboard = (): RealtimeStatus => {
       channelRef.current = null;
     }
 
-    // Canal único para o dashboard - use a more stable identifier
-    const channel = supabase.channel('dashboard-realtime');
+    // Canal único para o dashboard - use um identificador estável e evite subscribe duplicado
+    const channelName = 'dashboard-realtime';
+    const existing = (supabase.getChannels?.() || []).find((ch: any) => (ch as any).topic === channelName);
 
-    // Leituras: atualizar métricas e gráficos
-    channel.on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'readings' },
-      (payload) => {
-        console.log('[Realtime] readings event:', payload.eventType, payload);
-        setLastEventAt(new Date());
-        // Invalida métricas resumidas e quaisquer gráficos baseados em leituras
-        queryClient.invalidateQueries({ queryKey: ['metrics-summary'] });
-        queryClient.invalidateQueries({ queryKey: ['readings'] });
-        queryClient.invalidateQueries({ queryKey: ['energy-data'] });
-      }
-    );
+    let channel = existing as any;
+    createdHereRef.current = false;
 
-    // Alertas: atualizar lista de alertas e métricas; toast para críticos
-    channel.on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'alerts' },
-      (payload: any) => {
-        console.log('[Realtime] alerts event:', payload.eventType, payload);
-        setLastEventAt(new Date());
-        queryClient.invalidateQueries({ queryKey: ['alerts'] });
-        queryClient.invalidateQueries({ queryKey: ['metrics-summary'] });
+    if (!channel) {
+      channel = supabase.channel(channelName);
+      createdHereRef.current = true;
 
-        const newRow = payload.new;
-        if (payload.eventType === 'INSERT' && newRow?.severity === 'critical') {
-          toast({
-            title: 'Alerta crítico',
-            description: newRow?.message || 'Novo alerta crítico detectado.',
-            variant: 'destructive',
-          });
+      // Leituras: atualizar métricas e gráficos
+      channel.on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'readings' },
+        (payload: any) => {
+          console.log('[Realtime] readings event:', payload.eventType, payload);
+          setLastEventAt(new Date());
+          // Invalida métricas resumidas e quaisquer gráficos baseados em leituras
+          queryClient.invalidateQueries({ queryKey: ['metrics-summary'] });
+          queryClient.invalidateQueries({ queryKey: ['readings'] });
+          queryClient.invalidateQueries({ queryKey: ['energy-data'] });
         }
-      }
-    );
+      );
 
-    // Invoices: atualizar dados de consumo
-    channel.on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'invoices' },
-      (payload) => {
-        console.log('[Realtime] invoices event:', payload.eventType, payload);
-        setLastEventAt(new Date());
-        queryClient.invalidateQueries({ queryKey: ['customer-consumption'] });
-        queryClient.invalidateQueries({ queryKey: ['metrics-summary'] });
-      }
-    );
+      // Alertas: atualizar lista de alertas e métricas; toast para críticos
+      channel.on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'alerts' },
+        (payload: any) => {
+          console.log('[Realtime] alerts event:', payload.eventType, payload);
+          setLastEventAt(new Date());
+          queryClient.invalidateQueries({ queryKey: ['alerts'] });
+          queryClient.invalidateQueries({ queryKey: ['metrics-summary'] });
 
-    // Customer Units: atualizar dados de consumo
-    channel.on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'customer_units' },
-      (payload) => {
-        console.log('[Realtime] customer_units event:', payload.eventType, payload);
-        setLastEventAt(new Date());
-        queryClient.invalidateQueries({ queryKey: ['customer-consumption'] });
-      }
-    );
-
-    // Sync logs: atualizar status e possíveis métricas
-    channel.on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'sync_logs' },
-      (payload) => {
-        console.log('[Realtime] sync_logs event:', payload.eventType, payload);
-        setLastEventAt(new Date());
-        queryClient.invalidateQueries({ queryKey: ['sync-logs'] });
-        queryClient.invalidateQueries({ queryKey: ['metrics-summary'] });
-      }
-    );
-
-    // Tickets: atualizar métricas
-    channel.on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'tickets' },
-      (payload) => {
-        console.log('[Realtime] tickets event:', payload.eventType, payload);
-        setLastEventAt(new Date());
-        queryClient.invalidateQueries({ queryKey: ['tickets'] });
-        queryClient.invalidateQueries({ queryKey: ['metrics-summary'] });
-      }
-    );
-
-    // Plants: novas plantas e atualizações de status
-    channel.on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'plants' },
-      (payload: any) => {
-        console.log('[Realtime] plants event:', payload.eventType, payload);
-        setLastEventAt(new Date());
-        queryClient.invalidateQueries({ queryKey: ['plants'] });
-
-        if (payload.eventType === 'INSERT') {
-          const name = payload.new?.name || 'Nova planta';
-          toast({
-            title: 'Planta cadastrada',
-            description: `${name} foi adicionada e está disponível no dashboard.`,
-          });
+          const newRow = (payload as any).new;
+          if ((payload as any).eventType === 'INSERT' && newRow?.severity === 'critical') {
+            toast({
+              title: 'Alerta crítico',
+              description: newRow?.message || 'Novo alerta crítico detectado.',
+              variant: 'destructive',
+            });
+          }
         }
-      }
-    );
+      );
 
-    channel.subscribe((status) => {
-      console.log('[Realtime] dashboard channel status:', status);
-      setConnected(status === 'SUBSCRIBED');
-    });
+      // Invoices: atualizar dados de consumo
+      channel.on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'invoices' },
+        (payload: any) => {
+          console.log('[Realtime] invoices event:', payload.eventType, payload);
+          setLastEventAt(new Date());
+          queryClient.invalidateQueries({ queryKey: ['customer-consumption'] });
+          queryClient.invalidateQueries({ queryKey: ['metrics-summary'] });
+        }
+      );
+
+      // Customer Units: atualizar dados de consumo
+      channel.on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'customer_units' },
+        (payload: any) => {
+          console.log('[Realtime] customer_units event:', payload.eventType, payload);
+          setLastEventAt(new Date());
+          queryClient.invalidateQueries({ queryKey: ['customer-consumption'] });
+        }
+      );
+
+      // Sync logs: atualizar status e possíveis métricas
+      channel.on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'sync_logs' },
+        (payload: any) => {
+          console.log('[Realtime] sync_logs event:', payload.eventType, payload);
+          setLastEventAt(new Date());
+          queryClient.invalidateQueries({ queryKey: ['sync-logs'] });
+          queryClient.invalidateQueries({ queryKey: ['metrics-summary'] });
+        }
+      );
+
+      // Tickets: atualizar métricas
+      channel.on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'tickets' },
+        (payload: any) => {
+          console.log('[Realtime] tickets event:', payload.eventType, payload);
+          setLastEventAt(new Date());
+          queryClient.invalidateQueries({ queryKey: ['tickets'] });
+          queryClient.invalidateQueries({ queryKey: ['metrics-summary'] });
+        }
+      );
+
+      // Plants: novas plantas e atualizações de status
+      channel.on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'plants' },
+        (payload: any) => {
+          console.log('[Realtime] plants event:', payload.eventType, payload);
+          setLastEventAt(new Date());
+          queryClient.invalidateQueries({ queryKey: ['plants'] });
+
+          if ((payload as any).eventType === 'INSERT') {
+            const name = (payload as any).new?.name || 'Nova planta';
+            toast({
+              title: 'Planta cadastrada',
+              description: `${name} foi adicionada e está disponível no dashboard.`,
+            });
+          }
+        }
+      );
+
+      channel.subscribe((status: any) => {
+        console.log('[Realtime] dashboard channel status:', status);
+        setConnected(status === 'SUBSCRIBED');
+      });
+    } else {
+      // Já existe um canal subscrito; não chamar subscribe novamente
+      try {
+        const state = (channel as any).state || (channel as any)._state;
+        setConnected(state === 'SUBSCRIBED');
+      } catch {}
+    }
 
     channelRef.current = channel;
 
     return () => {
-      if (channelRef.current) {
+      if (createdHereRef.current && channelRef.current) {
         supabase.removeChannel(channelRef.current);
         channelRef.current = null;
       }
