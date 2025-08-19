@@ -21,8 +21,12 @@ import {
   FileImage
 } from 'lucide-react';
 
-// Configure PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js`;
+// Configure PDF.js worker with fallback
+try {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js`;
+} catch (error) {
+  console.warn('PDF.js worker configuration failed, using fallback');
+}
 
 interface ProcessingStats {
   vision_confidence: number;
@@ -93,38 +97,65 @@ export const HybridInvoiceUpload: React.FC = () => {
   };
 
   const convertPdfToImages = async (file: File): Promise<string[]> => {
-    setProcessingStep('Convertendo PDF para imagens...');
-    
-    const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    const numPages = pdf.numPages;
-    
-    console.log(`PDF has ${numPages} pages`);
-    const images: string[] = [];
-    
-    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-      setProcessingProgress((pageNum - 1) / numPages * 50); // 50% for PDF conversion
-      setProcessingStep(`Convertendo página ${pageNum} de ${numPages}...`);
+    try {
+      setProcessingStep('Convertendo PDF para imagens...');
       
-      const page = await pdf.getPage(pageNum);
-      const viewport = page.getViewport({ scale: 2.0 }); // Higher scale for better quality
+      const arrayBuffer = await file.arrayBuffer();
       
-      const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d')!;
-      canvas.height = viewport.height;
-      canvas.width = viewport.width;
+      // Configure worker if not already set
+      if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js`;
+      }
       
-      await page.render({
-        canvasContext: context,
-        viewport: viewport,
-        canvas: canvas
+      const pdf = await pdfjsLib.getDocument({ 
+        data: arrayBuffer,
+        cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/cmaps/',
+        cMapPacked: true
       }).promise;
+      const numPages = pdf.numPages;
       
-      const base64Data = canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
-      images.push(base64Data);
+      console.log(`PDF has ${numPages} pages`);
+      const images: string[] = [];
+      
+      for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+        try {
+          setProcessingProgress((pageNum - 1) / numPages * 50); // 50% for PDF conversion
+          setProcessingStep(`Convertendo página ${pageNum} de ${numPages}...`);
+          
+          const page = await pdf.getPage(pageNum);
+          const viewport = page.getViewport({ scale: 2.0 }); // Higher scale for better quality
+          
+          const canvas = document.createElement('canvas');
+          const context = canvas.getContext('2d');
+          
+          if (!context) {
+            throw new Error(`Não foi possível obter contexto do canvas para página ${pageNum}`);
+          }
+          
+          canvas.height = viewport.height;
+          canvas.width = viewport.width;
+          
+          await page.render({
+            canvasContext: context,
+            viewport: viewport,
+            canvas: canvas
+          }).promise;
+          
+          const base64Data = canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
+          images.push(base64Data);
+          
+        } catch (pageError) {
+          console.error(`Erro ao processar página ${pageNum}:`, pageError);
+          throw new Error(`Falha ao processar página ${pageNum} do PDF`);
+        }
+      }
+      
+      return images;
+      
+    } catch (error) {
+      console.error('Erro ao converter PDF:', error);
+      throw new Error(`Falha na conversão do PDF: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
     }
-    
-    return images;
   };
 
   const processInvoice = async (file: File) => {
@@ -146,14 +177,35 @@ export const HybridInvoiceUpload: React.FC = () => {
       let base64Images: string[];
       
       if (file.type === 'application/pdf') {
-        // Convert PDF to images
-        base64Images = await convertPdfToImages(file);
+        try {
+          // Convert PDF to images
+          base64Images = await convertPdfToImages(file);
+          console.log(`Successfully converted ${base64Images.length} pages from PDF`);
+        } catch (pdfError) {
+          console.error('PDF conversion failed:', pdfError);
+          toast({
+            title: "Erro na conversão do PDF", 
+            description: pdfError instanceof Error ? pdfError.message : "Falha ao processar PDF",
+            variant: "destructive"
+          });
+          return;
+        }
       } else {
-        // Single image file
-        setProcessingStep('Convertendo imagem...');
-        const base64Data = await convertFileToBase64(file);
-        base64Images = [base64Data];
-        setProcessingProgress(50);
+        try {
+          // Single image file
+          setProcessingStep('Convertendo imagem...');
+          const base64Data = await convertFileToBase64(file);
+          base64Images = [base64Data];
+          setProcessingProgress(50);
+        } catch (imageError) {
+          console.error('Image conversion failed:', imageError);
+          toast({
+            title: "Erro na conversão da imagem",
+            description: "Falha ao processar imagem",
+            variant: "destructive"
+          });
+          return;
+        }
       }
 
       setProcessingStep('Processando com OCR híbrido...');

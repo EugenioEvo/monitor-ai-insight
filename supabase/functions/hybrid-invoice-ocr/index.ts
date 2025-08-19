@@ -36,9 +36,33 @@ serve(async (req) => {
 
     const { base64Images, fileName, isPdf } = await req.json();
 
+    // Validar dados recebidos
     if (!base64Images || !Array.isArray(base64Images) || base64Images.length === 0) {
+      console.error('Invalid base64Images data:', { baseImagesExists: !!base64Images, isArray: Array.isArray(base64Images), length: base64Images?.length });
       return new Response(
-        JSON.stringify({ error: 'No base64 images provided' }),
+        JSON.stringify({ 
+          success: false, 
+          error: 'Dados de imagem inválidos. Forneça um array válido de imagens base64.' 
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validar que todas as imagens são strings válidas
+    const invalidImages = base64Images.filter((img, index) => {
+      if (typeof img !== 'string' || img.length === 0) {
+        console.error(`Invalid image at index ${index}:`, { type: typeof img, length: img?.length });
+        return true;
+      }
+      return false;
+    });
+
+    if (invalidImages.length > 0) {
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: `${invalidImages.length} imagem(ns) inválida(s) detectada(s)` 
+        }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
