@@ -534,6 +534,17 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
                 ) : (
                   <div className="space-y-4">
                     <SungrowConnectionTest onConnectionSuccess={handleSungrowConnectionSuccess} />
+                    <div className="text-center">
+                      <Button 
+                        onClick={() => setCurrentStep(3)} 
+                        variant="outline"
+                      >
+                        Pular para Descoberta
+                      </Button>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Use perfis de credenciais existentes
+                      </p>
+                    </div>
                     <div className="flex justify-between pt-4">
                       <Button variant="outline" onClick={() => setCurrentStep(1)}>
                         Voltar
@@ -549,9 +560,8 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
           {currentStep === 3 && (
             <>
               {systemType === 'sungrow' ? (
-                // Usar SungrowPlantDiscovery para Sungrow
+                // Usar SungrowPlantDiscovery para Sungrow (sem config obrigatória - usa perfis)
                 <SungrowPlantDiscovery 
-                  config={sungrowConfig} 
                   onPlantsSelected={handleSungrowPlantsSelected}
                 />
               ) : (

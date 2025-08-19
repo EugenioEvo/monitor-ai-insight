@@ -1,11 +1,13 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
-import { AlertCircle, CheckCircle, Loader2, Search, MapPin, Zap, Wifi, WifiOff, Activity } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { AlertCircle, CheckCircle, Loader2, Search, MapPin, Zap, Wifi, WifiOff, Activity, XCircle, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import type { SungrowConfig } from '@/types/sungrow';
@@ -13,6 +15,7 @@ import { useLogger } from '@/services/logger';
 import { useErrorHandler } from '@/services/errorHandler';
 import { useDebouncedCallback } from '@/hooks/useDebounce';
 import { LoadingSpinner } from '@/components/ui/loading-states';
+import { SungrowProfileService, type SungrowCredentialProfile } from '@/services/sungrowProfileService';
 
 interface EnrichedPlant {
   id: string;
@@ -40,7 +43,7 @@ interface DiscoveryStatistics {
 }
 
 interface SungrowPlantDiscoveryProps {
-  config: SungrowConfig;
+  config?: SungrowConfig; // Made optional since we'll use profiles
   onPlantsSelected?: (plants: EnrichedPlant[]) => void;
 }
 
@@ -49,92 +52,186 @@ export const SungrowPlantDiscovery = ({ config, onPlantsSelected }: SungrowPlant
   const logger = useLogger('SungrowPlantDiscovery');
   const errorHandler = useErrorHandler('SungrowPlantDiscovery');
   
+  // State management
   const [loading, setLoading] = useState(false);
   const [discovering, setDiscovering] = useState(false);
   const [discoveredPlants, setDiscoveredPlants] = useState<EnrichedPlant[]>([]);
   const [selectedPlants, setSelectedPlants] = useState<string[]>([]);
   const [statistics, setStatistics] = useState<DiscoveryStatistics | null>(null);
   const [discoveryProgress, setDiscoveryProgress] = useState(0);
+  
+  // Profile management
+  const [profiles, setProfiles] = useState<SungrowCredentialProfile[]>([]);
+  const [selectedProfile, setSelectedProfile] = useState<SungrowCredentialProfile | null>(null);
+  const [loadingProfiles, setLoadingProfiles] = useState(true);
+  
+  // Error prevention
+  const [lastError, setLastError] = useState<string | null>(null);
+  const [errorCount, setErrorCount] = useState(0);
+  const [errorCooldown, setErrorCooldown] = useState(false);
+  const [hasAttemptedDiscovery, setHasAttemptedDiscovery] = useState(false);
 
   const debouncedOnPlantsSelected = useDebouncedCallback((plants: EnrichedPlant[]) => {
     onPlantsSelected?.(plants);
   }, 300);
 
+  // Load profiles on mount
+  useEffect(() => {
+    loadProfiles();
+  }, []);
+
+  const loadProfiles = async () => {
+    try {
+      setLoadingProfiles(true);
+      const profilesData = await SungrowProfileService.getProfiles();
+      setProfiles(profilesData);
+      
+      // Auto-select default profile or first available
+      const defaultProfile = profilesData.find(p => p.is_default) || profilesData[0];
+      if (defaultProfile) {
+        setSelectedProfile(defaultProfile);
+      }
+    } catch (error) {
+      console.error('Failed to load profiles:', error);
+      toast({
+        title: 'Erro ao carregar perfis',
+        description: 'Não foi possível carregar os perfis de credenciais.',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoadingProfiles(false);
+    }
+  };
+
+  // Reset error state after cooldown
+  useEffect(() => {
+    if (errorCooldown) {
+      const timer = setTimeout(() => {
+        setErrorCooldown(false);
+        setErrorCount(0);
+      }, 30000); // 30 second cooldown
+      return () => clearTimeout(timer);
+    }
+  }, [errorCooldown]);
+
+  const getEffectiveConfig = (): SungrowConfig => {
+    if (selectedProfile) {
+      return SungrowProfileService.profileToConfig(selectedProfile);
+    }
+    if (config) {
+      return config;
+    }
+    throw new Error('Nenhum perfil selecionado ou configuração disponível');
+  };
+
   const discoverPlants = async () => {
+    // Prevent discovery if in error cooldown
+    if (errorCooldown) {
+      toast({
+        title: 'Aguarde antes de tentar novamente',
+        description: 'Muitas tentativas falharam. Tente novamente em alguns instantes.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     const context = logger.createContext({ action: 'discover_plants_enhanced' });
     
-    await errorHandler.executeWithRetry(
-      async () => {
-        setDiscovering(true);
-        setDiscoveryProgress(0);
-        
-        logger.info('Iniciando descoberta aprimorada de plantas Sungrow', {
-          ...context,
-          hasCredentials: !!(config.appkey && config.accessKey)
+    try {
+      setDiscovering(true);
+      setDiscoveryProgress(0);
+      setLastError(null);
+      setHasAttemptedDiscovery(true);
+      
+      const effectiveConfig = getEffectiveConfig();
+      
+      logger.info('Iniciando descoberta aprimorada de plantas Sungrow', {
+        ...context,
+        hasCredentials: !!(effectiveConfig.appkey && effectiveConfig.accessKey),
+        usingProfile: !!selectedProfile,
+        profileName: selectedProfile?.name
+      });
+      
+      // Remove plantId from config for discovery
+      const discoveryConfig = { ...effectiveConfig };
+      delete discoveryConfig.plantId;
+      
+      // Progress simulation
+      const progressInterval = setInterval(() => {
+        setDiscoveryProgress(prev => {
+          if (prev < 80) return prev + 10;
+          return prev;
         });
-        
-        // Remover plantId da config para descoberta
-        const discoveryConfig = { ...config };
-        delete discoveryConfig.plantId;
-        
-        // Simulate progress updates
-        const progressInterval = setInterval(() => {
-          setDiscoveryProgress(prev => {
-            if (prev < 80) return prev + 10;
-            return prev;
-          });
-        }, 1000);
-        
-        const { data, error } = await supabase.functions.invoke('sungrow-connector', {
-          body: {
-            action: 'discover_plants',
-            config: discoveryConfig
-          }
-        });
-
-        clearInterval(progressInterval);
-        setDiscoveryProgress(100);
-
-        if (error) {
-          logger.error('Erro na função Supabase', error, context);
-          throw new Error(`Erro na descoberta: ${error.message}`);
+      }, 1000);
+      
+      const { data, error } = await supabase.functions.invoke('sungrow-connector', {
+        body: {
+          action: 'discover_plants',
+          config: discoveryConfig,
+          use_saved: true // Use saved credentials from profile
         }
+      });
 
-        logger.info('Resposta da descoberta recebida', {
-          ...context,
-          success: data?.success,
-          plantsCount: data?.plants?.length || 0,
-          statistics: data?.statistics
-        });
+      clearInterval(progressInterval);
+      setDiscoveryProgress(100);
 
-        if (data.success && data.plants) {
-          setDiscoveredPlants(data.plants);
-          setStatistics(data.statistics || null);
-          
-          const onlinePlants = data.plants.filter((p: EnrichedPlant) => p.connectivity === 'online').length;
-          const totalPlants = data.plants.length;
-          
-          toast({
-            title: "Plantas descobertas!",
-            description: `Encontradas ${totalPlants} plantas (${onlinePlants} online, ${totalPlants - onlinePlants} offline).`,
-          });
-          
-          logger.info(`Descoberta concluída: ${totalPlants} plantas (${onlinePlants} online)`, context);
-        } else {
-          throw new Error(data.error || 'Nenhuma planta encontrada');
-        }
-      },
-      'discover_plants_enhanced',
-      {
-        maxAttempts: 2,
-        baseDelay: 2000
+      if (error) {
+        logger.error('Erro na função Supabase', error, context);
+        throw new Error(`Erro na descoberta: ${error.message}`);
       }
-    ).catch((error) => {
-      errorHandler.handleError(error, 'discover_plants_enhanced');
-    }).finally(() => {
+
+      logger.info('Resposta da descoberta recebida', {
+        ...context,
+        success: data?.success,
+        plantsCount: data?.plants?.length || 0,
+        statistics: data?.statistics
+      });
+
+      if (data.success && data.plants) {
+        setDiscoveredPlants(data.plants);
+        setStatistics(data.statistics || null);
+        setErrorCount(0); // Reset error count on success
+        
+        const onlinePlants = data.plants.filter((p: EnrichedPlant) => p.connectivity === 'online').length;
+        const totalPlants = data.plants.length;
+        
+        toast({
+          title: "Plantas descobertas!",
+          description: `Encontradas ${totalPlants} plantas (${onlinePlants} online, ${totalPlants - onlinePlants} offline).`,
+        });
+        
+        logger.info(`Descoberta concluída: ${totalPlants} plantas (${onlinePlants} online)`, context);
+      } else {
+        throw new Error(data.error || data.message || 'Nenhuma planta encontrada');
+      }
+    } catch (error: any) {
+      const errorMessage = error.message || 'Erro desconhecido na descoberta';
+      setLastError(errorMessage);
+      setErrorCount(prev => prev + 1);
+      
+      // Trigger cooldown after 3 failed attempts
+      if (errorCount >= 2) {
+        setErrorCooldown(true);
+      }
+      
+      logger.error('Descoberta falhou', error, context);
+      
+      toast({
+        title: "Erro na descoberta",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
       setDiscovering(false);
       setDiscoveryProgress(0);
-    });
+    }
+  };
+
+  const resetErrorState = () => {
+    setLastError(null);
+    setErrorCount(0);
+    setErrorCooldown(false);
+    setHasAttemptedDiscovery(false);
   };
 
   const togglePlantSelection = (plantId: string) => {
@@ -204,11 +301,86 @@ export const SungrowPlantDiscovery = ({ config, onPlantsSelected }: SungrowPlant
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Profile Selection */}
+        {loadingProfiles ? (
+          <div className="flex items-center justify-center py-4">
+            <LoadingSpinner size="sm" message="Carregando perfis..." />
+          </div>
+        ) : profiles.length === 0 ? (
+          <Alert>
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              Nenhum perfil de credenciais encontrado. Crie um perfil primeiro na página de plantas.
+            </AlertDescription>
+          </Alert>
+        ) : (
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Perfil de Credenciais</label>
+            <Select
+              value={selectedProfile?.id || ''}
+              onValueChange={(value) => {
+                const profile = profiles.find(p => p.id === value);
+                setSelectedProfile(profile || null);
+                resetErrorState(); // Reset errors when changing profile
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione um perfil" />
+              </SelectTrigger>
+              <SelectContent>
+                {profiles.map((profile) => (
+                  <SelectItem key={profile.id} value={profile.id}>
+                    <div className="flex items-center gap-2">
+                      <span>{profile.name}</span>
+                      {profile.is_default && (
+                        <Badge variant="secondary" className="text-xs">Padrão</Badge>
+                      )}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedProfile && (
+              <div className="text-xs text-muted-foreground p-2 bg-muted rounded">
+                <p><strong>Modo:</strong> {selectedProfile.auth_mode === 'oauth' ? 'OAuth 2.0' : 'Direto'}</p>
+                <p><strong>URL:</strong> {selectedProfile.base_url}</p>
+                {selectedProfile.description && (
+                  <p><strong>Descrição:</strong> {selectedProfile.description}</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Error Display */}
+        {lastError && (
+          <Alert variant="destructive">
+            <XCircle className="h-4 w-4" />
+            <AlertDescription className="flex items-center justify-between">
+              <span>{lastError}</span>
+              <Button size="sm" variant="outline" onClick={resetErrorState}>
+                <RefreshCw className="w-3 h-3 mr-1" />
+                Limpar
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Error Cooldown Warning */}
+        {errorCooldown && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              Muitas tentativas falharam. Aguarde 30 segundos antes de tentar novamente ou verifique suas credenciais.
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Statistics Summary */}
         {statistics && (
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 p-4 bg-gray-50 rounded-lg">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 p-4 bg-muted rounded-lg">
             <div className="text-center">
-              <p className="text-2xl font-bold text-blue-600">{statistics.total}</p>
+              <p className="text-2xl font-bold text-primary">{statistics.total}</p>
               <p className="text-xs text-muted-foreground">Total</p>
             </div>
             <div className="text-center">
@@ -232,7 +404,19 @@ export const SungrowPlantDiscovery = ({ config, onPlantsSelected }: SungrowPlant
 
         {discoveredPlants.length === 0 ? (
           <div className="text-center py-8">
-            <Button onClick={discoverPlants} disabled={discovering} size="lg">
+            {!hasAttemptedDiscovery && (
+              <p className="text-sm text-muted-foreground mb-4">
+                {selectedProfile ? 
+                  `Pronto para descobrir plantas usando o perfil "${selectedProfile.name}"` :
+                  'Selecione um perfil para descobrir plantas'
+                }
+              </p>
+            )}
+            <Button 
+              onClick={discoverPlants} 
+              disabled={discovering || errorCooldown || !selectedProfile || loadingProfiles} 
+              size="lg"
+            >
               {discovering ? (
                 <div className="flex flex-col items-center gap-2">
                   <LoadingSpinner size="sm" message="Descobrindo plantas..." />
@@ -246,12 +430,15 @@ export const SungrowPlantDiscovery = ({ config, onPlantsSelected }: SungrowPlant
               ) : (
                 <>
                   <Search className="w-4 h-4 mr-2" />
-                  Descobrir Plantas
+                  {hasAttemptedDiscovery ? 'Tentar Novamente' : 'Descobrir Plantas'}
                 </>
               )}
             </Button>
             <p className="text-sm text-muted-foreground mt-2">
-              Clique para buscar plantas com validação completa de conectividade
+              {errorCooldown ? 
+                'Aguarde antes de tentar novamente' : 
+                'Clique para buscar plantas com validação completa de conectividade'
+              }
             </p>
           </div>
         ) : (
