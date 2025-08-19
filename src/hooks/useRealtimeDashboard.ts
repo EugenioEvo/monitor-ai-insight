@@ -28,8 +28,8 @@ export const useRealtimeDashboard = (): RealtimeStatus => {
       channelRef.current = null;
     }
 
-    // Canal único para o dashboard
-    const channel = supabase.channel(`dashboard-realtime-${Date.now()}`);
+    // Canal único para o dashboard - use a more stable identifier
+    const channel = supabase.channel('dashboard-realtime');
 
     // Leituras: atualizar métricas e gráficos
     channel.on(
@@ -63,6 +63,29 @@ export const useRealtimeDashboard = (): RealtimeStatus => {
             variant: 'destructive',
           });
         }
+      }
+    );
+
+    // Invoices: atualizar dados de consumo
+    channel.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'invoices' },
+      (payload) => {
+        console.log('[Realtime] invoices event:', payload.eventType, payload);
+        setLastEventAt(new Date());
+        queryClient.invalidateQueries({ queryKey: ['customer-consumption'] });
+        queryClient.invalidateQueries({ queryKey: ['metrics-summary'] });
+      }
+    );
+
+    // Customer Units: atualizar dados de consumo
+    channel.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'customer_units' },
+      (payload) => {
+        console.log('[Realtime] customer_units event:', payload.eventType, payload);
+        setLastEventAt(new Date());
+        queryClient.invalidateQueries({ queryKey: ['customer-consumption'] });
       }
     );
 
