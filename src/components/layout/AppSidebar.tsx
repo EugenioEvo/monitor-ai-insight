@@ -1,5 +1,5 @@
 
-import { Calendar, Home, Zap, FileText, Wrench, AlertTriangle, BarChart3, MessageSquare, Settings, Bot, Users } from "lucide-react";
+import { Calendar, Home, Zap, FileText, Wrench, AlertTriangle, BarChart3, MessageSquare, Settings, Bot, Users, TrendingUp, Cpu } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import {
   Sidebar,
@@ -14,49 +14,57 @@ import {
   SidebarFooter,
 } from "@/components/ui/sidebar";
 import { UserMenu } from "./UserMenu";
+import { Badge } from "@/components/ui/badge";
 
 const menuItems = [
   {
     title: "Dashboard",
     url: "/dashboard",
     icon: Home,
-    badge: null
+    badge: null,
+    color: "text-primary"
   },
   {
     title: "Plantas",
     url: "/plants",
     icon: Zap,
-    badge: null
+    badge: null,
+    color: "text-secondary"
   },
   {
     title: "Clientes",
     url: "/customers",
     icon: Users,
-    badge: null
+    badge: null,
+    color: "text-info"
   },
   {
     title: "Faturas",
     url: "/invoices", 
     icon: FileText,
-    badge: "3"
+    badge: "3",
+    color: "text-accent"
   },
   {
     title: "O&M",
     url: "/maintenance",
     icon: Wrench,
-    badge: "2"
+    badge: "2",
+    color: "text-warning"
   },
   {
     title: "Alertas",
     url: "/alerts",
     icon: AlertTriangle,
-    badge: "5"
+    badge: "5",
+    color: "text-destructive"
   },
   {
     title: "Relatórios",
     url: "/reports",
     icon: BarChart3,
-    badge: null
+    badge: null,
+    color: "text-success"
   }
 ];
 
@@ -65,28 +73,34 @@ const aiMenuItems = [
     title: "Chat Solar",
     url: "/chat",
     icon: MessageSquare,
-    badge: null
+    badge: null,
+    color: "text-primary",
+    special: "online"
   },
   {
     title: "Agentes IA",
     url: "/agents",
     icon: Bot,
-    badge: "4"
+    badge: "4",
+    color: "text-secondary",
+    special: null
   }
 ];
 
 export function AppSidebar() {
   const location = useLocation();
 
+  const isActive = (url: string) => location.pathname === url;
+
   return (
-    <Sidebar className="border-r border-border/50">
-      <SidebarHeader className="border-b border-border/50 p-6">
+    <Sidebar className="border-r-0 bg-sidebar shadow-xl">
+      <SidebarHeader className="border-b border-sidebar-border/50 p-6 bg-gradient-to-br from-sidebar-background to-sidebar-accent/30">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-green-500 rounded-lg flex items-center justify-center">
-              <Zap className="w-4 h-4 text-white" />
+          <div className="flex items-center gap-3 group">
+            <div className="w-10 h-10 bg-gradient-solar rounded-xl flex items-center justify-center shadow-lg group-hover:shadow-glow transition-all duration-300">
+              <Zap className="w-5 h-5 text-white animate-pulse" />
             </div>
-            <span className="font-bold text-xl bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
+            <span className="font-display font-bold text-2xl bg-gradient-solar bg-clip-text text-transparent">
               Monitor.ai
             </span>
           </div>
@@ -94,28 +108,42 @@ export function AppSidebar() {
         </div>
       </SidebarHeader>
       
-      <SidebarContent className="p-4">
+      <SidebarContent className="p-6 space-y-8">
         <SidebarGroup>
-          <SidebarGroupLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+          <SidebarGroupLabel className="text-xs font-bold text-sidebar-foreground/70 uppercase tracking-wider mb-4 flex items-center gap-2">
+            <TrendingUp className="w-4 h-4" />
             Gestão Solar
           </SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu className="space-y-1">
+            <SidebarMenu className="space-y-2">
               {menuItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton 
                     asChild
-                    className={`hover:bg-accent hover:text-accent-foreground transition-colors ${
-                      location.pathname === item.url ? 'bg-accent text-accent-foreground' : ''
+                    className={`group relative overflow-hidden rounded-xl transition-all duration-300 hover:scale-105 hover:shadow-md ${
+                      isActive(item.url) 
+                        ? 'bg-gradient-to-r from-sidebar-accent to-sidebar-accent/50 text-sidebar-primary shadow-inner-glow' 
+                        : 'hover:bg-sidebar-accent/50'
                     }`}
                   >
-                    <Link to={item.url} className="flex items-center gap-3 px-3 py-2 rounded-lg">
-                      <item.icon className="w-4 h-4" />
-                      <span className="font-medium">{item.title}</span>
+                    <Link to={item.url} className="flex items-center gap-4 px-4 py-3 rounded-xl">
+                      <item.icon className={`w-5 h-5 ${isActive(item.url) ? 'text-sidebar-primary' : item.color} group-hover:scale-110 transition-transform`} />
+                      <span className={`font-semibold ${isActive(item.url) ? 'text-sidebar-primary' : 'text-sidebar-foreground'} group-hover:text-sidebar-primary transition-colors`}>
+                        {item.title}
+                      </span>
                       {item.badge && (
-                        <span className="ml-auto bg-blue-100 text-blue-800 text-xs font-medium px-2 py-0.5 rounded-full">
+                        <Badge className={`ml-auto text-xs ${
+                          item.title === 'Faturas' ? 'bg-accent text-accent-foreground' :
+                          item.title === 'O&M' ? 'bg-warning text-warning-foreground' :
+                          'bg-destructive text-destructive-foreground'
+                        } animate-pulse-glow`}>
                           {item.badge}
-                        </span>
+                        </Badge>
+                      )}
+                      
+                      {/* Active indicator */}
+                      {isActive(item.url) && (
+                        <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-gradient-primary rounded-l-full shadow-glow" />
                       )}
                     </Link>
                   </SidebarMenuButton>
@@ -125,30 +153,42 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <SidebarGroup className="mt-8">
-          <SidebarGroupLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+        <SidebarGroup>
+          <SidebarGroupLabel className="text-xs font-bold text-sidebar-foreground/70 uppercase tracking-wider mb-4 flex items-center gap-2">
+            <Cpu className="w-4 h-4" />
             Inteligência Artificial
           </SidebarGroupLabel>
           <SidebarGroupContent>
-            <SidebarMenu className="space-y-1">
+            <SidebarMenu className="space-y-2">
               {aiMenuItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton 
                     asChild 
-                    className={`hover:bg-accent hover:text-accent-foreground transition-colors ${
-                      location.pathname === item.url ? 'bg-accent text-accent-foreground' : ''
+                    className={`group relative overflow-hidden rounded-xl transition-all duration-300 hover:scale-105 hover:shadow-md ${
+                      isActive(item.url) 
+                        ? 'bg-gradient-to-r from-sidebar-accent to-sidebar-accent/50 text-sidebar-primary shadow-inner-glow' 
+                        : 'hover:bg-sidebar-accent/50'
                     }`}
                   >
-                    <Link to={item.url} className="flex items-center gap-3 px-3 py-2 rounded-lg">
-                      <item.icon className="w-4 h-4" />
-                      <span className="font-medium">{item.title}</span>
+                    <Link to={item.url} className="flex items-center gap-4 px-4 py-3 rounded-xl">
+                      <item.icon className={`w-5 h-5 ${isActive(item.url) ? 'text-sidebar-primary' : item.color} group-hover:scale-110 transition-transform`} />
+                      <span className={`font-semibold ${isActive(item.url) ? 'text-sidebar-primary' : 'text-sidebar-foreground'} group-hover:text-sidebar-primary transition-colors`}>
+                        {item.title}
+                      </span>
+                      
                       {item.badge && (
-                        <span className="ml-auto bg-green-100 text-green-800 text-xs font-medium px-2 py-0.5 rounded-full">
+                        <Badge className="ml-auto bg-secondary text-secondary-foreground text-xs animate-pulse-glow">
                           {item.badge}
-                        </span>
+                        </Badge>
                       )}
-                      {item.title === "Chat Solar" && (
-                        <span className="ml-auto w-2 h-2 bg-green-500 rounded-full"></span>
+                      
+                      {item.special === "online" && (
+                        <div className="ml-auto w-3 h-3 bg-success rounded-full animate-pulse shadow-glow"></div>
+                      )}
+                      
+                      {/* Active indicator */}
+                      {isActive(item.url) && (
+                        <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-gradient-secondary rounded-l-full shadow-glow" />
                       )}
                     </Link>
                   </SidebarMenuButton>
@@ -159,13 +199,27 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-border/50 p-4">
+      <SidebarFooter className="border-t border-sidebar-border/50 p-6 bg-gradient-to-br from-sidebar-accent/30 to-sidebar-background">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild className="hover:bg-accent hover:text-accent-foreground transition-colors">
-              <Link to="/settings" className="flex items-center gap-3 px-3 py-2 rounded-lg">
-                <Settings className="w-4 h-4" />
-                <span className="font-medium">Configurações</span>
+            <SidebarMenuButton 
+              asChild 
+              className={`group rounded-xl transition-all duration-300 hover:scale-105 hover:shadow-md ${
+                isActive('/settings') 
+                  ? 'bg-gradient-to-r from-sidebar-accent to-sidebar-accent/50 text-sidebar-primary shadow-inner-glow' 
+                  : 'hover:bg-sidebar-accent/50'
+              }`}
+            >
+              <Link to="/settings" className="flex items-center gap-4 px-4 py-3 rounded-xl">
+                <Settings className={`w-5 h-5 ${isActive('/settings') ? 'text-sidebar-primary' : 'text-muted-foreground'} group-hover:scale-110 group-hover:text-sidebar-primary transition-all`} />
+                <span className={`font-semibold ${isActive('/settings') ? 'text-sidebar-primary' : 'text-sidebar-foreground'} group-hover:text-sidebar-primary transition-colors`}>
+                  Configurações
+                </span>
+                
+                {/* Active indicator */}
+                {isActive('/settings') && (
+                  <div className="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-gradient-primary rounded-l-full shadow-glow" />
+                )}
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>

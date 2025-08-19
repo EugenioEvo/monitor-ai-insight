@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Zap, BarChart3, Users, FileText, Shield } from 'lucide-react';
+import { Zap, BarChart3, Users, FileText, Shield, ArrowRight, Sparkles, TrendingUp, Globe } from 'lucide-react';
 
 const Index = () => {
   const navigate = useNavigate();
@@ -18,121 +18,167 @@ const Index = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-green-500 rounded-lg flex items-center justify-center mx-auto mb-4">
-            <Zap className="w-6 h-6 text-white animate-pulse" />
+      <div className="min-h-screen flex items-center justify-center bg-gradient-solar">
+        <div className="text-center animate-bounce-in">
+          <div className="w-16 h-16 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center mx-auto mb-6 animate-pulse-glow">
+            <Zap className="w-8 h-8 text-white animate-pulse" />
           </div>
-          <p className="text-muted-foreground">Carregando...</p>
+          <p className="text-white/90 text-lg font-medium">Carregando Monitor.ai...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-green-50">
-      <div className="container mx-auto px-4 py-16">
-        <div className="text-center space-y-8 mb-16">
-          <div className="flex items-center justify-center gap-3 mb-6">
-            <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-green-500 rounded-xl flex items-center justify-center">
-              <Zap className="w-8 h-8 text-white" />
+    <div className="min-h-screen bg-gradient-solar relative overflow-hidden">
+      {/* Background Elements */}
+      <div className="absolute inset-0 bg-black/10"></div>
+      <div className="absolute top-20 right-20 w-72 h-72 bg-white/10 rounded-full blur-3xl animate-float"></div>
+      <div className="absolute bottom-20 left-20 w-96 h-96 bg-white/5 rounded-full blur-3xl animate-float" style={{ animationDelay: '1s' }}></div>
+      
+      <div className="relative z-10">
+        {/* Hero Section */}
+        <section className="container mx-auto px-6 py-20">
+          <div className="text-center space-y-8 mb-20 animate-fade-in">
+            <div className="flex items-center justify-center gap-4 mb-8">
+              <div className="w-20 h-20 glass-card flex items-center justify-center animate-bounce-in">
+                <Zap className="w-10 h-10 text-white" />
+              </div>
+              <span className="font-display font-bold text-5xl text-white">
+                Monitor.ai
+              </span>
             </div>
-            <span className="font-bold text-4xl bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent">
-              Monitor.ai
-            </span>
+            
+            <div className="space-y-6 animate-slide-up" style={{ animationDelay: '0.3s' }}>
+              <h1 className="text-responsive-3xl font-display font-bold text-white leading-tight">
+                Monitoramento Solar
+                <br />
+                <span className="bg-gradient-to-r from-yellow-200 via-orange-200 to-red-200 bg-clip-text text-transparent">
+                  Inteligente
+                </span>
+              </h1>
+              <p className="text-responsive-lg text-white/90 max-w-4xl mx-auto leading-relaxed">
+                Plataforma completa para gestão de plantas solares com inteligência artificial, 
+                monitoramento em tempo real e análise preditiva para maximizar sua eficiência energética.
+              </p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-6 justify-center animate-scale-in" style={{ animationDelay: '0.6s' }}>
+              <Button 
+                size="xl" 
+                variant="glass"
+                className="group text-white border-white/30 hover:bg-white/20"
+                onClick={() => navigate('/auth')}
+              >
+                Acessar Sistema
+                <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+              </Button>
+              <Button 
+                variant="outline" 
+                size="xl"
+                className="border-white/50 text-white hover:bg-white hover:text-primary"
+                onClick={() => navigate('/auth')}
+              >
+                Criar Conta
+                <Sparkles className="w-5 h-5" />
+              </Button>
+            </div>
           </div>
-          
-          <div className="space-y-4">
-            <h1 className="text-5xl font-bold text-gray-900">
-              Monitoramento Solar Inteligente
-            </h1>
-            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-              Plataforma completa para gestão de plantas solares com inteligência artificial, 
-              monitoramento em tempo real e análise preditiva.
+
+          {/* Features Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-20 animate-slide-up" style={{ animationDelay: '0.9s' }}>
+            <Card className="glass-card border-white/20 hover:bg-white/10 group">
+              <CardHeader>
+                <div className="w-14 h-14 bg-gradient-primary rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  <BarChart3 className="w-7 h-7 text-white" />
+                </div>
+                <CardTitle className="text-white text-xl">Analytics Avançado</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <CardDescription className="text-white/80">
+                  Dashboards interativos com métricas de performance, análise de tendências e insights preditivos.
+                </CardDescription>
+              </CardContent>
+            </Card>
+
+            <Card className="glass-card border-white/20 hover:bg-white/10 group">
+              <CardHeader>
+                <div className="w-14 h-14 bg-gradient-secondary rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  <Users className="w-7 h-7 text-white" />
+                </div>
+                <CardTitle className="text-white text-xl">Gestão de Clientes</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <CardDescription className="text-white/80">
+                  Sistema completo para gerenciar clientes, beneficiários e unidades consumidoras em tempo real.
+                </CardDescription>
+              </CardContent>
+            </Card>
+
+            <Card className="glass-card border-white/20 hover:bg-white/10 group">
+              <CardHeader>
+                <div className="w-14 h-14 bg-gradient-accent rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  <FileText className="w-7 h-7 text-white" />
+                </div>
+                <CardTitle className="text-white text-xl">OCR Inteligente</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <CardDescription className="text-white/80">
+                  Processamento automático de faturas com múltiplos engines de OCR e validação por IA.
+                </CardDescription>
+              </CardContent>
+            </Card>
+
+            <Card className="glass-card border-white/20 hover:bg-white/10 group">
+              <CardHeader>
+                <div className="w-14 h-14 bg-primary rounded-2xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                  <Shield className="w-7 h-7 text-white" />
+                </div>
+                <CardTitle className="text-white text-xl">Segurança Avançada</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <CardDescription className="text-white/80">
+                  Controle de acesso baseado em roles com autenticação segura e criptografia de ponta.
+                </CardDescription>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Stats Section */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16 animate-fade-in" style={{ animationDelay: '1.2s' }}>
+            <div className="text-center glass-card p-8 border-white/20">
+              <div className="text-4xl font-bold text-white mb-2">99.9%</div>
+              <div className="text-white/80">Uptime Garantido</div>
+            </div>
+            <div className="text-center glass-card p-8 border-white/20">
+              <div className="text-4xl font-bold text-white mb-2">500+</div>
+              <div className="text-white/80">Plantas Monitoradas</div>
+            </div>
+            <div className="text-center glass-card p-8 border-white/20">
+              <div className="text-4xl font-bold text-white mb-2">2.5GW</div>
+              <div className="text-white/80">Capacidade Total</div>
+            </div>
+          </div>
+
+          {/* CTA Section */}
+          <div className="text-center space-y-6 animate-scale-in" style={{ animationDelay: '1.5s' }}>
+            <h2 className="text-responsive-2xl font-display font-bold text-white">
+              Transforme sua gestão solar hoje mesmo
+            </h2>
+            <p className="text-white/80 text-lg max-w-2xl mx-auto">
+              Junte-se a centenas de empresas que já confiam no Monitor.ai para otimizar suas operações solares.
             </p>
-          </div>
-
-          <div className="flex gap-4 justify-center">
             <Button 
-              size="lg" 
-              className="text-lg px-8 py-3"
+              size="xl" 
+              variant="glass"
+              className="group text-white border-white/30 hover:bg-white/20"
               onClick={() => navigate('/auth')}
             >
-              Acessar Sistema
-            </Button>
-            <Button 
-              variant="outline" 
-              size="lg" 
-              className="text-lg px-8 py-3"
-              onClick={() => navigate('/auth')}
-            >
-              Criar Conta
+              Começar Agora
+              <TrendingUp className="w-5 h-5 group-hover:scale-110 transition-transform" />
             </Button>
           </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
-          <Card>
-            <CardHeader>
-              <BarChart3 className="w-8 h-8 text-blue-600 mb-2" />
-              <CardTitle>Analytics Avançado</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <CardDescription>
-                Dashboards interativos com métricas de performance e análise de tendências.
-              </CardDescription>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <Users className="w-8 h-8 text-green-600 mb-2" />
-              <CardTitle>Gestão de Clientes</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <CardDescription>
-                Sistema completo para gerenciar clientes, beneficiários e unidades consumidoras.
-              </CardDescription>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <FileText className="w-8 h-8 text-purple-600 mb-2" />
-              <CardTitle>OCR Inteligente</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <CardDescription>
-                Processamento automático de faturas com múltiplos engines de OCR.
-              </CardDescription>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <Shield className="w-8 h-8 text-red-600 mb-2" />
-              <CardTitle>Segurança Avançada</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <CardDescription>
-                Controle de acesso baseado em roles com autenticação segura.
-              </CardDescription>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="text-center">
-          <p className="text-gray-500 mb-4">
-            Precisa de acesso? Entre em contato com sua equipe ou administrador.
-          </p>
-          <Button 
-            variant="link" 
-            onClick={() => navigate('/auth')}
-            className="text-blue-600 hover:text-blue-800"
-          >
-            Já tenho uma conta →
-          </Button>
-        </div>
+        </section>
       </div>
     </div>
   );
