@@ -255,7 +255,7 @@ Responda APENAS com um JSON válido, sem texto adicional:
         total_processing_time_ms: totalProcessingTime,
         extracted_text_length: extractedText.length,
         pages_processed: allExtractedTexts.length,
-        processing_engine: 'hybrid',
+        processing_engine: 'hybrid_google_vision_chatgpt',
         timestamp: new Date().toISOString()
       };
 
@@ -385,7 +385,7 @@ Responda APENAS com um JSON válido, sem texto adicional:
             pages_processed: allExtractedTexts.length,
             processing_time_ms: totalProcessingTime,
             confidence_score: visionConfidence,
-            extraction_method: 'hybrid'
+             extraction_method: 'hybrid_google_vision_chatgpt'
           },
           raw_data: structuredData
         };
