@@ -47,7 +47,7 @@ export const MonitoringSetup = ({ plant, onUpdate }: MonitoringSetupProps) => {
 
   // Profile system for Sungrow
   const [selectedProfile, setSelectedProfile] = useState<SungrowCredentialProfile | null>(null);
-  const [configMode, setConfigMode] = useState<'profile' | 'manual'>('profile');
+  // Removed configMode - always use profiles
   const [sungrowConfig, setSungrowConfig] = useState<SungrowConfig>({
     username: '',
     password: '',
@@ -59,7 +59,7 @@ export const MonitoringSetup = ({ plant, onUpdate }: MonitoringSetupProps) => {
   });
 
   const getEffectiveConfig = (): SungrowConfig => {
-    if (configMode === 'profile' && selectedProfile) {
+    if (selectedProfile) {
       return SungrowProfileService.profileToConfig(selectedProfile);
     }
     return sungrowConfig;
@@ -279,60 +279,35 @@ export const MonitoringSetup = ({ plant, onUpdate }: MonitoringSetupProps) => {
           </div>
         )}
 
-        {/* Configuração Sungrow com Sistema de Perfis */}
+        {/* Configuração do Sungrow via Perfis */}
         {systemType === 'sungrow' && (
-          <>
-            <SungrowProfileSelector
-              onProfileSelect={setSelectedProfile}
-              selectedProfile={selectedProfile}
-            />
-            
-            <div className="flex items-center gap-4 p-4 border rounded-lg">
-              <div className="flex items-center space-x-2">
-                <input
-                  type="radio"
-                  id="profile-mode"
-                  name="config-mode"
-                  checked={configMode === 'profile'}
-                  onChange={() => setConfigMode('profile')}
-                  className="h-4 w-4"
-                />
-                <label htmlFor="profile-mode" className="text-sm font-medium">
-                  Usar perfil selecionado
-                </label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <input
-                  type="radio"
-                  id="manual-mode"
-                  name="config-mode"
-                  checked={configMode === 'manual'}
-                  onChange={() => setConfigMode('manual')}
-                  className="h-4 w-4"
-                />
-                <label htmlFor="manual-mode" className="text-sm font-medium">
-                  Configuração manual
-                </label>
-              </div>
-            </div>
-
-            {configMode === 'manual' && (
-              <SungrowConnectionTest 
-                onConnectionSuccess={(config) => {
-                  setSungrowConfig(config);
-                  setTestResult({ success: true, message: 'Conexão configurada com sucesso!' });
+          <div className="space-y-4">
+            <div className="p-4 border rounded-lg bg-muted/30">
+              <h4 className="font-medium mb-2">Configuração via Perfis</h4>
+              <p className="text-sm text-muted-foreground mb-4">
+                Use perfis de credenciais pré-configurados para garantir conexão estável com o Sungrow.
+              </p>
+              
+              <SungrowProfileSelector 
+                onProfileSelect={(profile) => {
+                  setSelectedProfile(profile);
+                  if (profile) {
+                    const config = SungrowProfileService.profileToConfig(profile);
+                    setSungrowConfig(config);
+                  }
                 }}
+                selectedProfile={selectedProfile}
               />
-            )}
+            </div>
             
             <SungrowPlantDiscovery 
               onPlantsSelected={(plants) => {
-                if (configMode === 'manual' && plants.length > 0) {
+                if (plants.length > 0) {
                   setSungrowConfig(prev => ({ ...prev, plantId: plants[0].id }));
                 }
               }}
             />
-          </>
+          </div>
         )}
 
         {/* Sincronização automática */}

@@ -533,17 +533,14 @@ export const PlantDiscovery = ({ onPlantImported }: PlantDiscoveryProps) => {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    <SungrowConnectionTest onConnectionSuccess={handleSungrowConnectionSuccess} />
-                    <div className="text-center">
-                      <Button 
-                        onClick={() => setCurrentStep(3)} 
-                        variant="outline"
-                      >
-                        Pular para Descoberta
-                      </Button>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Use perfis de credenciais existentes
+                    <div className="text-center p-6 border rounded-lg bg-muted/30">
+                      <h3 className="text-lg font-medium mb-2">Configure via Perfis de Credenciais</h3>
+                      <p className="text-sm text-muted-foreground mb-4">
+                        Para o Sungrow, use perfis de credenciais pré-configurados que garantem conexão estável.
                       </p>
+                      <Button onClick={() => setCurrentStep(3)} size="lg">
+                        Ir para Descoberta de Plantas
+                      </Button>
                     </div>
                     <div className="flex justify-between pt-4">
                       <Button variant="outline" onClick={() => setCurrentStep(1)}>

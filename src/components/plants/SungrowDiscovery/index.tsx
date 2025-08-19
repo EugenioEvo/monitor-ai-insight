@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { Search, RefreshCw } from 'lucide-react';
+import { Search, RefreshCw, InfoIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { LoadingSpinner } from '@/components/ui/loading-states';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useDebouncedCallback } from '@/hooks/useDebounce';
 import { useSungrowProfiles } from '@/hooks/useSungrowProfiles';
 import { 
@@ -177,14 +178,34 @@ export const SungrowPlantDiscovery: React.FC<SungrowPlantDiscoveryProps> = ({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Profile Selection */}
-        <ProfileSelector
-          profiles={profiles}
-          selectedProfile={selectedProfile}
-          loading={loadingProfiles}
-          onProfileSelect={selectProfile}
-          onResetError={resetErrorState}
-        />
+        {/* Profile Selection or Guide */}
+        {hasProfiles ? (
+          <ProfileSelector
+            profiles={profiles}
+            selectedProfile={selectedProfile}
+            loading={loadingProfiles}
+            onProfileSelect={selectProfile}
+            onResetError={resetErrorState}
+          />
+        ) : (
+          <div className="space-y-4">
+            <Alert>
+              <InfoIcon className="h-4 w-4" />
+              <AlertDescription>
+                <div className="flex items-center justify-between">
+                  <span>Nenhum perfil encontrado. Crie um perfil primeiro.</span>
+                  <Button 
+                    size="sm" 
+                    onClick={() => window.open('/plants', '_blank')}
+                    variant="outline"
+                  >
+                    Gerenciar Perfis
+                  </Button>
+                </div>
+              </AlertDescription>
+            </Alert>
+          </div>
+        )}
 
         {/* Error Display */}
         <ErrorDisplay
