@@ -1,177 +1,170 @@
-
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
-import { useToast } from '@/hooks/use-toast';
+import { toast } from '@/hooks/use-toast';
+import { useDebounce } from './useDebounce';
 
 interface RealtimeStatus {
   connected: boolean;
-  lastEventAt: Date | null;
+  lastEventAt?: Date;
 }
 
-/**
- * Hook centralizado para atualizações em tempo real no dashboard.
- * - Invalida queries relevantes ao receber eventos de readings, alerts, plants, sync_logs
- * - Mostra toast em alertas críticos e em novas plantas cadastradas
- */
-export const useRealtimeDashboard = (): RealtimeStatus => {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-  const [connected, setConnected] = useState(false);
-  const [lastEventAt, setLastEventAt] = useState<Date | null>(null);
-  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
-  const createdHereRef = useRef(false);
-  useEffect(() => {
-    // Garantir idempotência: não remover canal existente aqui; o cleanup cuidará disso
+// Singleton pattern for channel management
+class RealtimeChannelManager {
+  private static instance: RealtimeChannelManager;
+  private channel: ReturnType<typeof supabase.channel> | null = null;
+  private subscribers = new Set<() => void>();
+  private lastInvalidation = 0;
+  private invalidationQueue = new Map<string, NodeJS.Timeout>();
 
-
-    // Canal único para o dashboard - use um identificador estável e evite subscribe duplicado
-    const channelName = 'dashboard-realtime';
-    const existing = (supabase.getChannels?.() || []).find((ch: any) => {
-      const t = (ch as any).topic || '';
-      return t === channelName || t.endsWith(channelName);
-    });
-
-    let channel = existing as any;
-    createdHereRef.current = false;
-
-    if (!channel) {
-      channel = supabase.channel(channelName);
-      createdHereRef.current = true;
-
-      // Leituras: atualizar métricas e gráficos
-      channel.on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'readings' },
-        (payload: any) => {
-          console.log('[Realtime] readings event:', payload.eventType, payload);
-          setLastEventAt(new Date());
-          // Invalida métricas resumidas e quaisquer gráficos baseados em leituras
-          queryClient.invalidateQueries({ queryKey: ['metrics-summary'] });
-          queryClient.invalidateQueries({ queryKey: ['readings'] });
-          queryClient.invalidateQueries({ queryKey: ['energy-data'] });
-        }
-      );
-
-      // Alertas: atualizar lista de alertas e métricas; toast para críticos
-      channel.on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'alerts' },
-        (payload: any) => {
-          console.log('[Realtime] alerts event:', payload.eventType, payload);
-          setLastEventAt(new Date());
-          queryClient.invalidateQueries({ queryKey: ['alerts'] });
-          queryClient.invalidateQueries({ queryKey: ['metrics-summary'] });
-
-          const newRow = (payload as any).new;
-          if ((payload as any).eventType === 'INSERT' && newRow?.severity === 'critical') {
-            toast({
-              title: 'Alerta crítico',
-              description: newRow?.message || 'Novo alerta crítico detectado.',
-              variant: 'destructive',
-            });
-          }
-        }
-      );
-
-      // Invoices: atualizar dados de consumo
-      channel.on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'invoices' },
-        (payload: any) => {
-          console.log('[Realtime] invoices event:', payload.eventType, payload);
-          setLastEventAt(new Date());
-          queryClient.invalidateQueries({ queryKey: ['customer-consumption'] });
-          queryClient.invalidateQueries({ queryKey: ['metrics-summary'] });
-        }
-      );
-
-      // Customer Units: atualizar dados de consumo
-      channel.on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'customer_units' },
-        (payload: any) => {
-          console.log('[Realtime] customer_units event:', payload.eventType, payload);
-          setLastEventAt(new Date());
-          queryClient.invalidateQueries({ queryKey: ['customer-consumption'] });
-        }
-      );
-
-      // Sync logs: atualizar status e possíveis métricas
-      channel.on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'sync_logs' },
-        (payload: any) => {
-          console.log('[Realtime] sync_logs event:', payload.eventType, payload);
-          setLastEventAt(new Date());
-          queryClient.invalidateQueries({ queryKey: ['sync-logs'] });
-          queryClient.invalidateQueries({ queryKey: ['metrics-summary'] });
-        }
-      );
-
-      // Tickets: atualizar métricas
-      channel.on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'tickets' },
-        (payload: any) => {
-          console.log('[Realtime] tickets event:', payload.eventType, payload);
-          setLastEventAt(new Date());
-          queryClient.invalidateQueries({ queryKey: ['tickets'] });
-          queryClient.invalidateQueries({ queryKey: ['metrics-summary'] });
-        }
-      );
-
-      // Plants: novas plantas e atualizações de status
-      channel.on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'plants' },
-        (payload: any) => {
-          console.log('[Realtime] plants event:', payload.eventType, payload);
-          setLastEventAt(new Date());
-          queryClient.invalidateQueries({ queryKey: ['plants'] });
-
-          if ((payload as any).eventType === 'INSERT') {
-            const name = (payload as any).new?.name || 'Nova planta';
-            toast({
-              title: 'Planta cadastrada',
-              description: `${name} foi adicionada e está disponível no dashboard.`,
-            });
-          }
-        }
-      );
-
-      try {
-        channel.subscribe((status: any) => {
-          console.log('[Realtime] dashboard channel status:', status);
-          setConnected(status === 'SUBSCRIBED');
-        });
-      } catch (e: any) {
-        const msg = String(e?.message || e);
-        if (msg.toLowerCase().includes('subscribe') && msg.toLowerCase().includes('multiple')) {
-          console.warn('[Realtime] subscribe already called for this channel, skipping.');
-        } else {
-          console.error('[Realtime] error subscribing channel:', e);
-        }
-      }
-    } else {
-      // Já existe um canal subscrito; não chamar subscribe novamente
-      try {
-        const state = (channel as any).state || (channel as any)._state;
-        setConnected(state === 'SUBSCRIBED');
-      } catch {}
+  static getInstance() {
+    if (!RealtimeChannelManager.instance) {
+      RealtimeChannelManager.instance = new RealtimeChannelManager();
     }
+    return RealtimeChannelManager.instance;
+  }
 
-    channelRef.current = channel;
+  subscribe(callback: () => void) {
+    this.subscribers.add(callback);
+    if (!this.channel) {
+      this.initializeChannel();
+    }
+    return () => this.subscribers.delete(callback);
+  }
+
+  private debouncedInvalidate = (queryKey: string, invalidateFn: () => void) => {
+    // Clear existing timeout for this query key
+    if (this.invalidationQueue.has(queryKey)) {
+      clearTimeout(this.invalidationQueue.get(queryKey)!);
+    }
+    
+    // Set new timeout
+    const timeoutId = setTimeout(() => {
+      invalidateFn();
+      this.invalidationQueue.delete(queryKey);
+    }, 500); // 500ms debounce
+    
+    this.invalidationQueue.set(queryKey, timeoutId);
+  };
+
+  private initializeChannel() {
+    try {
+      this.channel = supabase.channel('dashboard-realtime', {
+        config: { presence: { key: 'dashboard' } }
+      });
+
+      this.channel
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'readings' }, () => {
+          this.debouncedInvalidate('readings', () => {
+            this.subscribers.forEach(callback => callback());
+          });
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'alerts' }, (payload) => {
+          if (payload.eventType === 'INSERT' && payload.new?.severity === 'critical') {
+            toast({
+              title: 'Alerta Crítico Detectado',
+              description: payload.new.message || 'Verifique o sistema imediatamente',
+              variant: 'destructive'
+            });
+          }
+          this.debouncedInvalidate('alerts', () => {
+            this.subscribers.forEach(callback => callback());
+          });
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'plants' }, (payload) => {
+          if (payload.eventType === 'INSERT') {
+            toast({
+              title: 'Nova Planta Registrada',
+              description: `Planta ${payload.new?.name} foi adicionada ao sistema`,
+            });
+          }
+          this.debouncedInvalidate('plants', () => {
+            this.subscribers.forEach(callback => callback());
+          });
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'invoices' }, () => {
+          this.debouncedInvalidate('invoices', () => {
+            this.subscribers.forEach(callback => callback());
+          });
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'customer_units' }, () => {
+          this.debouncedInvalidate('customer-units', () => {
+            this.subscribers.forEach(callback => callback());
+          });
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'sync_logs' }, () => {
+          this.debouncedInvalidate('sync-logs', () => {
+            this.subscribers.forEach(callback => callback());
+          });
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, () => {
+          this.debouncedInvalidate('tickets', () => {
+            this.subscribers.forEach(callback => callback());
+          });
+        })
+        .subscribe((status) => {
+          console.log('Realtime status:', status);
+        });
+    } catch (error) {
+      console.error('Failed to initialize realtime channel:', error);
+    }
+  }
+
+  cleanup() {
+    if (this.channel) {
+      this.channel.unsubscribe();
+      this.channel = null;
+    }
+    this.subscribers.clear();
+    // Clear all pending invalidations
+    this.invalidationQueue.forEach(timeout => clearTimeout(timeout));
+    this.invalidationQueue.clear();
+  }
+}
+
+export const useRealtimeDashboard = (): RealtimeStatus => {
+  const [connected, setConnected] = useState(false);
+  const [lastEventAt, setLastEventAt] = useState<Date>();
+  const queryClient = useQueryClient();
+  const manager = useRef<RealtimeChannelManager>(RealtimeChannelManager.getInstance());
+
+  const debouncedInvalidateQueries = useCallback(
+    useDebounce(() => {
+      setLastEventAt(new Date());
+      
+      // Batch invalidate related queries with error handling
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['readings'] }),
+        queryClient.invalidateQueries({ queryKey: ['plants'] }),
+        queryClient.invalidateQueries({ queryKey: ['alerts'] }),
+        queryClient.invalidateQueries({ queryKey: ['metrics-summary'] }),
+        queryClient.invalidateQueries({ queryKey: ['sync-status'] }),
+        queryClient.invalidateQueries({ queryKey: ['customer-dashboard-data'] }),
+        queryClient.invalidateQueries({ queryKey: ['plant-consumption'] }),
+      ]).catch(error => {
+        console.error('Error invalidating queries:', error);
+      });
+    }, 300),
+    [queryClient]
+  );
+
+  useEffect(() => {
+    const unsubscribe = manager.current.subscribe(debouncedInvalidateQueries);
+    setConnected(true);
 
     return () => {
-      if (createdHereRef.current && channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-        channelRef.current = null;
+      unsubscribe();
+    };
+  }, [debouncedInvalidateQueries]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (manager.current) {
+        manager.current.cleanup();
       }
     };
-  }, [queryClient, toast]);
+  }, []);
 
   return { connected, lastEventAt };
 };
-
-export default useRealtimeDashboard;

@@ -37,7 +37,7 @@ export const useCustomerConsumption = (customerId: string) => {
 
         const { data: invoiceData, error: invByUcError } = await supabase
           .from("invoices")
-          .select("uc_code, reference_month, energy_kwh, total_r$, taxes_r$")
+          .select('uc_code, reference_month, energy_kwh, "total_r$", "taxes_r$"')
           .in("uc_code", ucCodes)
           .eq("status", "processed")
           .order("reference_month", { ascending: true });
@@ -71,7 +71,7 @@ export const useCustomerConsumption = (customerId: string) => {
       // Buscar faturas por customer_unit_id
       const { data: invoiceData, error } = await supabase
         .from("invoices")
-        .select("customer_unit_id, reference_month, energy_kwh, total_r$, taxes_r$")
+        .select('customer_unit_id, reference_month, energy_kwh, "total_r$", "taxes_r$"')
         .in("customer_unit_id", unitIds)
         .eq("status", "processed")
         .order("reference_month", { ascending: true });

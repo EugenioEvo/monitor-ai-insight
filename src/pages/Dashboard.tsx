@@ -127,7 +127,7 @@ export default function Dashboard() {
                           </CardDescription>
                         </CardHeader>
                         <CardContent>
-                          <EnergyChart />
+                          <EnergyChart period={chartPeriod === 'DAY' ? 'today' : chartPeriod === 'MONTH' ? 'month' : 'week'} plantId={plant.id} height={240} />
                         </CardContent>
                       </Card>
                     ))}
