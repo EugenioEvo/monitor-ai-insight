@@ -5,7 +5,7 @@ import { ArrowLeft, TrendingUp, TrendingDown, Zap, DollarSign } from "lucide-rea
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useCustomerData } from "@/hooks/useCustomerData";
+import { useCustomerDashboardData } from "@/hooks/useCustomerDashboardData";
 import { CustomerGenerationTab } from "@/components/customers/dashboard/CustomerGenerationTab";
 import { CustomerConsumptionTab } from "@/components/customers/dashboard/CustomerConsumptionTab";
 import { CustomerOverviewCards } from "@/components/customers/dashboard/CustomerOverviewCards";
@@ -16,7 +16,7 @@ const CustomerDashboard = () => {
   const navigate = useNavigate();
   const [selectedPeriod, setSelectedPeriod] = useState("12"); // últimos 12 meses
   
-  const { data, isLoading, error } = useCustomerData(customerId!);
+  const { data, isLoading, error } = useCustomerDashboardData(customerId!, selectedPeriod);
 
   if (isLoading) {
     return (
@@ -34,7 +34,7 @@ const CustomerDashboard = () => {
     );
   }
 
-  const { customer, plants, units, invoices, readings, metrics } = data;
+  const { customer, plants, units, metrics, chartData, summary } = data;
 
   return (
     <div className="space-y-6">
@@ -55,17 +55,16 @@ const CustomerDashboard = () => {
 
       {/* Cards de Resumo */}
       <CustomerOverviewCards 
-        plants={plants}
-        units={units}
-        metrics={metrics}
+        summary={summary}
         selectedPeriod={selectedPeriod}
       />
 
       {/* Gráficos de Comparação */}
       <CustomerComparisonCharts 
-        customerId={customerId!}
+        chartData={chartData}
         selectedPeriod={selectedPeriod}
         onPeriodChange={setSelectedPeriod}
+        isLoading={isLoading}
       />
 
       {/* Abas Detalhadas */}
@@ -89,16 +88,12 @@ const CustomerDashboard = () => {
             <TabsContent value="generation">
               <CustomerGenerationTab 
                 customerId={customerId!}
-                plants={plants}
-                readings={readings}
               />
             </TabsContent>
             
             <TabsContent value="consumption">
               <CustomerConsumptionTab 
                 customerId={customerId!}
-                units={units}
-                invoices={invoices}
               />
             </TabsContent>
           </Tabs>

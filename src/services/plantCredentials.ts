@@ -9,34 +9,21 @@ export interface SungrowCredentialInput {
 }
 
 export async function upsertSungrowCredentials(plantId: string, input: SungrowCredentialInput) {
-  const payload = {
-    plant_id: plantId,
-    provider: 'sungrow',
-    username: input.username || null,
-    password: input.password || null,
-    appkey: input.appkey || null,
-    access_key: input.accessKey || null,
-    base_url: input.baseUrl || null,
-  };
-
-  const { data, error } = await supabase
-    .from('plant_credentials')
-    .upsert(payload, { onConflict: 'plant_id,provider' })
-    .select()
-    .maybeSingle();
+  const { data, error } = await supabase.functions.invoke('secure-credentials', {
+    body: { ...input, plantId, action: 'upsert' },
+    method: 'POST'
+  });
 
   if (error) throw error;
-  return data;
+  return data?.data;
 }
 
 export async function getSungrowCredentials(plantId: string) {
-  const { data, error } = await supabase
-    .from('plant_credentials')
-    .select('username, password, appkey, access_key, base_url')
-    .eq('plant_id', plantId)
-    .eq('provider', 'sungrow')
-    .maybeSingle();
+  const { data, error } = await supabase.functions.invoke('secure-credentials', {
+    body: { plantId, action: 'get' },
+    method: 'POST'
+  });
 
   if (error) throw error;
-  return data;
+  return data?.data;
 }

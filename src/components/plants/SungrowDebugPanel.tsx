@@ -4,16 +4,20 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { AlertCircle, CheckCircle, Loader2, Wifi, WifiOff, TestTube } from 'lucide-react';
+import { AlertCircle, CheckCircle, Loader2, Wifi, WifiOff, TestTube, Activity, TrendingUp } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { SungrowDiagnosticPanel } from './SungrowDiagnosticPanel';
+import { useSungrowDiagnostics } from '@/hooks/useSungrowDiagnostics';
 
 export const SungrowDebugPanel = () => {
   const { toast } = useToast();
+  const { metrics, runHealthCheck } = useSungrowDiagnostics();
   const [loading, setLoading] = useState(false);
   const [testResult, setTestResult] = useState<any>(null);
   const [discoveryResult, setDiscoveryResult] = useState<any>(null);
+  const [healthStatus, setHealthStatus] = useState<any>(null);
   
   const [config, setConfig] = useState({
     username: '',
@@ -135,24 +139,88 @@ export const SungrowDebugPanel = () => {
     }
   };
 
+  const checkSystemHealth = async () => {
+    setLoading(true);
+    try {
+      const health = await runHealthCheck();
+      setHealthStatus(health);
+      
+      toast({
+        title: `Sistema ${health.status === 'healthy' ? 'Saudável' : health.status === 'degraded' ? 'Degradado' : 'Com Problemas'}`,
+        description: `${health.issues.length} problemas encontrados`,
+        variant: health.status === 'healthy' ? 'default' : 'destructive'
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Erro no health check',
+        description: error.message,
+        variant: 'destructive'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
+      {/* Health Status Card */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <TestTube className="w-5 h-5" />
-            Debug Sungrow - Teste suas Credenciais
-          </CardTitle>
-          <CardDescription>
-            Use este painel para testar e debugar as credenciais Sungrow que funcionavam na semana passada
-          </CardDescription>
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <TestTube className="w-5 h-5" />
+              <div>
+                <CardTitle>Sistema de Diagnóstico Sungrow</CardTitle>
+                <CardDescription>
+                  Teste credenciais e monitore saúde da conectividade
+                </CardDescription>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={checkSystemHealth} disabled={loading}>
+                <Activity className="w-4 h-4 mr-2" />
+                Health Check
+              </Button>
+              {metrics && (
+                <Badge variant={metrics.successRate > 80 ? "default" : metrics.successRate > 50 ? "secondary" : "destructive"}>
+                  <TrendingUp className="w-3 h-3 mr-1" />
+                  {metrics.successRate.toFixed(1)}% Success
+                </Badge>
+              )}
+            </div>
+          </div>
+          {healthStatus && (
+            <div className="mt-4 p-3 border rounded-lg">
+              <div className="flex items-center gap-2 mb-2">
+                {healthStatus.status === 'healthy' ? 
+                  <CheckCircle className="w-4 h-4 text-green-500" /> : 
+                  <AlertCircle className="w-4 h-4 text-red-500" />
+                }
+                <span className="font-medium">
+                  Status: {healthStatus.status === 'healthy' ? 'Saudável' : 
+                           healthStatus.status === 'degraded' ? 'Degradado' : 'Com Problemas'}
+                </span>
+              </div>
+              {healthStatus.issues.length > 0 && (
+                <div className="text-sm text-red-600 mb-2">
+                  <strong>Problemas:</strong> {healthStatus.issues.join(', ')}
+                </div>
+              )}
+              {healthStatus.recommendations.length > 0 && (
+                <div className="text-sm text-blue-600">
+                  <strong>Recomendações:</strong> {healthStatus.recommendations.join(', ')}
+                </div>
+              )}
+            </div>
+          )}
         </CardHeader>
       </Card>
 
       <Tabs defaultValue="test" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="test">Teste de Conexão</TabsTrigger>
           <TabsTrigger value="discover">Descobrir Plantas</TabsTrigger>
+          <TabsTrigger value="diagnostics">Diagnóstico Avançado</TabsTrigger>
         </TabsList>
 
         <TabsContent value="test" className="space-y-4">
@@ -315,6 +383,10 @@ export const SungrowDebugPanel = () => {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="diagnostics" className="space-y-4">
+          <SungrowDiagnosticPanel />
         </TabsContent>
       </Tabs>
     </div>

@@ -8,11 +8,9 @@ import type { CustomerUnit, Invoice } from "@/types";
 
 interface CustomerConsumptionTabProps {
   customerId: string;
-  units: CustomerUnit[];
-  invoices: Invoice[];
 }
 
-export const CustomerConsumptionTab = ({ customerId, units, invoices }: CustomerConsumptionTabProps) => {
+export const CustomerConsumptionTab = ({ customerId }: CustomerConsumptionTabProps) => {
   const { data: consumptionData, isLoading } = useCustomerConsumption(customerId);
 
   if (isLoading) {
@@ -23,9 +21,17 @@ export const CustomerConsumptionTab = ({ customerId, units, invoices }: Customer
     );
   }
 
-  const totalConsumption = invoices.reduce((sum, invoice) => sum + invoice.energy_kwh, 0);
-  const totalCost = invoices.reduce((sum, invoice) => sum + invoice.total_r$, 0);
-  const averageCost = invoices.length > 0 ? totalCost / invoices.length : 0;
+  const unitsData = consumptionData && typeof consumptionData === 'object' && 'units' in consumptionData 
+    ? consumptionData.units 
+    : [];
+
+  const chartData = consumptionData && typeof consumptionData === 'object' && 'chartData' in consumptionData 
+    ? consumptionData.chartData 
+    : [];
+
+  const totalConsumption = chartData.reduce((sum: any, data: any) => sum + data.consumption, 0);
+  const totalCost = chartData.reduce((sum: any, data: any) => sum + data.cost, 0);
+  const averageCost = chartData.length > 0 ? totalCost / chartData.length : 0;
 
   return (
     <div className="space-y-6">
@@ -37,7 +43,7 @@ export const CustomerConsumptionTab = ({ customerId, units, invoices }: Customer
             <Building className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{units.length}</div>
+            <div className="text-2xl font-bold">{unitsData.length}</div>
             <p className="text-xs text-muted-foreground">
               Unidades consumidoras
             </p>
@@ -78,19 +84,18 @@ export const CustomerConsumptionTab = ({ customerId, units, invoices }: Customer
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {units.map((unit) => (
+            {unitsData.map((unit: any) => (
               <div key={unit.id} className="flex items-center justify-between p-4 border rounded-lg">
                 <div>
                   <h4 className="font-medium">{unit.unit_name || unit.uc_code}</h4>
                   <p className="text-sm text-muted-foreground">
                     UC: {unit.uc_code}
-                    {unit.address_city && ` • ${unit.address_city}, ${unit.address_state}`}
                   </p>
                 </div>
                 <Badge 
-                  variant={unit.is_active ? 'default' : 'secondary'}
+                  variant="default"
                 >
-                  {unit.is_active ? 'Ativa' : 'Inativa'}
+                  Ativa
                 </Badge>
               </div>
             ))}
@@ -99,7 +104,7 @@ export const CustomerConsumptionTab = ({ customerId, units, invoices }: Customer
       </Card>
 
       {/* Gráfico de Consumo */}
-      {consumptionData && typeof consumptionData === 'object' && 'chartData' in consumptionData && consumptionData.chartData.length > 0 && (
+      {chartData.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>
             <CardHeader>
@@ -107,7 +112,7 @@ export const CustomerConsumptionTab = ({ customerId, units, invoices }: Customer
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={consumptionData.chartData}>
+                <BarChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" />
                   <YAxis />
@@ -124,7 +129,7 @@ export const CustomerConsumptionTab = ({ customerId, units, invoices }: Customer
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={consumptionData.chartData}>
+                <LineChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" />
                   <YAxis />
@@ -137,29 +142,25 @@ export const CustomerConsumptionTab = ({ customerId, units, invoices }: Customer
         </div>
       )}
 
-      {/* Faturas Recentes */}
+      {/* Dados Recentes */}
       <Card>
         <CardHeader>
-          <CardTitle>Faturas Recentes</CardTitle>
+          <CardTitle>Resumo de Consumo</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-2">
-            {invoices.slice(0, 5).map((invoice) => (
-              <div key={invoice.id} className="flex items-center justify-between p-3 border rounded">
-                <div>
-                  <p className="font-medium">UC: {invoice.uc_code}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {invoice.reference_month} • {invoice.energy_kwh} kWh
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="font-medium">R$ {invoice.total_r$.toFixed(2)}</p>
-                  <Badge variant={invoice.status === 'processed' ? 'default' : 'secondary'}>
-                    {invoice.status}
-                  </Badge>
-                </div>
-              </div>
-            ))}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="text-center p-4 bg-muted rounded-lg">
+              <p className="text-2xl font-bold text-blue-600">{totalConsumption.toLocaleString()}</p>
+              <p className="text-sm text-muted-foreground">kWh Total</p>
+            </div>
+            <div className="text-center p-4 bg-muted rounded-lg">
+              <p className="text-2xl font-bold text-red-600">R$ {totalCost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+              <p className="text-sm text-muted-foreground">Custo Total</p>
+            </div>
+            <div className="text-center p-4 bg-muted rounded-lg">
+              <p className="text-2xl font-bold text-green-600">R$ {averageCost.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+              <p className="text-sm text-muted-foreground">Custo Médio</p>
+            </div>
           </div>
         </CardContent>
       </Card>
