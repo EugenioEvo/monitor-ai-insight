@@ -4,6 +4,7 @@ import { Zap } from "lucide-react";
 import { MetricsGrid } from "./MetricsGrid";
 import { EnergyChart } from "./EnergyChart";
 import { AlertsList } from "./AlertsList";
+import { DashboardStats } from "./DashboardStats";
 import type { MetricsSummary } from "@/hooks/useMetrics";
 
 interface DashboardOverviewProps {
@@ -11,13 +12,17 @@ interface DashboardOverviewProps {
   metricsLoading: boolean;
   selectedPeriod: 'today' | 'week' | 'month';
   alertsCount?: number;
+  plants?: any[];
+  alerts?: any[];
 }
 
 export function DashboardOverview({ 
   metrics, 
   metricsLoading, 
   selectedPeriod, 
-  alertsCount 
+  alertsCount,
+  plants = [],
+  alerts = []
 }: DashboardOverviewProps) {
   const getPeriodLabel = (period: 'today' | 'week' | 'month') => {
     switch (period) {
@@ -29,6 +34,13 @@ export function DashboardOverview({
 
   return (
     <div className="space-y-8 animate-fade-in">
+      {/* Quick Stats */}
+      <DashboardStats
+        plants={plants}
+        alerts={alerts}
+        isLoading={metricsLoading}
+      />
+
       {/* Metrics Cards */}
       <MetricsGrid
         metrics={metrics}

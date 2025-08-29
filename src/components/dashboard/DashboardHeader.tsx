@@ -5,7 +5,7 @@ import { LiveBadge } from "./LiveBadge";
 
 interface DashboardHeaderProps {
   connected: boolean;
-  lastEventAt: Date | null;
+  lastEventAt?: Date;
   isLoading: boolean;
   onRefresh: () => void;
 }
