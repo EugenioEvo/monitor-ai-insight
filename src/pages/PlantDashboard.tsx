@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Activity, TrendingUp, Leaf, AlertTriangle, Settings, Zap } from 'lucide-react';
+import { ArrowLeft, Activity, TrendingUp, Leaf, AlertTriangle, Settings } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { PlantOverview } from '@/components/dashboard/PlantOverview';
 import { ProductionCharts } from '@/components/dashboard/ProductionCharts';
@@ -13,7 +13,6 @@ import { EquipmentStatus } from '@/components/dashboard/EquipmentStatus';
 import { EnvironmentalBenefits } from '@/components/dashboard/EnvironmentalBenefits';
 import { BeneficiaryManagement } from '@/components/beneficiaries/BeneficiaryManagement';
 import { PlantConfiguration } from '@/components/plants/PlantConfiguration';
-import { PlantConsumptionView } from '@/components/dashboard/PlantConsumptionView';
 import type { Plant } from '@/types';
 
 export default function PlantDashboard() {
@@ -81,7 +80,7 @@ export default function PlantDashboard() {
 
       {/* Dashboard Tabs */}
       <Tabs defaultValue="overview" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-7">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="overview">
             <Activity className="w-4 h-4 mr-2" />
             Visão Geral
@@ -89,10 +88,6 @@ export default function PlantDashboard() {
           <TabsTrigger value="production">
             <TrendingUp className="w-4 h-4 mr-2" />
             Produção
-          </TabsTrigger>
-          <TabsTrigger value="consumption">
-            <Zap className="w-4 h-4 mr-2" />
-            Consumo
           </TabsTrigger>
           <TabsTrigger value="equipment">
             <AlertTriangle className="w-4 h-4 mr-2" />
@@ -117,10 +112,6 @@ export default function PlantDashboard() {
 
         <TabsContent value="production">
           <ProductionCharts plant={plant} />
-        </TabsContent>
-
-        <TabsContent value="consumption">
-          <PlantConsumptionView plant={plant} />
         </TabsContent>
 
         <TabsContent value="equipment">

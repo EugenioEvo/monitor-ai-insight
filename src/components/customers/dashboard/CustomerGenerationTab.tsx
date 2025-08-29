@@ -8,9 +8,11 @@ import type { Plant, Reading } from "@/types";
 
 interface CustomerGenerationTabProps {
   customerId: string;
+  plants: Plant[];
+  readings: Reading[];
 }
 
-export const CustomerGenerationTab = ({ customerId }: CustomerGenerationTabProps) => {
+export const CustomerGenerationTab = ({ customerId, plants, readings }: CustomerGenerationTabProps) => {
   const { data: generationData, isLoading } = useCustomerGeneration(customerId);
 
   if (isLoading) {
@@ -29,8 +31,8 @@ export const CustomerGenerationTab = ({ customerId }: CustomerGenerationTabProps
     ? generationData.plants 
     : [];
 
-  const totalCapacity = plantsData.reduce((sum: any, plant: any) => sum + plant.capacity_kwp, 0);
-  const totalGeneration = chartData.reduce((sum: any, data: any) => sum + data.total, 0);
+  const totalCapacity = plants.reduce((sum, plant) => sum + plant.capacity_kwp, 0);
+  const totalGeneration = readings.reduce((sum, reading) => sum + reading.energy_kwh, 0);
 
   const getPlantColors = () => {
     const colors = ['#22c55e', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
@@ -52,7 +54,7 @@ export const CustomerGenerationTab = ({ customerId }: CustomerGenerationTabProps
             <Zap className="h-4 w-4 text-green-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{plantsData.length}</div>
+            <div className="text-2xl font-bold">{plants.length}</div>
             <p className="text-xs text-muted-foreground">
               {totalCapacity.toFixed(1)} kWp total
             </p>
@@ -95,19 +97,19 @@ export const CustomerGenerationTab = ({ customerId }: CustomerGenerationTabProps
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {plantsData.map((plant: any) => (
+            {plants.map((plant) => (
               <div key={plant.id} className="flex items-center justify-between p-4 border rounded-lg">
                 <div>
                   <h4 className="font-medium">{plant.name}</h4>
                   <p className="text-sm text-muted-foreground">
-                    {plant.capacity_kwp} kWp
+                    {plant.capacity_kwp} kWp • {plant.concessionaria}
                   </p>
                 </div>
                 <Badge 
-                  variant="default"
+                  variant={plant.status === 'active' ? 'default' : 'secondary'}
                   className="capitalize"
                 >
-                  Ativa
+                  {plant.status}
                 </Badge>
               </div>
             ))}

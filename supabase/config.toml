@@ -2,6 +2,3 @@ project_id = "znsctgihxeuhjqcofgsi"
 
 [functions.sungrow-connector]
 verify_jwt = false
-
-[functions.hybrid-invoice-ocr]
-verify_jwt = false

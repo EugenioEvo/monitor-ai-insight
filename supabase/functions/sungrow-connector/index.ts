@@ -103,78 +103,33 @@ class SungrowAPI {
       baseUrl: config.baseUrl || 'https://gateway.isolarcloud.com.hk'
     };
     this.supabase = supabase;
-    
-    // Log configuração inicial (sem dados sensíveis)
-    this.logDiagnostic('CONFIG_INIT', {
-      authMode: config.authMode,
-      hasUsername: !!config.username,
-      hasAppkey: !!config.appkey,
-      hasAccessKey: !!config.accessKey,
-      baseUrl: config.baseUrl,
-      appkeyLength: config.appkey?.length || 0,
-      accessKeyLength: config.accessKey?.length || 0
-    });
-  }
-
-  // Sistema de logging diagnóstico centralizado
-  private async logDiagnostic(event: string, data: any, level: 'info' | 'warn' | 'error' = 'info'): Promise<void> {
-    const timestamp = new Date().toISOString();
-    const logEntry = {
-      timestamp,
-      event,
-      level,
-      data: typeof data === 'object' ? data : { message: data }
-    };
-    
-    console.log(`[SUNGROW-${level.toUpperCase()}] ${event}:`, logEntry.data);
-    
-    // Salvar logs críticos no banco para análise posterior
-    if (level === 'error' || event.includes('AUTH_FAIL') || event.includes('API_ERROR')) {
-      try {
-        await this.supabase.from('system_metrics').insert({
-          metric_type: 'sungrow_diagnostic',
-          metric_data: logEntry
-        });
-      } catch (dbError) {
-        console.warn('Failed to save diagnostic log to database:', dbError);
-      }
-    }
   }
 
   private validateConfig(): void {
-    const validationData = {
+    console.log('Validando configuração Sungrow:', {
       hasAppkey: !!this.config.appkey,
       hasAccessKey: !!this.config.accessKey,
       hasUsername: !!this.config.username,
       hasPassword: !!this.config.password,
       appkeyLength: this.config.appkey?.length || 0,
       accessKeyLength: this.config.accessKey?.length || 0
-    };
-    
-    this.logDiagnostic('CONFIG_VALIDATION', validationData);
+    });
 
-    const validationErrors: string[] = [];
-    
     if (!this.config.appkey?.trim()) {
-      validationErrors.push('AppKey é obrigatório');
+      throw new Error('AppKey é obrigatório e não pode estar vazio');
     }
     
     if (!this.config.accessKey?.trim()) {
-      validationErrors.push('AccessKey é obrigatório');
-    } else if (this.config.accessKey.length < 10) {
-      validationErrors.push('AccessKey muito curto (pode estar incompleto)');
-    } else if (this.config.accessKey.includes('\n') || this.config.accessKey.includes('\r')) {
-      validationErrors.push('AccessKey contém quebras de linha (formato inválido)');
+      throw new Error('AccessKey (x-access-key) é obrigatório e não pode estar vazio');
     }
     
-    if (this.config.authMode === 'direct') {
-      if (!this.config.username?.trim()) validationErrors.push('Username é obrigatório para autenticação direta');
-      if (!this.config.password?.trim()) validationErrors.push('Password é obrigatório para autenticação direta');
+    // Validação adicional para E912
+    if (this.config.accessKey.length < 10) {
+      throw new Error('AccessKey parece estar incompleto (muito curto)');
     }
     
-    if (validationErrors.length > 0) {
-      this.logDiagnostic('CONFIG_VALIDATION_FAILED', { errors: validationErrors }, 'error');
-      throw new Error(`Configuração inválida: ${validationErrors.join(', ')}`);
+    if (!this.config.username?.trim() || !this.config.password?.trim()) {
+      throw new Error('Username e Password são obrigatórios para autenticação direta');
     }
   }
 
@@ -191,18 +146,14 @@ class SungrowAPI {
   private async makeRequest(endpoint: string, data: any) {
     const url = `${this.config.baseUrl}${endpoint}`;
     
-    const requestData = {
+    console.log(`Making request to: ${endpoint}`, {
       url,
-      endpoint,
       hasToken: !!this.token,
       hasAccessKey: !!this.config.accessKey,
       accessKeyPrefix: this.config.accessKey ? `${this.config.accessKey.substring(0, 8)}...` : 'missing',
       dataKeys: Object.keys(data || {}),
-      languageParam: data.lang || 'not included',
-      requestId: `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-    };
-    
-    this.logDiagnostic('API_REQUEST_START', requestData);
+      languageParam: data.lang || 'not included'
+    });
 
     // Garantir que o parâmetro sys_code seja sempre enviado (requisito de algumas regiões)
     if (data && typeof data === 'object' && data.sys_code === undefined) {
@@ -260,40 +211,20 @@ class SungrowAPI {
 
       const result = await response.json();
       
-      const responseData = {
-        endpoint,
+      console.log(`Response from ${endpoint}:`, {
         result_code: result.result_code,
         result_msg: result.result_msg,
-        hasData: !!result.result_data,
-        duration_ms: Date.now() - parseInt(requestData.requestId.split('_')[1]),
-        success: result.result_code === '1'
-      };
-      
-      this.logDiagnostic('API_RESPONSE', responseData, result.result_code === '1' ? 'info' : 'warn');
+        hasData: !!result.result_data
+      });
 
-      // Tratamento detalhado de erros com diagnóstico
-      if (result.result_code !== '1') {
-        const errorDetails = {
-          error_code: result.result_code,
-          error_message: result.result_msg,
-          endpoint,
+      // Tratamento específico para erro E912
+      if (result.result_code === 'E912') {
+        console.error('E912 Error Details:', {
           provided_access_key_length: this.config.accessKey?.length || 0,
           provided_access_key_prefix: this.config.accessKey ? `${this.config.accessKey.substring(0, 8)}...` : 'none',
-          suggested_solution: this.getSuggestedSolution(result.result_code)
-        };
-        
-        this.logDiagnostic('API_ERROR', errorDetails, 'error');
-        
-        if (result.result_code === 'E912') {
-          throw new Error(`Chave de acesso inválida (E912): ${result.result_msg}. ${errorDetails.suggested_solution}`);
-        } else if (result.result_code === 'E00000' && result.result_msg === 'er_invalid_appkey') {
-          throw new Error(`App Key inválida: ${result.result_msg}. Verifique se a App Key está correta no portal Sungrow.`);
-        } else if (result.result_code === '4') {
-          throw new Error(`Client ID não confere (OAuth): ${result.result_msg}. Verifique a configuração OAuth no portal.`);
-        } else {
-          const knownError = SUNGROW_ERROR_CODES[result.result_code] || result.result_msg;
-          throw new Error(`API Error (${result.result_code}): ${knownError}`);
-        }
+          error_message: result.result_msg
+        });
+        throw new Error(`Chave de acesso inválida (E912): ${result.result_msg}. Verifique se a x-access-key está correta no portal Sungrow.`);
       }
 
       return result;
@@ -469,7 +400,7 @@ class SungrowAPI {
       authMode: this.config.authMode
     });
     
-  // Simple hash function for config identification
+    // Simple hash function for config identification
     let hash = 0;
     for (let i = 0; i < configStr.length; i++) {
       const char = configStr.charCodeAt(i);
@@ -477,20 +408,6 @@ class SungrowAPI {
       hash = hash & hash; // Convert to 32-bit integer
     }
     return hash.toString();
-  }
-
-  private getSuggestedSolution(errorCode: string): string {
-    const solutions: Record<string, string> = {
-      'E912': 'Copie novamente a Access Key do portal sem espaços extras',
-      'E00000': 'Verifique se a App Key está registrada e ativa no portal',
-      '4': 'Configure corretamente o Client ID no OAuth do portal Sungrow',
-      'E900': 'Verifique credenciais e se OpenAPI está habilitado',
-      '1002': 'Token expirado - realize nova autenticação',
-      '1005': 'Conta bloqueada - contate suporte Sungrow',
-      'er_invalid_appkey': 'App Key não registrada ou inativa no portal'
-    };
-    
-    return solutions[errorCode] || 'Verifique a documentação da API Sungrow';
   }
 
   private async authenticateDirectLogin(): Promise<string> {

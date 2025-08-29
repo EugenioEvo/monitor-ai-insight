@@ -196,7 +196,7 @@ export const SungrowPlantDiscovery: React.FC<SungrowPlantDiscoveryProps> = ({
                   <span>Nenhum perfil encontrado. Crie um perfil primeiro.</span>
                   <Button 
                     size="sm" 
-                    onClick={() => window.location.href = '/plants?tab=profiles'}
+                    onClick={() => window.open('/plants', '_blank')}
                     variant="outline"
                   >
                     Gerenciar Perfis

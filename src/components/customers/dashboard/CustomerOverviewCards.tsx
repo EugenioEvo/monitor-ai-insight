@@ -4,34 +4,28 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import type { Plant, CustomerUnit, CustomerMetrics } from "@/types";
 
 interface CustomerOverviewCardsProps {
-  summary: {
-    totalGeneration: number;
-    totalConsumption: number;
-    totalCost: number;
-    totalSavings: number;
-    energyBalance: number;
-    avgSelfSufficiency: number;
-    activePlants: number;
-    totalCapacity: number;
-    activeUnits: number;
-  };
+  plants: Plant[];
+  units: CustomerUnit[];
+  metrics: CustomerMetrics[];
   selectedPeriod: string;
 }
 
 export const CustomerOverviewCards = ({ 
-  summary, 
+  plants, 
+  units, 
+  metrics, 
   selectedPeriod 
 }: CustomerOverviewCardsProps) => {
-  const {
-    totalGeneration,
-    totalConsumption,
-    totalSavings,
-    energyBalance,
-    avgSelfSufficiency,
-    activePlants,
-    totalCapacity,
-    activeUnits
-  } = summary;
+  // Calcular métricas dos últimos meses baseado no período selecionado
+  const recentMetrics = metrics.slice(0, parseInt(selectedPeriod));
+  
+  const totalGeneration = recentMetrics.reduce((sum, metric) => sum + metric.total_generation_kwh, 0);
+  const totalConsumption = recentMetrics.reduce((sum, metric) => sum + metric.total_consumption_kwh, 0);
+  const totalSavings = recentMetrics.reduce((sum, metric) => sum + metric.total_savings_r$, 0);
+  const energyBalance = totalGeneration - totalConsumption;
+  
+  const activePlants = plants.filter(plant => plant.status === 'active').length;
+  const totalCapacity = plants.reduce((sum, plant) => sum + plant.capacity_kwp, 0);
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -54,7 +48,7 @@ export const CustomerOverviewCards = ({
           <Home className="h-4 w-4 text-blue-600" />
         </CardHeader>
         <CardContent>
-          <div className="text-2xl font-bold">{activeUnits}</div>
+          <div className="text-2xl font-bold">{units.length}</div>
           <p className="text-xs text-muted-foreground">
             UCs ativas
           </p>
@@ -115,7 +109,7 @@ export const CustomerOverviewCards = ({
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold text-blue-600">
-            {avgSelfSufficiency.toFixed(1)}%
+            {totalConsumption > 0 ? ((totalGeneration / totalConsumption) * 100).toFixed(1) : 0}%
           </div>
           <p className="text-xs text-muted-foreground">
             Percentual de energia própria

@@ -10,10 +10,9 @@ import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { useToast } from '@/hooks/use-toast';
 import { SungrowProfileService, type SungrowCredentialProfile, type CreateSungrowProfileInput } from '@/services/sungrowProfileService';
-import { Plus, Edit2, Trash2, Star, StarOff, Key, Settings, ArrowUp, ArrowDown } from 'lucide-react';
+import { Plus, Edit2, Trash2, Star, StarOff, Key, Settings } from 'lucide-react';
 
 interface SungrowProfileManagerProps {
   onProfileSelect?: (profile: SungrowCredentialProfile) => void;
@@ -159,13 +158,11 @@ export const SungrowProfileManager: React.FC<SungrowProfileManagerProps> = ({
                 Novo Perfil
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-md max-h-[90vh]">
+            <DialogContent className="max-w-md">
               <DialogHeader>
                 <DialogTitle>Criar Novo Perfil</DialogTitle>
               </DialogHeader>
-              <ScrollArea className="max-h-[70vh] pr-2">
-                <ProfileForm onSubmit={handleCreateProfile} />
-              </ScrollArea>
+              <ProfileForm onSubmit={handleCreateProfile} />
             </DialogContent>
           </Dialog>
         </div>
@@ -179,10 +176,8 @@ export const SungrowProfileManager: React.FC<SungrowProfileManagerProps> = ({
             </AlertDescription>
           </Alert>
         ) : (
-          <div className="space-y-3 relative">
-            <ScrollArea className="max-h-96">
-              <div className="space-y-3 pr-3">
-                {profiles.map((profile) => (
+          <div className="space-y-3">
+            {profiles.map((profile) => (
               <div key={profile.id} className="border rounded-lg p-4 space-y-3">
                 <div className="flex items-start justify-between">
                   <div className="space-y-1">
@@ -228,18 +223,16 @@ export const SungrowProfileManager: React.FC<SungrowProfileManagerProps> = ({
                           <Edit2 className="h-4 w-4" />
                         </Button>
                       </DialogTrigger>
-                      <DialogContent className="max-w-md max-h-[90vh]">
+                      <DialogContent className="max-w-md">
                         <DialogHeader>
                           <DialogTitle>Editar Perfil</DialogTitle>
                         </DialogHeader>
-                        <ScrollArea className="max-h-[70vh] pr-2">
-                          {editingProfile && (
-                            <ProfileForm 
-                              initialData={editingProfile}
-                              onSubmit={(data) => handleEditProfile(profile.id, data)}
-                            />
-                          )}
-                        </ScrollArea>
+                        {editingProfile && (
+                          <ProfileForm 
+                            initialData={editingProfile}
+                            onSubmit={(data) => handleEditProfile(profile.id, data)}
+                          />
+                        )}
                       </DialogContent>
                     </Dialog>
 
@@ -264,40 +257,8 @@ export const SungrowProfileManager: React.FC<SungrowProfileManagerProps> = ({
                     </Button>
                   </div>
                 )}
-                </div>
-              ))}
               </div>
-            </ScrollArea>
-            
-            {/* Botões de navegação rápida */}
-            {profiles.length > 3 && (
-              <div className="absolute right-2 top-2 flex flex-col gap-1">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0 bg-background/80 backdrop-blur-sm shadow-sm"
-                  onClick={() => {
-                    const scrollArea = document.querySelector('[data-radix-scroll-area-viewport]');
-                    scrollArea?.scrollTo({ top: 0, behavior: 'smooth' });
-                  }}
-                  title="Rolar para o topo"
-                >
-                  <ArrowUp className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0 bg-background/80 backdrop-blur-sm shadow-sm"
-                  onClick={() => {
-                    const scrollArea = document.querySelector('[data-radix-scroll-area-viewport]');
-                    scrollArea?.scrollTo({ top: scrollArea.scrollHeight, behavior: 'smooth' });
-                  }}
-                  title="Rolar para baixo"
-                >
-                  <ArrowDown className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
+            ))}
           </div>
         )}
       </CardContent>

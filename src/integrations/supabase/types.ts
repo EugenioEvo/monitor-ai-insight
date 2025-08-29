@@ -346,50 +346,6 @@ export type Database = {
         }
         Relationships: []
       }
-      invoice_analyses: {
-        Row: {
-          ai_insights: Json | null
-          analysis_report: Json
-          anomalies_detected: Json | null
-          chat_report: string | null
-          created_at: string | null
-          id: string
-          invoice_id: string | null
-          recommendations: Json | null
-          updated_at: string | null
-        }
-        Insert: {
-          ai_insights?: Json | null
-          analysis_report: Json
-          anomalies_detected?: Json | null
-          chat_report?: string | null
-          created_at?: string | null
-          id?: string
-          invoice_id?: string | null
-          recommendations?: Json | null
-          updated_at?: string | null
-        }
-        Update: {
-          ai_insights?: Json | null
-          analysis_report?: Json
-          anomalies_detected?: Json | null
-          chat_report?: string | null
-          created_at?: string | null
-          id?: string
-          invoice_id?: string | null
-          recommendations?: Json | null
-          updated_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "invoice_analyses_invoice_id_fkey"
-            columns: ["invoice_id"]
-            isOneToOne: false
-            referencedRelation: "invoices"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       invoices: {
         Row: {
           bandeira_tipo: string | null
