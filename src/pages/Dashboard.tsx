@@ -30,16 +30,30 @@ export default function Dashboard() {
   const [chartPeriod, setChartPeriod] = useState<PeriodSelectorType>('DAY');
   const [activeTab, setActiveTab] = useState('overview');
 
-  // Realtime updates with error handling
-  const { connected, lastEventAt } = useRealtimeDashboard();
+  // Realtime updates with error handling and fallback
+  const realtimeResult = (() => {
+    try {
+      return useRealtimeDashboard();
+    } catch (error) {
+      console.error('Realtime dashboard error:', error);
+      return { connected: false, lastEventAt: undefined };
+    }
+  })();
+  
+  const { connected, lastEventAt } = realtimeResult;
 
   // Session query with better error handling
   const { data: session, error: sessionError } = useQuery({
     queryKey: ['session'],
     queryFn: async () => {
-      const { data, error } = await supabase.auth.getSession();
-      if (error) throw error;
-      return data.session;
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        return data.session;
+      } catch (error) {
+        console.error('Session error:', error);
+        return null;
+      }
     },
     retry: 1,
     staleTime: 5 * 60 * 1000, // 5 minutes
@@ -76,8 +90,26 @@ export default function Dashboard() {
   });
 
   // Metrics and alerts with better error handling
-  const { data: metrics, isLoading: metricsLoading, refetch: refetchMetrics, error: metricsError } = useMetrics(selectedPeriod);
-  const { data: alerts, isLoading: alertsLoading, error: alertsError } = useAlerts(undefined, 'open');
+  const metricsResult = (() => {
+    try {
+      return useMetrics(selectedPeriod);
+    } catch (error) {
+      console.error('Metrics hook error:', error);
+      return { data: undefined, isLoading: false, refetch: () => Promise.resolve(), error: error };
+    }
+  })();
+
+  const alertsResult = (() => {
+    try {
+      return useAlerts(undefined, 'open');
+    } catch (error) {
+      console.error('Alerts hook error:', error);
+      return { data: [], isLoading: false, error: error };
+    }
+  })();
+
+  const { data: metrics, isLoading: metricsLoading, refetch: refetchMetrics, error: metricsError } = metricsResult;
+  const { data: alerts, isLoading: alertsLoading, error: alertsError } = alertsResult;
 
   // Memoized calculations
   const criticalAlertsCount = useMemo(() => 
@@ -103,7 +135,7 @@ export default function Dashboard() {
   // Refresh handlers with better UX
   const handleRefresh = useCallback(async () => {
     try {
-      await Promise.all([
+      await Promise.allSettled([
         refetchMetrics(),
         refetchPlants()
       ]);
@@ -115,7 +147,7 @@ export default function Dashboard() {
       console.error('Error refreshing dashboard:', error);
       toast({
         title: "Erro na Atualização",
-        description: "Não foi possível atualizar os dados",
+        description: "Alguns dados podem não ter sido atualizados",
         variant: "destructive",
       });
     }
