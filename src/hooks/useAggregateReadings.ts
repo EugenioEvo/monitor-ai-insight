@@ -65,32 +65,23 @@ const aggregateReadings = (rows: ReadingRow[], period: DashboardPeriod): Aggrega
   return labels.map((label) => ({ time: label, geracao: buckets.get(label) || 0 }));
 };
 
-export const useAggregateReadings = (period: DashboardPeriod, plantId?: string) => {
+export const useAggregateReadings = (period: DashboardPeriod) => {
   const from = startOfPeriod(period).toISOString();
 
   return useQuery<AggregatedPoint[]>({
-    queryKey: ['readings', 'aggregate', period, plantId],
+    queryKey: ['readings', 'aggregate', period],
     queryFn: async () => {
-      let query = supabase
+      const { data, error } = await supabase
         .from('readings')
         .select('timestamp, energy_kwh')
         .gte('timestamp', from)
         .order('timestamp', { ascending: true });
-
-      // Filter by plant if specified
-      if (plantId) {
-        query = query.eq('plant_id', plantId);
-      }
-
-      const { data, error } = await query;
 
       if (error) throw error;
       const rows = (data || []) as ReadingRow[];
       return aggregateReadings(rows, period);
     },
     staleTime: 30_000,
-    refetchInterval: plantId ? 30_000 : 60_000, // More frequent updates for individual plants
-    retry: 3,
-    retryDelay: attemptIndex => Math.min(1000 * 2 ** attemptIndex, 30000),
+    refetchInterval: 60_000,
   });
 };

@@ -13,7 +13,7 @@ export const usePlantConsumption = (plant: Plant) => {
 
       const { data: invoices, error } = await supabase
         .from("invoices")
-        .select("reference_month, energy_kwh, \"total_r$\", \"taxes_r$\", uc_code")
+        .select("reference_month, energy_kwh, total_r$, taxes_r$, uc_code")
         .eq("uc_code", plant.consumer_unit_code)
         .eq("status", "processed")
         .order("reference_month", { ascending: false });

@@ -1,9 +1,42 @@
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useEffect } from "react";
 
 // Hook para buscar dados de consumo mensal por UC
 export const useCustomerConsumption = (customerId: string) => {
+  const queryClient = useQueryClient();
+
+  // Realtime subscription for invoice updates
+  useEffect(() => {
+    if (!customerId) return;
+
+    const channel = supabase
+      .channel(`customer-invoices-${customerId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'invoices' },
+        (payload) => {
+          console.log('[Customer Consumption] Invoice updated:', payload);
+          // Invalidate customer consumption data when invoices change
+          queryClient.invalidateQueries({ queryKey: ["customer-consumption", customerId] });
+        }
+      )
+      .on(
+        'postgres_changes', 
+        { event: '*', schema: 'public', table: 'customer_units' },
+        (payload) => {
+          console.log('[Customer Consumption] Customer units updated:', payload);
+          // Invalidate when customer units change
+          queryClient.invalidateQueries({ queryKey: ["customer-consumption", customerId] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [customerId, queryClient]);
 
   return useQuery({
     queryKey: ["customer-consumption", customerId],
@@ -37,7 +70,7 @@ export const useCustomerConsumption = (customerId: string) => {
 
         const { data: invoiceData, error: invByUcError } = await supabase
           .from("invoices")
-          .select('uc_code, reference_month, energy_kwh, "total_r$", "taxes_r$"')
+          .select("uc_code, reference_month, energy_kwh, total_r$, taxes_r$")
           .in("uc_code", ucCodes)
           .eq("status", "processed")
           .order("reference_month", { ascending: true });
@@ -71,7 +104,7 @@ export const useCustomerConsumption = (customerId: string) => {
       // Buscar faturas por customer_unit_id
       const { data: invoiceData, error } = await supabase
         .from("invoices")
-        .select('customer_unit_id, reference_month, energy_kwh, "total_r$", "taxes_r$"')
+        .select("customer_unit_id, reference_month, energy_kwh, total_r$, taxes_r$")
         .in("customer_unit_id", unitIds)
         .eq("status", "processed")
         .order("reference_month", { ascending: true });
@@ -98,5 +131,7 @@ export const useCustomerConsumption = (customerId: string) => {
       return { chartData, units: units || [] };
     },
     enabled: !!customerId,
+    refetchInterval: 30000, // Refetch every 30 seconds
+    staleTime: 20000, // Consider data stale after 20 seconds
   });
 };

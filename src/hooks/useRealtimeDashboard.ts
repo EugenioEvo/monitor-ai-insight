@@ -1,140 +1,118 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+
+import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
-import { toast } from '@/hooks/use-toast';
-import { useDebounce } from './useDebounce';
+import { useToast } from '@/hooks/use-toast';
 
 interface RealtimeStatus {
   connected: boolean;
-  lastEventAt?: Date;
+  lastEventAt: Date | null;
 }
 
-// Global state to prevent multiple subscriptions
-let globalChannel: ReturnType<typeof supabase.channel> | null = null;
-let isGlobalSubscribed = false;
-let subscribersCount = 0;
-
+/**
+ * Hook centralizado para atualizações em tempo real no dashboard.
+ * - Invalida queries relevantes ao receber eventos de readings, alerts, plants, sync_logs
+ * - Mostra toast em alertas críticos e em novas plantas cadastradas
+ */
 export const useRealtimeDashboard = (): RealtimeStatus => {
-  const [connected, setConnected] = useState(false);
-  const [lastEventAt, setLastEventAt] = useState<Date>();
   const queryClient = useQueryClient();
-  const hasSubscribed = useRef(false);
-
-  const debouncedInvalidateQueries = useCallback(
-    useDebounce(() => {
-      setLastEventAt(new Date());
-      
-      // Batch invalidate related queries with error handling
-      Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['readings'] }),
-        queryClient.invalidateQueries({ queryKey: ['plants'] }),
-        queryClient.invalidateQueries({ queryKey: ['alerts'] }),
-        queryClient.invalidateQueries({ queryKey: ['metrics-summary'] }),
-        queryClient.invalidateQueries({ queryKey: ['sync-status'] }),
-        queryClient.invalidateQueries({ queryKey: ['customer-dashboard-data'] }),
-        queryClient.invalidateQueries({ queryKey: ['plant-consumption'] }),
-      ]).catch(error => {
-        console.error('Error invalidating queries:', error);
-      });
-    }, 300),
-    [queryClient]
-  );
+  const { toast } = useToast();
+  const [connected, setConnected] = useState(false);
+  const [lastEventAt, setLastEventAt] = useState<Date | null>(null);
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   useEffect(() => {
-    // Prevent multiple subscriptions from the same component
-    if (hasSubscribed.current) return;
-    
-    subscribersCount++;
-    hasSubscribed.current = true;
+    // Cleanup any existing channel first
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
+      channelRef.current = null;
+    }
 
-    const initializeChannel = () => {
-      try {
-        // Only create channel if not already created
-        if (!globalChannel) {
-          globalChannel = supabase.channel('dashboard-realtime-v2', {
-            config: { 
-              presence: { key: 'dashboard' },
-              broadcast: { self: false }
-            }
+    // Canal único para o dashboard
+    const channel = supabase.channel(`dashboard-realtime-${Date.now()}`);
+
+    // Leituras: atualizar métricas e gráficos
+    channel.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'readings' },
+      (payload) => {
+        console.log('[Realtime] readings event:', payload.eventType, payload);
+        setLastEventAt(new Date());
+        // Invalida métricas resumidas e quaisquer gráficos baseados em leituras
+        queryClient.invalidateQueries({ queryKey: ['metrics-summary'] });
+        queryClient.invalidateQueries({ queryKey: ['readings'] });
+        queryClient.invalidateQueries({ queryKey: ['energy-data'] });
+      }
+    );
+
+    // Alertas: atualizar lista de alertas e métricas; toast para críticos
+    channel.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'alerts' },
+      (payload: any) => {
+        console.log('[Realtime] alerts event:', payload.eventType, payload);
+        setLastEventAt(new Date());
+        queryClient.invalidateQueries({ queryKey: ['alerts'] });
+        queryClient.invalidateQueries({ queryKey: ['metrics-summary'] });
+
+        const newRow = payload.new;
+        if (payload.eventType === 'INSERT' && newRow?.severity === 'critical') {
+          toast({
+            title: 'Alerta crítico',
+            description: newRow?.message || 'Novo alerta crítico detectado.',
+            variant: 'destructive',
           });
         }
-
-        // Only subscribe if not already subscribed
-        if (!isGlobalSubscribed && globalChannel) {
-          globalChannel
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'readings' }, () => {
-              debouncedInvalidateQueries();
-            })
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'alerts' }, (payload) => {
-              if (payload.eventType === 'INSERT' && payload.new?.severity === 'critical') {
-                toast({
-                  title: 'Alerta Crítico Detectado',
-                  description: payload.new.message || 'Verifique o sistema imediatamente',
-                  variant: 'destructive'
-                });
-              }
-              debouncedInvalidateQueries();
-            })
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'plants' }, (payload) => {
-              if (payload.eventType === 'INSERT') {
-                toast({
-                  title: 'Nova Planta Registrada',
-                  description: `Planta ${payload.new?.name} foi adicionada ao sistema`,
-                });
-              }
-              debouncedInvalidateQueries();
-            })
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'invoices' }, () => {
-              debouncedInvalidateQueries();
-            })
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'customer_units' }, () => {
-              debouncedInvalidateQueries();
-            })
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'sync_logs' }, () => {
-              debouncedInvalidateQueries();
-            })
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, () => {
-              debouncedInvalidateQueries();
-            })
-            .subscribe((status) => {
-              console.log('Realtime status:', status);
-              if (status === 'SUBSCRIBED') {
-                isGlobalSubscribed = true;
-                setConnected(true);
-              } else if (status === 'CLOSED' || status === 'TIMED_OUT' || status === 'CHANNEL_ERROR') {
-                isGlobalSubscribed = false;
-                setConnected(false);
-              }
-            });
-        } else {
-          // If already subscribed, just set connected state
-          setConnected(isGlobalSubscribed);
-        }
-      } catch (error) {
-        console.error('Failed to initialize realtime channel:', error);
-        setConnected(false);
       }
-    };
+    );
 
-    initializeChannel();
+    // Sync logs: atualizar status e possíveis métricas
+    channel.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'sync_logs' },
+      (payload) => {
+        console.log('[Realtime] sync_logs event:', payload.eventType, payload);
+        setLastEventAt(new Date());
+        queryClient.invalidateQueries({ queryKey: ['sync-logs'] });
+        queryClient.invalidateQueries({ queryKey: ['metrics-summary'] });
+      }
+    );
+
+    // Plants: novas plantas e atualizações de status
+    channel.on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'plants' },
+      (payload: any) => {
+        console.log('[Realtime] plants event:', payload.eventType, payload);
+        setLastEventAt(new Date());
+        queryClient.invalidateQueries({ queryKey: ['plants'] });
+
+        if (payload.eventType === 'INSERT') {
+          const name = payload.new?.name || 'Nova planta';
+          toast({
+            title: 'Planta cadastrada',
+            description: `${name} foi adicionada e está disponível no dashboard.`,
+          });
+        }
+      }
+    );
+
+    channel.subscribe((status) => {
+      console.log('[Realtime] dashboard channel status:', status);
+      setConnected(status === 'SUBSCRIBED');
+    });
+
+    channelRef.current = channel;
 
     return () => {
-      hasSubscribed.current = false;
-      subscribersCount--;
-      
-      // Only cleanup if this is the last subscriber
-      if (subscribersCount === 0 && globalChannel) {
-        try {
-          globalChannel.unsubscribe();
-          globalChannel = null;
-          isGlobalSubscribed = false;
-          setConnected(false);
-        } catch (error) {
-          console.error('Error cleaning up realtime channel:', error);
-        }
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
       }
     };
-  }, [debouncedInvalidateQueries]);
+  }, [queryClient, toast]);
 
   return { connected, lastEventAt };
 };
+
+export default useRealtimeDashboard;

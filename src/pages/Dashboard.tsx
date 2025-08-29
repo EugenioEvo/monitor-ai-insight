@@ -1,3 +1,4 @@
+
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
@@ -7,20 +8,34 @@ import { SimplifiedDigitalTwin } from '@/components/dashboard/SimplifiedDigitalT
 import { PlantSyncManager } from '@/components/plants/PlantSyncManager';
 import { InvoicePlantMapping } from '@/components/invoices/InvoicePlantMapping';
 import { SystemHealthDashboard } from '@/components/alerts/SystemHealthDashboard';
+import { EnhancedValidationPanel } from '@/components/invoices/EnhancedValidationPanel';
+import { PerformanceOverview } from '@/components/monitoring/PerformanceOverview';
+import { ModernMetricCard } from '@/components/dashboard/ModernMetricCard';
 import { EnergyChart } from '@/components/dashboard/EnergyChart';
+import { AlertsList } from '@/components/dashboard/AlertsList';
 import { PeriodSelector } from '@/components/dashboard/PeriodSelector';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { useMetrics } from '@/hooks/useMetrics';
 import { useAlerts } from '@/hooks/useAlerts';
-import { useState, useCallback, useMemo } from 'react';
-import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
-import { DashboardOverview } from '@/components/dashboard/DashboardOverview';
+import { useState } from 'react';
+import { 
+  Zap, 
+  DollarSign, 
+  AlertTriangle, 
+  TrendingUp, 
+  Sun, 
+  Battery,
+  Wrench,
+  RefreshCw,
+  Calendar,
+  Activity,
+  Sparkles
+} from 'lucide-react';
+import { LiveBadge } from '@/components/dashboard/LiveBadge';
 import { useRealtimeDashboard } from '@/hooks/useRealtimeDashboard';
-import { EnhancedErrorBoundary } from '@/components/ui/enhanced-error-boundary';
-import { toast } from '@/hooks/use-toast';
-import { AlertTriangle, Activity, Zap, Settings, RefreshCw, CheckCircle } from 'lucide-react';
 
 type Period = 'today' | 'week' | 'month';
 type PeriodSelectorType = 'DAY' | 'MONTH' | 'YEAR';
@@ -28,44 +43,19 @@ type PeriodSelectorType = 'DAY' | 'MONTH' | 'YEAR';
 export default function Dashboard() {
   const [selectedPeriod, setSelectedPeriod] = useState<Period>('today');
   const [chartPeriod, setChartPeriod] = useState<PeriodSelectorType>('DAY');
-  const [activeTab, setActiveTab] = useState('overview');
 
-  // Realtime updates with error handling and fallback
-  const realtimeResult = (() => {
-    try {
-      return useRealtimeDashboard();
-    } catch (error) {
-      console.error('Realtime dashboard error:', error);
-      return { connected: false, lastEventAt: undefined };
-    }
-  })();
-  
-  const { connected, lastEventAt } = realtimeResult;
+  // Inicializa assinaturas em tempo real do dashboard
+  const { connected, lastEventAt } = useRealtimeDashboard();
 
-  // Session query with better error handling
-  const { data: session, error: sessionError } = useQuery({
+  const { data: session } = useQuery({
     queryKey: ['session'],
     queryFn: async () => {
-      try {
-        const { data, error } = await supabase.auth.getSession();
-        if (error) throw error;
-        return data.session;
-      } catch (error) {
-        console.error('Session error:', error);
-        return null;
-      }
+      const { data } = await supabase.auth.getSession();
+      return data.session;
     },
-    retry: 1,
-    staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
-  // Plants query with enhanced error handling
-  const { 
-    data: plants = [], 
-    refetch: refetchPlants,
-    isLoading: plantsLoading,
-    error: plantsError 
-  } = useQuery({
+  const { data: plants = [], refetch: refetchPlants } = useQuery({
     queryKey: ['plants'],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -73,11 +63,7 @@ export default function Dashboard() {
         .select('*')
         .order('created_at', { ascending: false });
       
-      if (error) {
-        console.error('Error fetching plants:', error);
-        throw error;
-      }
-      
+      if (error) throw error;
       return (data || []).map(plant => ({
         ...plant,
         status: plant.status as 'active' | 'pending_fix' | 'maintenance',
@@ -85,374 +71,213 @@ export default function Dashboard() {
       }));
     },
     enabled: !!session,
-    retry: 3,
-    staleTime: 2 * 60 * 1000, // 2 minutes
   });
 
-  // Metrics and alerts with better error handling
-  const metricsResult = (() => {
-    try {
-      return useMetrics(selectedPeriod);
-    } catch (error) {
-      console.error('Metrics hook error:', error);
-      return { data: undefined, isLoading: false, refetch: () => Promise.resolve(), error: error };
+  const { data: metrics, isLoading: metricsLoading, refetch: refetchMetrics } = useMetrics(selectedPeriod);
+  const { data: alerts, isLoading: alertsLoading } = useAlerts(undefined, 'open');
+
+  const formatKWh = (value: number) => {
+    if (value >= 1000) {
+      return `${(value / 1000).toFixed(1)} MWh`;
     }
-  })();
+    return `${value.toFixed(1)} kWh`;
+  };
 
-  const alertsResult = (() => {
-    try {
-      return useAlerts(undefined, 'open');
-    } catch (error) {
-      console.error('Alerts hook error:', error);
-      return { data: [], isLoading: false, error: error };
+  const formatValue = (value: number | undefined) => {
+    if (value === undefined) return '0';
+    return value.toString();
+  };
+
+  const getPeriodLabel = (period: Period) => {
+    switch (period) {
+      case 'today': return 'Hoje';
+      case 'week': return 'Última Semana';
+      case 'month': return 'Este Mês';
     }
-  })();
-
-  const { data: metrics, isLoading: metricsLoading, refetch: refetchMetrics, error: metricsError } = metricsResult;
-  const { data: alerts, isLoading: alertsLoading, error: alertsError } = alertsResult;
-
-  // Memoized calculations
-  const criticalAlertsCount = useMemo(() => 
-    alerts?.filter(a => a.severity === 'critical').length || 0, 
-    [alerts]
-  );
-
-  const activePlantsCount = useMemo(() => 
-    plants.filter(p => p.status === 'active').length, 
-    [plants]
-  );
-
-  const solarEdgePlants = useMemo(() => 
-    plants.filter(plant => plant.monitoring_system === 'solaredge'), 
-    [plants]
-  );
-
-  const otherPlants = useMemo(() => 
-    plants.filter(plant => plant.monitoring_system !== 'solaredge'), 
-    [plants]
-  );
-
-  // Refresh handlers with better UX
-  const handleRefresh = useCallback(async () => {
-    try {
-      await Promise.allSettled([
-        refetchMetrics(),
-        refetchPlants()
-      ]);
-      toast({
-        title: "Dashboard Atualizado",
-        description: "Dados atualizados com sucesso",
-      });
-    } catch (error) {
-      console.error('Error refreshing dashboard:', error);
-      toast({
-        title: "Erro na Atualização",
-        description: "Alguns dados podem não ter sido atualizados",
-        variant: "destructive",
-      });
-    }
-  }, [refetchMetrics, refetchPlants]);
-
-  // Error display helper
-  const hasErrors = sessionError || plantsError || metricsError || alertsError;
-
-  // Loading state
-  const isMainLoading = metricsLoading || plantsLoading;
-
-  if (sessionError) {
-    return (
-      <ProtectedRoute>
-        <div className="min-h-screen flex items-center justify-center">
-          <Card className="max-w-md mx-auto">
-            <CardHeader>
-              <CardTitle className="text-center text-destructive">Erro de Autenticação</CardTitle>
-              <CardDescription className="text-center">
-                Não foi possível verificar sua sessão
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="text-center">
-              <Button onClick={() => window.location.reload()}>
-                Tentar Novamente
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </ProtectedRoute>
-    );
-  }
+  };
 
   return (
     <ProtectedRoute>
-      <EnhancedErrorBoundary level="page">
-        <div className="min-h-screen bg-gradient-to-br from-background via-muted/30 to-background">
-          <div className="container mx-auto px-6 py-8 space-y-8 animate-fade-in">
-            {/* Enhanced Header with Status */}
-            <DashboardHeader
-              connected={connected}
-              lastEventAt={lastEventAt}
-              isLoading={isMainLoading}
-              onRefresh={handleRefresh}
-            />
-
-            {/* Status Bar */}
-            {hasErrors && (
-              <Card className="border-destructive/50 bg-destructive/5">
-                <CardContent className="flex items-center gap-3 py-4">
-                  <AlertTriangle className="w-5 h-5 text-destructive" />
-                  <div className="flex-1">
-                    <p className="font-medium text-destructive">Alguns dados podem estar desatualizados</p>
-                    <p className="text-sm text-muted-foreground">
-                      Problemas de conectividade detectados. Tentando reconectar...
-                    </p>
-                  </div>
-                  <Button variant="outline" size="sm" onClick={handleRefresh}>
-                    Tentar Novamente
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
-
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full space-y-8">
-              <TabsList className="grid w-full grid-cols-6 glass-card border-0 p-2 h-auto">
-                <TabsTrigger 
-                  value="overview" 
-                  className="rounded-lg font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground flex items-center gap-2"
-                >
-                  <Activity className="w-4 h-4" />
-                  <span className="hidden sm:inline">Overview</span>
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="production" 
-                  className="rounded-lg font-semibold flex items-center gap-2"
-                >
-                  <Zap className="w-4 h-4" />
-                  <span className="hidden sm:inline">Produção</span>
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="plants" 
-                  className="rounded-lg font-semibold flex items-center gap-2"
-                >
-                  <Settings className="w-4 h-4" />
-                  <span className="hidden sm:inline">Plantas</span>
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="sync" 
-                  className="rounded-lg font-semibold flex items-center gap-2"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                  <span className="hidden sm:inline">Sync</span>
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="mapping" 
-                  className="rounded-lg font-semibold flex items-center gap-2"
-                >
-                  <CheckCircle className="w-4 h-4" />
-                  <span className="hidden sm:inline">Map</span>
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="health" 
-                  className="rounded-lg font-semibold flex items-center gap-2"
-                >
-                  <AlertTriangle className="w-4 h-4" />
-                  <span className="hidden sm:inline">Saúde</span>
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="overview" className="space-y-6">
-                <EnhancedErrorBoundary level="component">
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-                    <div>
-                      <h2 className="text-2xl font-display font-bold">Visão Geral do Sistema</h2>
-                      <p className="text-muted-foreground mt-1">
-                        Resumo executivo das principais métricas e indicadores
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-muted-foreground">Período:</span>
-                      <Button
-                        variant={selectedPeriod === 'today' ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => setSelectedPeriod('today')}
-                      >
-                        Hoje
-                      </Button>
-                      <Button
-                        variant={selectedPeriod === 'week' ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => setSelectedPeriod('week')}
-                      >
-                        Semana
-                      </Button>
-                      <Button
-                        variant={selectedPeriod === 'month' ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => setSelectedPeriod('month')}
-                      >
-                        Mês
-                      </Button>
-                    </div>
-                  </div>
-                  <DashboardOverview
-                    metrics={metrics}
-                    metricsLoading={metricsLoading}
-                    selectedPeriod={selectedPeriod}
-                    alertsCount={criticalAlertsCount}
-                    plants={plants}
-                    alerts={alerts}
-                  />
-                </EnhancedErrorBoundary>
-              </TabsContent>
-
-              <TabsContent value="production" className="space-y-6">
-                <EnhancedErrorBoundary level="component">
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                    <div>
-                      <h2 className="text-2xl font-display font-bold">Monitoramento de Produção</h2>
-                      <p className="text-muted-foreground mt-1">
-                        {activePlantsCount} plantas ativas gerando energia
-                      </p>
-                    </div>
-                    <PeriodSelector period={chartPeriod} onPeriodChange={setChartPeriod} />
-                  </div>
-                  
-                  {plants.length === 0 ? (
-                    <Card>
-                      <CardContent className="flex items-center justify-center py-12">
-                        <div className="text-center space-y-3">
-                          <Zap className="w-12 h-12 mx-auto text-muted-foreground" />
-                          <p className="text-lg font-medium">Nenhuma planta cadastrada</p>
-                          <p className="text-muted-foreground">
-                            Configure suas plantas para começar o monitoramento
-                          </p>
-                          <Button 
-                            onClick={() => setActiveTab('plants')}
-                            className="mt-4"
-                          >
-                            Configurar Plantas
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ) : (
-                    <div className="grid gap-6">
-                      {plants.map(plant => (
-                        <Card key={plant.id} className="hover-lift">
-                          <CardHeader>
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <CardTitle className="font-display flex items-center gap-3">
-                                  {plant.name}
-                                  <Badge 
-                                    variant={plant.status === 'active' ? 'default' : plant.status === 'maintenance' ? 'secondary' : 'destructive'}
-                                    className="capitalize"
-                                  >
-                                    {plant.status}
-                                  </Badge>
-                                </CardTitle>
-                                <CardDescription>
-                                  Sistema: {plant.monitoring_system} | Capacidade: {plant.capacity_kwp} kWp
-                                </CardDescription>
-                              </div>
-                              {plant.last_sync && (
-                                <div className="text-right text-sm text-muted-foreground">
-                                  Última sincronização:<br />
-                                  {new Date(plant.last_sync).toLocaleString('pt-BR')}
-                                </div>
-                              )}
-                            </div>
-                          </CardHeader>
-                          <CardContent>
-                            <EnergyChart 
-                              period={chartPeriod === 'DAY' ? 'today' : chartPeriod === 'MONTH' ? 'month' : 'week'} 
-                              plantId={plant.id} 
-                              height={240} 
-                            />
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-                  )}
-                </EnhancedErrorBoundary>
-              </TabsContent>
-
-              <TabsContent value="plants" className="space-y-6">
-                <EnhancedErrorBoundary level="component">
-                  <div className="mb-6">
-                    <h2 className="text-2xl font-display font-bold">Monitoramento das Plantas</h2>
-                    <p className="text-muted-foreground mt-1">
-                      Visualização detalhada do status e desempenho de cada planta
-                    </p>
-                  </div>
-                  
-                  {plants.length === 0 ? (
-                    <Card>
-                      <CardContent className="flex items-center justify-center py-12">
-                        <div className="text-center space-y-3">
-                          <Settings className="w-12 h-12 mx-auto text-muted-foreground" />
-                          <p className="text-lg font-medium">Nenhuma planta encontrada</p>
-                          <p className="text-muted-foreground">
-                            Adicione plantas para começar o monitoramento detalhado
-                          </p>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ) : (
-                    <div className="grid gap-6">
-                      {solarEdgePlants.map(plant => (
-                        <SolarEdgeDigitalTwin key={plant.id} plant={plant} />
-                      ))}
-                      
-                      {otherPlants.map(plant => (
-                        <SimplifiedDigitalTwin 
-                          key={plant.id} 
-                          plant={plant} 
-                          equipmentData={[]} 
-                        />
-                      ))}
-                    </div>
-                  )}
-                </EnhancedErrorBoundary>
-              </TabsContent>
-
-              <TabsContent value="sync" className="space-y-6">
-                <EnhancedErrorBoundary level="component">
-                  <div className="mb-6">
-                    <h2 className="text-2xl font-display font-bold">Sincronização de Dados</h2>
-                    <p className="text-muted-foreground mt-1">
-                      Gerencie a sincronização automática com os sistemas de monitoramento
-                    </p>
-                  </div>
-                  <PlantSyncManager plants={plants} onRefresh={refetchPlants} />
-                </EnhancedErrorBoundary>
-              </TabsContent>
-
-              <TabsContent value="mapping" className="space-y-6">
-                <EnhancedErrorBoundary level="component">
-                  <div className="mb-6">
-                    <h2 className="text-2xl font-display font-bold">Mapeamento de Faturas</h2>
-                    <p className="text-muted-foreground mt-1">
-                      Configure o mapeamento entre plantas e unidades consumidoras
-                    </p>
-                  </div>
-                  <InvoicePlantMapping />
-                </EnhancedErrorBoundary>
-              </TabsContent>
-
-              <TabsContent value="health" className="space-y-6">
-                <EnhancedErrorBoundary level="component">
-                  <div className="mb-6">
-                    <h2 className="text-2xl font-display font-bold">Saúde do Sistema</h2>
-                    <p className="text-muted-foreground mt-1">
-                      Monitoramento avançado da integridade e performance do sistema
-                    </p>
-                  </div>
-                  <SystemHealthDashboard />
-                </EnhancedErrorBoundary>
-              </TabsContent>
-            </Tabs>
+      <div className="min-h-screen bg-gradient-to-br from-background via-muted/30 to-background">
+        <div className="container mx-auto px-6 py-8 space-y-8">
+          {/* Header */}
+          <div className="flex items-center justify-between animate-slide-down">
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-gradient-solar rounded-2xl flex items-center justify-center shadow-lg">
+                  <Activity className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-responsive-2xl font-display font-bold tracking-tight">Dashboard Solar</h1>
+                  <p className="text-muted-foreground flex items-center gap-2">
+                    <Sparkles className="w-4 h-4" />
+                    Monitoramento inteligente em tempo real
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <LiveBadge connected={connected} lastEventAt={lastEventAt} />
+              <Button
+                variant="outline" 
+                size="lg"
+                onClick={() => refetchMetrics()}
+                disabled={metricsLoading}
+                className="group"
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 group-hover:rotate-180 transition-transform duration-500 ${metricsLoading ? 'animate-spin' : ''}`} />
+                Atualizar
+              </Button>
+            </div>
           </div>
+
+          <Tabs defaultValue="overview" className="w-full space-y-8">
+            <TabsList className="grid w-full grid-cols-6 glass-card border-0 p-2 h-auto">
+              <TabsTrigger value="overview" className="rounded-lg font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">Overview</TabsTrigger>
+              <TabsTrigger value="production" className="rounded-lg font-semibold">Produção</TabsTrigger>
+              <TabsTrigger value="plants" className="rounded-lg font-semibold">Plantas</TabsTrigger>
+              <TabsTrigger value="sync" className="rounded-lg font-semibold">Sincronização</TabsTrigger>
+              <TabsTrigger value="mapping" className="rounded-lg font-semibold">Mapeamento</TabsTrigger>
+              <TabsTrigger value="health" className="rounded-lg font-semibold">Saúde</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="overview" className="space-y-8 animate-fade-in">
+              {/* Metrics Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {metricsLoading ? (
+                  Array.from({ length: 4 }).map((_, i) => (
+                    <Card key={i} className="animate-pulse">
+                      <CardContent className="p-8">
+                        <Skeleton className="h-4 w-20 mb-4" />
+                        <Skeleton className="h-8 w-16 mb-2" />
+                        <Skeleton className="h-3 w-24" />
+                      </CardContent>
+                    </Card>
+                  ))
+                ) : (
+                  <>
+                    <ModernMetricCard
+                      title="Geração Solar"
+                      value={formatKWh(metrics?.totalGeneration || 0)}
+                      change={`${getPeriodLabel(selectedPeriod)}`}
+                      changeType="positive"
+                      icon={Sun}
+                      description={`${metrics?.activePlants || 0} plantas ativas gerando energia`}
+                      trend={[0.3, 0.7, 0.9, 0.8, 1.0, 0.9, 0.95]}
+                    />
+                    <ModernMetricCard
+                      title="Consumo Total"
+                      value={formatKWh(metrics?.totalConsumption || 0)}
+                      change={`${getPeriodLabel(selectedPeriod)}`}
+                      changeType="positive"
+                      icon={Battery}
+                      description="Baseado em faturas processadas pela IA"
+                      trend={[0.8, 0.6, 0.4, 0.7, 0.5, 0.8, 0.9]}
+                    />
+                    <ModernMetricCard
+                      title="Tickets O&M"
+                      value={formatValue(metrics?.openTickets)}
+                      change={metrics?.openTickets === 0 ? "Sistema estável" : "Requer atenção"}
+                      changeType={metrics?.openTickets === 0 ? "positive" : "negative"}
+                      icon={Wrench}
+                      description="Operação & Manutenção preventiva"
+                    />
+                    <ModernMetricCard
+                      title="Alertas Críticos"
+                      value={formatValue(metrics?.openAlerts)}
+                      change={metrics?.openAlerts === 0 ? "Tudo funcionando" : "Verificar urgência"}
+                      changeType={metrics?.openAlerts === 0 ? "positive" : "negative"}
+                      icon={AlertTriangle}
+                      description={`${alerts?.filter(a => a.severity === 'critical').length || 0} críticos detectados`}
+                    />
+                  </>
+                )}
+              </div>
+
+              {/* Charts and Alerts Row */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div className="lg:col-span-2">
+                  <Card className="hover-lift">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-gradient-primary rounded-xl flex items-center justify-center">
+                          <Zap className="w-5 h-5 text-white" />
+                        </div>
+                        <div>
+                          <span className="font-display text-xl">Geração vs Consumo</span>
+                          <Badge className="ml-3 bg-success/10 text-success border-success/20">
+                            {getPeriodLabel(selectedPeriod)}
+                          </Badge>
+                        </div>
+                      </CardTitle>
+                      <CardDescription>
+                        Comparativo inteligente entre energia gerada e consumida
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <EnergyChart period={selectedPeriod} />
+                    </CardContent>
+                  </Card>
+                </div>
+                <div className="space-y-6">
+                  <AlertsList />
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* Keep existing TabsContent for other tabs */}
+            <TabsContent value="production" className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-display font-bold">Monitoramento de Produção</h2>
+                <PeriodSelector period={chartPeriod} onPeriodChange={setChartPeriod} />
+              </div>
+              <div className="grid gap-6">
+                {plants.map(plant => (
+                  <Card key={plant.id} className="hover-lift">
+                    <CardHeader>
+                      <CardTitle className="font-display">{plant.name}</CardTitle>
+                      <CardDescription>
+                        Sistema: {plant.monitoring_system} | Capacidade: {plant.capacity_kwp} kWp
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <EnergyChart />
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="plants" className="space-y-6">
+              <div className="grid gap-6">
+                {plants.filter(plant => plant.monitoring_system === 'solaredge').map(plant => (
+                  <SolarEdgeDigitalTwin key={plant.id} plant={plant} />
+                ))}
+                
+                {plants.filter(plant => plant.monitoring_system !== 'solaredge').map(plant => (
+                  <SimplifiedDigitalTwin 
+                    key={plant.id} 
+                    plant={plant} 
+                    equipmentData={[]} 
+                  />
+                ))}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="sync" className="space-y-6">
+              <PlantSyncManager plants={plants} onRefresh={refetchPlants} />
+            </TabsContent>
+
+            <TabsContent value="mapping" className="space-y-6">
+              <InvoicePlantMapping />
+            </TabsContent>
+
+            <TabsContent value="health" className="space-y-6">
+              <SystemHealthDashboard />
+            </TabsContent>
+          </Tabs>
         </div>
-      </EnhancedErrorBoundary>
+      </div>
     </ProtectedRoute>
   );
 }
