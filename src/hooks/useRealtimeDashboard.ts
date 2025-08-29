@@ -16,6 +16,7 @@ class RealtimeChannelManager {
   private subscribers = new Set<() => void>();
   private lastInvalidation = 0;
   private invalidationQueue = new Map<string, NodeJS.Timeout>();
+  private isSubscribed = false;
 
   static getInstance() {
     if (!RealtimeChannelManager.instance) {
@@ -49,9 +50,15 @@ class RealtimeChannelManager {
 
   private initializeChannel() {
     try {
-      this.channel = supabase.channel('dashboard-realtime', {
-        config: { presence: { key: 'dashboard' } }
-      });
+      // Prevent double subscribe on the same channel instance
+      if (this.channel && this.isSubscribed) {
+        return;
+      }
+      if (!this.channel) {
+        this.channel = supabase.channel('dashboard-realtime', {
+          config: { presence: { key: 'dashboard' } }
+        });
+      }
 
       this.channel
         .on('postgres_changes', { event: '*', schema: 'public', table: 'readings' }, () => {
@@ -104,6 +111,13 @@ class RealtimeChannelManager {
         })
         .subscribe((status) => {
           console.log('Realtime status:', status);
+          if (status === 'SUBSCRIBED') {
+            this.isSubscribed = true;
+          }
+          if (status === 'CLOSED' || status === 'TIMED_OUT' || status === 'CHANNEL_ERROR') {
+            this.isSubscribed = false;
+            this.channel = null;
+          }
         });
     } catch (error) {
       console.error('Failed to initialize realtime channel:', error);
@@ -114,6 +128,7 @@ class RealtimeChannelManager {
     if (this.channel) {
       this.channel.unsubscribe();
       this.channel = null;
+      this.isSubscribed = false;
     }
     this.subscribers.clear();
     // Clear all pending invalidations
