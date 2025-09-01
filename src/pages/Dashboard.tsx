@@ -1,257 +1,201 @@
-import { useState, useCallback } from 'react';
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
-import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
-import { useToast } from '@/hooks/use-toast';
+import React, { useState } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { 
+  Activity, 
+  Zap, 
+  Sun, 
+  Battery, 
+  AlertTriangle, 
+  TrendingUp,
+  RefreshCw,
+  Sparkles
+} from 'lucide-react';
 import { useMetrics } from '@/hooks/useMetrics';
 import { useAlerts } from '@/hooks/useAlerts';
-import { useRealtimeDashboard } from '@/hooks/useRealtimeDashboard';
-
-// Components
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
-import { DashboardStats } from '@/components/dashboard/DashboardStats';
-import { DashboardOverview } from '@/components/dashboard/DashboardOverview';
-import { SolarEdgeDigitalTwin } from '@/components/dashboard/SolarEdgeDigitalTwin';
-import { SimplifiedDigitalTwin } from '@/components/dashboard/SimplifiedDigitalTwin';
-import { PlantSyncManager } from '@/components/plants/PlantSyncManager';
-import { InvoicePlantMapping } from '@/components/invoices/InvoicePlantMapping';
-import { SystemHealthDashboard } from '@/components/alerts/SystemHealthDashboard';
-import { PeriodSelector } from '@/components/dashboard/PeriodSelector';
 import { EnergyChart } from '@/components/dashboard/EnergyChart';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { MetricCard } from '@/components/dashboard/MetricCard';
+import { AlertsList } from '@/components/dashboard/AlertsList';
+import { useToast } from '@/hooks/use-toast';
 
-// Types
 type Period = 'today' | 'week' | 'month';
-type PeriodSelectorType = 'DAY' | 'MONTH' | 'YEAR';
+
+const periodLabels = {
+  today: 'Hoje',
+  week: 'Última Semana',
+  month: 'Este Mês'
+};
 
 export default function Dashboard() {
   const [selectedPeriod, setSelectedPeriod] = useState<Period>('today');
-  const [chartPeriod, setChartPeriod] = useState<PeriodSelectorType>('DAY');
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const { toast } = useToast();
+  
+  const { data: metrics, isLoading: metricsLoading, refetch: refetchMetrics } = useMetrics();
+  const { data: alerts, isLoading: alertsLoading, refetch: refetchAlerts } = useAlerts('open');
 
-  // Hooks
-  const { connected, lastEventAt } = useRealtimeDashboard();
-
-  const { data: session } = useQuery({
-    queryKey: ['session'],
-    queryFn: async () => {
-      const { data } = await supabase.auth.getSession();
-      return data.session;
-    },
-  });
-
-  const { data: plants = [], refetch: refetchPlants } = useQuery({
-    queryKey: ['plants'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('plants')
-        .select('*')
-        .order('created_at', { ascending: false });
-      
-      if (error) {
-        console.error('Error fetching plants:', error);
-        throw error;
-      }
-      
-      return (data || []).map(plant => ({
-        ...plant,
-        status: plant.status as 'active' | 'pending_fix' | 'maintenance',
-        monitoring_system: plant.monitoring_system as 'manual' | 'solaredge' | 'sungrow'
-      }));
-    },
-    enabled: !!session,
-  });
-
-  const { 
-    data: metrics, 
-    isLoading: metricsLoading, 
-    error: metricsError,
-    refetch: refetchMetrics 
-  } = useMetrics(selectedPeriod);
-
-  const { 
-    data: alerts, 
-    isLoading: alertsLoading,
-    error: alertsError 
-  } = useAlerts(undefined, 'open');
-
-  // Refresh handler
-  const handleRefresh = useCallback(async () => {
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
     try {
-      await Promise.allSettled([
+      await Promise.all([
         refetchMetrics(),
-        refetchPlants(),
+        refetchAlerts()
       ]);
-      
       toast({
         title: "Dashboard atualizado",
-        description: "Todos os dados foram atualizados com sucesso.",
+        description: "Dados atualizados com sucesso!"
       });
     } catch (error) {
       toast({
         title: "Erro ao atualizar",
-        description: "Ocorreu um erro ao atualizar os dados do dashboard.",
-        variant: "destructive",
+        description: "Não foi possível atualizar os dados.",
+        variant: "destructive"
       });
+    } finally {
+      setIsRefreshing(false);
     }
-  }, [refetchMetrics, refetchPlants, toast]);
+  };
 
-  // Error handling
-  if (metricsError || alertsError) {
-    console.error('Dashboard errors:', { metricsError, alertsError });
-  }
-
-  const criticalAlertsCount = alerts?.filter(a => a.severity === 'critical').length || 0;
+  const formatKWh = (value: number) => {
+    if (value >= 1000) {
+      return `${(value / 1000).toFixed(1)} MWh`;
+    }
+    return `${value.toFixed(1)} kWh`;
+  };
 
   return (
-    <ProtectedRoute>
-      <div className="min-h-screen bg-gradient-to-br from-background via-muted/20 to-background">
-        <div className="container mx-auto px-6 py-8 space-y-8">
-          
-          {/* Header */}
-          <DashboardHeader
-            connected={connected}
-            lastEventAt={lastEventAt}
-            onRefresh={handleRefresh}
-            isRefreshing={metricsLoading}
-            selectedPeriod={selectedPeriod}
-            onPeriodChange={setSelectedPeriod}
-          />
+    <div className="container mx-auto p-6 space-y-8">
+      {/* Header */}
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+        <div className="space-y-2">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-gradient-to-br from-primary to-primary/80 rounded-2xl flex items-center justify-center shadow-lg">
+              <Activity className="w-6 h-6 text-primary-foreground" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-foreground to-muted-foreground bg-clip-text text-transparent">
+                Dashboard Solar
+              </h1>
+              <p className="text-muted-foreground flex items-center gap-2">
+                <Sparkles className="w-4 h-4" />
+                Monitoramento inteligente em tempo real
+              </p>
+            </div>
+          </div>
+        </div>
 
-          {/* Main Content */}
-          <Tabs defaultValue="overview" className="w-full space-y-8">
-            <TabsList className="grid w-full grid-cols-6 bg-card/50 backdrop-blur-sm border-border/50 p-2 h-auto shadow-lg">
-              <TabsTrigger 
-                value="overview" 
-                className="rounded-lg font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all"
-              >
-                Overview
-              </TabsTrigger>
-              <TabsTrigger 
-                value="production" 
-                className="rounded-lg font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all"
-              >
-                Produção
-              </TabsTrigger>
-              <TabsTrigger 
-                value="plants" 
-                className="rounded-lg font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all"
-              >
-                Plantas
-              </TabsTrigger>
-              <TabsTrigger 
-                value="sync" 
-                className="rounded-lg font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all"
-              >
-                Sincronização
-              </TabsTrigger>
-              <TabsTrigger 
-                value="mapping" 
-                className="rounded-lg font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all"
-              >
-                Mapeamento
-              </TabsTrigger>
-              <TabsTrigger 
-                value="health" 
-                className="rounded-lg font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all"
-              >
-                Saúde
-              </TabsTrigger>
-            </TabsList>
+        <Card className="p-4 bg-card/50 backdrop-blur-sm border-border/50">
+          <div className="flex flex-col sm:flex-row items-center gap-4">
+            {/* Period Selector */}
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-muted-foreground" />
+              <Select value={selectedPeriod} onValueChange={(value) => setSelectedPeriod(value as Period)}>
+                <SelectTrigger className="w-40 bg-background/80">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="today">Hoje</SelectItem>
+                  <SelectItem value="week">Última Semana</SelectItem>
+                  <SelectItem value="month">Este Mês</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
-            {/* Overview Tab */}
-            <TabsContent value="overview" className="space-y-8 animate-fade-in">
-              {/* Statistics Cards */}
-              <DashboardStats
-                metrics={metrics}
-                isLoading={metricsLoading}
-                selectedPeriod={selectedPeriod}
-                alertsCount={criticalAlertsCount}
+            {/* Refresh Button */}
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="group bg-background/80 hover:bg-background/90"
+            >
+              <RefreshCw 
+                className={`w-4 h-4 mr-2 group-hover:rotate-180 transition-transform duration-500 ${
+                  isRefreshing ? 'animate-spin' : ''
+                }`} 
               />
+              Atualizar
+            </Button>
+          </div>
+        </Card>
+      </div>
 
-              {/* Charts and Alerts */}
-              <DashboardOverview selectedPeriod={selectedPeriod} />
-            </TabsContent>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <MetricCard
+          title="Geração Solar"
+          value={formatKWh(metrics?.totalGeneration || 0)}
+          change={`${periodLabels[selectedPeriod]}`}
+          changeType="positive"
+          icon={Sun}
+          description={`${metrics?.activePlants || 0} plantas ativas`}
+        />
+        
+        <MetricCard
+          title="Consumo Total"
+          value={formatKWh(metrics?.totalConsumption || 0)}
+          change={`${periodLabels[selectedPeriod]}`}
+          changeType="positive"
+          icon={Battery}
+          description="Baseado em faturas processadas"
+        />
+        
+        <MetricCard
+          title="Plantas Ativas"
+          value={metrics?.activePlants?.toString() || '0'}
+          change="Sistema estável"
+          changeType="positive"
+          icon={Zap}
+          description="Monitoramento em tempo real"
+        />
+        
+        <MetricCard
+          title="Alertas"
+          value={alerts?.length?.toString() || '0'}
+          change={alerts?.length === 0 ? "Tudo funcionando" : "Requer atenção"}
+          changeType={alerts?.length === 0 ? "positive" : "negative"}
+          icon={AlertTriangle}
+          description="Alertas ativos no sistema"
+        />
+      </div>
 
-            {/* Production Tab */}
-            <TabsContent value="production" className="space-y-6 animate-fade-in">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <h2 className="text-2xl font-bold tracking-tight">Monitoramento de Produção</h2>
-                <PeriodSelector period={chartPeriod} onPeriodChange={setChartPeriod} />
-              </div>
-              
-              <div className="grid gap-6">
-                {plants.length === 0 ? (
-                  <Card className="text-center py-12">
-                    <CardContent>
-                      <p className="text-muted-foreground">
-                        Nenhuma planta cadastrada ainda. Adicione plantas para visualizar a produção.
-                      </p>
-                    </CardContent>
-                  </Card>
-                ) : (
-                  plants.map(plant => (
-                    <Card key={plant.id} className="shadow-md hover:shadow-lg transition-shadow">
-                      <CardHeader>
-                        <CardTitle className="font-bold">{plant.name}</CardTitle>
-                        <CardDescription>
-                          Sistema: {plant.monitoring_system} | Capacidade: {plant.capacity_kwp} kWp
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <EnergyChart />
-                      </CardContent>
-                    </Card>
-                  ))
-                )}
-              </div>
-            </TabsContent>
+      {/* Main Content */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Energy Chart */}
+        <div className="lg:col-span-2">
+          <Card className="shadow-lg border-border/50 bg-card/50 backdrop-blur-sm hover:shadow-xl transition-all duration-300">
+            <CardHeader className="pb-4">
+              <CardTitle className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-gradient-to-br from-primary to-primary/80 rounded-xl flex items-center justify-center shadow-lg">
+                  <Zap className="w-5 h-5 text-primary-foreground" />
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-xl font-bold">Geração vs Consumo</span>
+                  <Badge 
+                    variant="secondary" 
+                    className="bg-primary/10 text-primary border-primary/20 font-medium"
+                  >
+                    {periodLabels[selectedPeriod]}
+                  </Badge>
+                </div>
+              </CardTitle>
+              <CardDescription className="text-muted-foreground">
+                Comparativo inteligente entre energia gerada e consumida
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <EnergyChart period={selectedPeriod} />
+            </CardContent>
+          </Card>
+        </div>
 
-            {/* Plants Tab */}
-            <TabsContent value="plants" className="space-y-6 animate-fade-in">
-              <div className="grid gap-6">
-                {plants.filter(plant => plant.monitoring_system === 'solaredge').map(plant => (
-                  <SolarEdgeDigitalTwin key={plant.id} plant={plant} />
-                ))}
-                
-                {plants.filter(plant => plant.monitoring_system !== 'solaredge').map(plant => (
-                  <SimplifiedDigitalTwin 
-                    key={plant.id} 
-                    plant={plant} 
-                    equipmentData={[]} 
-                  />
-                ))}
-
-                {plants.length === 0 && (
-                  <Card className="text-center py-12">
-                    <CardContent>
-                      <p className="text-muted-foreground">
-                        Nenhuma planta cadastrada ainda.
-                      </p>
-                    </CardContent>
-                  </Card>
-                )}
-              </div>
-            </TabsContent>
-
-            {/* Sync Tab */}
-            <TabsContent value="sync" className="space-y-6 animate-fade-in">
-              <PlantSyncManager plants={plants} onRefresh={refetchPlants} />
-            </TabsContent>
-
-            {/* Mapping Tab */}
-            <TabsContent value="mapping" className="space-y-6 animate-fade-in">
-              <InvoicePlantMapping />
-            </TabsContent>
-
-            {/* Health Tab */}
-            <TabsContent value="health" className="space-y-6 animate-fade-in">
-              <SystemHealthDashboard />
-            </TabsContent>
-          </Tabs>
+        {/* Alerts Sidebar */}
+        <div className="space-y-6">
+          <AlertsList />
         </div>
       </div>
-    </ProtectedRoute>
+    </div>
   );
 }
