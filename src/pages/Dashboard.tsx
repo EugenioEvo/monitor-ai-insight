@@ -15,9 +15,11 @@ import {
 } from 'lucide-react';
 import { useMetrics } from '@/hooks/useMetrics';
 import { useAlerts } from '@/hooks/useAlerts';
+import { useAuth } from '@/hooks/useAuth';
 import { EnergyChart } from '@/components/dashboard/EnergyChart';
 import { MetricCard } from '@/components/dashboard/MetricCard';
 import { AlertsList } from '@/components/dashboard/AlertsList';
+import { DashboardGate } from '@/components/dashboard/DashboardGate';
 import { useToast } from '@/hooks/use-toast';
 
 type Period = 'today' | 'week' | 'month';
@@ -28,25 +30,46 @@ const periodLabels = {
   month: 'Este Mês'
 };
 
-export default function Dashboard() {
+function DashboardContent() {
   const [selectedPeriod, setSelectedPeriod] = useState<Period>('today');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const { toast } = useToast();
+  const { session, loading } = useAuth();
   
-  const { data: metrics, isLoading: metricsLoading, refetch: refetchMetrics } = useMetrics();
-  const { data: alerts, isLoading: alertsLoading, refetch: refetchAlerts } = useAlerts('open');
+  const { data: metrics, isLoading: metricsLoading, refetch: refetchMetrics, error: metricsError } = useMetrics(selectedPeriod, session);
+  const { data: alerts, isLoading: alertsLoading, refetch: refetchAlerts, error: alertsError } = useAlerts('open');
 
   const handleRefresh = async () => {
+    if (!session) {
+      toast({
+        title: "Erro",
+        description: "Sessão não encontrada. Faça login novamente.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setIsRefreshing(true);
     try {
-      await Promise.all([
+      const results = await Promise.allSettled([
         refetchMetrics(),
         refetchAlerts()
       ]);
-      toast({
-        title: "Dashboard atualizado",
-        description: "Dados atualizados com sucesso!"
-      });
+      
+      const failures = results.filter(result => result.status === 'rejected');
+      
+      if (failures.length === 0) {
+        toast({
+          title: "Dashboard atualizado",
+          description: "Dados atualizados com sucesso!"
+        });
+      } else {
+        toast({
+          title: "Atualização parcial",
+          description: `${failures.length} operação(ões) falharam.`,
+          variant: "destructive"
+        });
+      }
     } catch (error) {
       toast({
         title: "Erro ao atualizar",
@@ -57,6 +80,36 @@ export default function Dashboard() {
       setIsRefreshing(false);
     }
   };
+
+  // Show loading state while session is loading
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="text-muted-foreground">Carregando dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state if there are critical errors
+  if (metricsError || alertsError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center space-y-4 max-w-md">
+          <AlertTriangle className="w-12 h-12 text-destructive mx-auto" />
+          <h2 className="text-xl font-semibold">Erro no Dashboard</h2>
+          <p className="text-muted-foreground">
+            {metricsError?.message || alertsError?.message || 'Erro desconhecido'}
+          </p>
+          <Button onClick={handleRefresh} disabled={isRefreshing}>
+            Tentar novamente
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   const formatKWh = (value: number) => {
     if (value >= 1000) {
@@ -197,5 +250,13 @@ export default function Dashboard() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function Dashboard() {
+  return (
+    <DashboardGate>
+      <DashboardContent />
+    </DashboardGate>
   );
 }

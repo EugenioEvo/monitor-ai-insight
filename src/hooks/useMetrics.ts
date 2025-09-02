@@ -15,18 +15,16 @@ export interface MetricsSummary {
   period: string;
 }
 
-export const useMetrics = (period: 'today' | 'week' | 'month' = 'today') => {
+export const useMetrics = (period: 'today' | 'week' | 'month' = 'today', session?: any) => {
   const queryClient = useQueryClient();
 
   const query = useQuery({
-    queryKey: ['metrics-summary', period],
+    queryKey: ['metrics-summary', period, session?.user?.id],
     queryFn: async (): Promise<MetricsSummary> => {
-      const { data: session } = await supabase.auth.getSession();
-      
       const { data, error } = await supabase.functions.invoke('metrics-summary', {
-        body: {},
+        body: { period },
         headers: { 
-          Authorization: `Bearer ${session?.session?.access_token}` 
+          Authorization: `Bearer ${session?.access_token}` 
         }
       });
 
@@ -34,8 +32,16 @@ export const useMetrics = (period: 'today' | 'week' | 'month' = 'today') => {
         throw new Error(error.message);
       }
 
-      return data;
+      return data || {
+        totalGeneration: 0,
+        totalConsumption: 0,
+        openTickets: 0,
+        openAlerts: 0,
+        activePlants: 0,
+        period
+      };
     },
+    enabled: !!session?.user?.id,
     staleTime: 2 * 60 * 1000, // 2 minutos
     refetchInterval: 5 * 60 * 1000, // Atualizar a cada 5 minutos
   });
