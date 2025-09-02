@@ -37,7 +37,7 @@ function DashboardContent() {
   const { session, loading } = useAuth();
   
   const { data: metrics, isLoading: metricsLoading, refetch: refetchMetrics, error: metricsError } = useMetrics(selectedPeriod, session);
-  const { data: alerts, isLoading: alertsLoading, refetch: refetchAlerts, error: alertsError } = useAlerts('open');
+  const { data: alerts, isLoading: alertsLoading, refetch: refetchAlerts, error: alertsError } = useAlerts(undefined, 'open', session);
 
   const handleRefresh = async () => {
     if (!session) {

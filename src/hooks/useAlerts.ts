@@ -25,11 +25,11 @@ export interface Alert {
   };
 }
 
-export const useAlerts = (plantId?: string, status?: string) => {
+export const useAlerts = (plantId?: string, status?: string, session?: any) => {
   const queryClient = useQueryClient();
 
   const query = useQuery({
-    queryKey: ['alerts', plantId, status],
+    queryKey: ['alerts', plantId, status, session?.user?.id],
     queryFn: async (): Promise<Alert[]> => {
       let query = supabase
         .from('alerts')
@@ -55,6 +55,7 @@ export const useAlerts = (plantId?: string, status?: string) => {
 
       return (data || []) as Alert[];
     },
+    enabled: !!session?.user?.id,
     staleTime: 1 * 60 * 1000, // 1 minuto
   });
 
