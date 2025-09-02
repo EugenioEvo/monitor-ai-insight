@@ -30,6 +30,7 @@ export const useAlerts = (plantId?: string, status?: string, session?: any) => {
 
   const query = useQuery({
     queryKey: ['alerts', plantId, status, session?.user?.id],
+    // Specify the return type of the alerts query.
     queryFn: async (): Promise<Alert[]> => {
       let query = supabase
         .from('alerts')
@@ -165,7 +166,10 @@ export const useCreateAlert = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (alert: Omit<Alert, 'id' | 'created_at' | 'updated_at'>) => {
+    // Define the type of alert when creating a new alert, omitting auto-generated fields.
+    mutationFn: async (
+      alert: Omit<Alert, 'id' | 'timestamp' | 'created_at' | 'updated_at'>
+    ) => {
       const { data, error } = await supabase
         .from('alerts')
         .insert([alert])

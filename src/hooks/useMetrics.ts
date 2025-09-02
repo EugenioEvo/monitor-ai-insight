@@ -20,6 +20,7 @@ export const useMetrics = (period: 'today' | 'week' | 'month' = 'today', session
 
   const query = useQuery({
     queryKey: ['metrics-summary', period, session?.user?.id],
+    // Specify the return type so TypeScript knows what the hook returns.
     queryFn: async (): Promise<MetricsSummary> => {
       const { data, error } = await supabase.functions.invoke('metrics-summary', {
         body: { period },
