@@ -51,24 +51,40 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   useEffect(() => {
-    // Set up auth state listener
+    let mounted = true;
+    
+    // Set up auth state listener - NEVER use async here to prevent deadlocks
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      (event, session) => {
+        if (!mounted) return;
+        
         logger.info('Auth state changed', { 
           component: 'useAuth', 
           event, 
           userId: session?.user?.id 
         });
         
+        // Only synchronous state updates here
         setSession(session);
         setUser(session?.user ?? null);
         
         if (session?.user) {
-          // Defer profile fetch to avoid recursion
+          // Defer profile fetch with timeout to prevent recursion
           setTimeout(async () => {
-            const userProfile = await fetchProfile(session.user.id);
-            setProfile(userProfile);
-            setLoading(false);
+            if (!mounted) return;
+            try {
+              const userProfile = await fetchProfile(session.user.id);
+              if (mounted) {
+                setProfile(userProfile);
+                setLoading(false);
+              }
+            } catch (error) {
+              logger.error('Profile fetch failed', { error: (error as Error).message });
+              if (mounted) {
+                setProfile(null);
+                setLoading(false);
+              }
+            }
           }, 0);
         } else {
           setProfile(null);
@@ -77,21 +93,36 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
     );
 
-    // Check for existing session
+    // Check for existing session after setting up listener
     supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!mounted) return;
+      
       if (session) {
         setSession(session);
         setUser(session.user);
-        fetchProfile(session.user.id).then((userProfile) => {
-          setProfile(userProfile);
-          setLoading(false);
-        });
+        fetchProfile(session.user.id)
+          .then((userProfile) => {
+            if (mounted) {
+              setProfile(userProfile);
+              setLoading(false);
+            }
+          })
+          .catch((error) => {
+            logger.error('Initial profile fetch failed', { error: (error as Error).message });
+            if (mounted) {
+              setProfile(null);
+              setLoading(false);
+            }
+          });
       } else {
         setLoading(false);
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signIn = async (email: string, password: string) => {

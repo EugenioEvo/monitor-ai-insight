@@ -25,6 +25,7 @@ import Alerts from "./pages/Alerts";
 import Reports from "./pages/Reports";
 import Maintenance from "./pages/Maintenance";
 import Settings from "./pages/Settings";
+import SystemDashboard from "./pages/SystemDashboard";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -75,6 +76,11 @@ const App = () => (
                             <Route path="/settings" element={
                               <ProtectedRoute requireAdmin={true}>
                                 <Settings />
+                              </ProtectedRoute>
+                            } />
+                            <Route path="/system" element={
+                              <ProtectedRoute requireAdmin={true}>
+                                <SystemDashboard />
                               </ProtectedRoute>
                             } />
                             <Route path="*" element={<NotFound />} />
