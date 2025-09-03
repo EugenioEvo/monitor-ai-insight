@@ -49,8 +49,9 @@ export const useMetrics = (period: 'today' | 'week' | 'month' = 'today', session
 
   // Subscrição em tempo real para invalidar cache
   useEffect(() => {
+    const channelName = `metrics-realtime-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const channel = supabase
-      .channel('metrics-realtime')
+      .channel(channelName)
       .on('postgres_changes', { 
         event: '*', 
         schema: 'public', 

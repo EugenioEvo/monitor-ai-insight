@@ -62,8 +62,9 @@ export const useAlerts = (plantId?: string, status?: string, session?: any) => {
 
   // Subscrição em tempo real
   useEffect(() => {
+    const channelName = `alerts-realtime-${plantId ?? 'all'}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const channel = supabase
-      .channel('alerts-realtime')
+      .channel(channelName)
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
