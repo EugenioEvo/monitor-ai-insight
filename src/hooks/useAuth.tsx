@@ -79,10 +79,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
                 setLoading(false);
               }
             } catch (error) {
-              logger.error('Profile fetch failed', { 
+              logger.error('Profile fetch failed', error as Error, { 
                 component: 'useAuth',
-                action: 'profile-fetch',
-                error: (error as Error).message 
+                action: 'profile-fetch'
               });
               if (mounted) {
                 setProfile(null);
@@ -112,10 +111,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             }
           })
           .catch((error) => {
-            logger.error('Initial profile fetch failed', { 
+            logger.error('Initial profile fetch failed', error as Error, { 
               component: 'useAuth',
-              action: 'initial-profile-fetch',
-              error: (error as Error).message 
+              action: 'initial-profile-fetch'
             });
             if (mounted) {
               setProfile(null);

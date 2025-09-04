@@ -141,11 +141,9 @@ export class CentralizedErrorHandler {
     this.errorCounts.set(errorKey, errorCount + 1);
 
     // Log the error
-    logger.error('Centralized error handler', {
+    logger.error('Centralized error handler', error, {
       component: context?.component || 'unknown',
       action: context?.action || 'unknown',
-      error: error.message,
-      stack: error.stack,
       userId: context?.userId,
       metadata: context?.metadata,
       severity: context?.severity || 'medium',
@@ -167,11 +165,11 @@ export class CentralizedErrorHandler {
         try {
           const recovered = await strategy.recover(error, context);
           if (recovered) {
-            logger.info('Error recovered', {
-              component: context?.component || 'unknown',
-              strategy: strategy.name,
-              error: error.message
-            });
+          logger.info('Error recovered', {
+            component: context?.component || 'unknown',
+            strategy: strategy.name,
+            error: error.message
+          });
             
             // Show success toast for user-facing recoveries
             if (context?.component !== 'global') {
@@ -181,11 +179,10 @@ export class CentralizedErrorHandler {
             return true;
           }
         } catch (recoveryError) {
-        logger.error('Recovery strategy failed', {
+        logger.error('Recovery strategy failed', recoveryError as Error, {
           component: context?.component || 'unknown',
           strategy: strategy.name,
-          originalError: error.message,
-          recoveryError: (recoveryError as Error).message
+          originalError: error.message
         });
         }
       }
@@ -201,11 +198,10 @@ export class CentralizedErrorHandler {
   }
 
   private handleCriticalError(error: Error, context?: ErrorContext) {
-    logger.critical('Critical error threshold reached', {
+    logger.critical('Critical error threshold reached', error, {
       component: context?.component || 'unknown',
       action: context?.action || 'unknown',
-      error: error.message,
-      context: context?.metadata
+      metadata: context?.metadata
     });
 
     // Show critical error notification
@@ -238,9 +234,10 @@ export class CentralizedErrorHandler {
         }
       });
     } catch (reportError) {
-      logger.error('Failed to report critical error', {
-        originalError: error.message,
-        reportError: (reportError as Error).message
+      logger.error('Failed to report critical error', reportError as Error, {
+        component: 'centralizedErrorHandler',
+        action: 'report-critical-error',
+        originalError: error.message
       });
     }
   }
