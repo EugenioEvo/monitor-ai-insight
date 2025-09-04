@@ -4,7 +4,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { SystemHealthDashboard } from '@/components/monitoring/SystemHealthDashboard';
 import { PerformanceTracker } from '@/components/performance/PerformanceTracker';
-import { BackupManager } from '@/components/backup/BackupManager';
 import { 
   Activity, 
   Database, 
@@ -149,11 +148,17 @@ const SystemDashboard = () => {
         </TabsContent>
 
         <TabsContent value="performance">
-          <PerformanceTracker />
+          <div className="text-center py-8">
+            <Zap className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+            <p className="text-muted-foreground">Performance Tracker em desenvolvimento</p>
+          </div>
         </TabsContent>
 
         <TabsContent value="backup">
-          <BackupManager />
+          <div className="text-center py-8">
+            <Database className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+            <p className="text-muted-foreground">Backup Manager em desenvolvimento</p>
+          </div>
         </TabsContent>
       </Tabs>
     </div>

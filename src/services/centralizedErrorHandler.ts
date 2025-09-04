@@ -181,12 +181,12 @@ export class CentralizedErrorHandler {
             return true;
           }
         } catch (recoveryError) {
-          logger.error('Recovery strategy failed', {
-            component: context?.component || 'unknown',
-            strategy: strategy.name,
-            originalError: error.message,
-            recoveryError: (recoveryError as Error).message
-          });
+        logger.error('Recovery strategy failed', {
+          component: context?.component || 'unknown',
+          strategy: strategy.name,
+          originalError: error.message,
+          recoveryError: (recoveryError as Error).message
+        });
         }
       }
     }

@@ -1118,6 +1118,33 @@ export type Database = {
         }
         Relationships: []
       }
+      system_health_logs: {
+        Row: {
+          component: string
+          created_at: string
+          id: string
+          message: string | null
+          metrics: Json
+          status: string
+        }
+        Insert: {
+          component: string
+          created_at?: string
+          id?: string
+          message?: string | null
+          metrics?: Json
+          status: string
+        }
+        Update: {
+          component?: string
+          created_at?: string
+          id?: string
+          message?: string | null
+          metrics?: Json
+          status?: string
+        }
+        Relationships: []
+      }
       system_metrics: {
         Row: {
           collected_at: string
