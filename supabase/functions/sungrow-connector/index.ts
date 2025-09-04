@@ -332,10 +332,18 @@ class SungrowAPI {
   }
 
   private async authenticateOAuth2(): Promise<string> {
+    this.logDiagnostic('OAUTH_AUTH_START', {
+      hasAccessToken: !!this.config.accessToken,
+      hasRefreshToken: !!this.config.refreshToken,
+      hasAuthCode: !!this.config.authorizationCode,
+      tokenExpiry: this.config.tokenExpiresAt
+    });
+
     // If we have a valid access token, use it
     if (this.config.accessToken && Date.now() < (this.config.tokenExpiresAt || 0)) {
       this.token = this.config.accessToken;
       this.tokenExpires = this.config.tokenExpiresAt || 0;
+      this.logDiagnostic('OAUTH_EXISTING_TOKEN_USED', { expiresAt: this.config.tokenExpiresAt });
       return this.token;
     }
 
@@ -344,22 +352,59 @@ class SungrowAPI {
       try {
         const refreshedTokens = await this.refreshAccessToken();
         if (refreshedTokens) {
+          this.logDiagnostic('OAUTH_TOKEN_REFRESHED', { success: true });
           return refreshedTokens.access_token;
         }
       } catch (error) {
+        this.logDiagnostic('OAUTH_REFRESH_FAILED', { error: (error as Error).message }, 'warn');
         console.warn('Token refresh failed, will need re-authorization:', error);
       }
     }
 
     // If we have an authorization code, exchange it for tokens
     if (this.config.authorizationCode) {
-      const tokens = await this.exchangeAuthorizationCode();
-      if (tokens) {
-        return tokens.access_token;
+      try {
+        const tokens = await this.exchangeAuthorizationCode();
+        if (tokens) {
+          this.logDiagnostic('OAUTH_CODE_EXCHANGED', { success: true });
+          return tokens.access_token;
+        }
+      } catch (error) {
+        this.logDiagnostic('OAUTH_CODE_EXCHANGE_FAILED', { error: (error as Error).message }, 'error');
+        
+        // Se OAuth falhar completamente, tentar fallback para autenticação direta se as credenciais estiverem disponíveis
+        if (this.config.username && this.config.password) {
+          this.logDiagnostic('OAUTH_FALLBACK_TO_DIRECT', { attempting: true }, 'warn');
+          try {
+            const directToken = await this.authenticateDirectLogin();
+            this.logDiagnostic('OAUTH_FALLBACK_SUCCESS', { success: true }, 'warn');
+            return directToken;
+          } catch (directError) {
+            this.logDiagnostic('OAUTH_FALLBACK_FAILED', { error: (directError as Error).message }, 'error');
+          }
+        }
+        
+        throw error;
       }
     }
 
-    throw new Error('OAuth 2.0 authentication failed: No valid tokens or authorization code available');
+    // Se não temos nenhum método OAuth disponível, tentar fallback direto se possível
+    if (this.config.username && this.config.password) {
+      this.logDiagnostic('OAUTH_NO_TOKENS_FALLBACK_TO_DIRECT', { attempting: true }, 'warn');
+      try {
+        const directToken = await this.authenticateDirectLogin();
+        this.logDiagnostic('OAUTH_NO_TOKENS_FALLBACK_SUCCESS', { success: true }, 'warn');
+        return directToken;
+      } catch (directError) {
+        this.logDiagnostic('OAUTH_NO_TOKENS_FALLBACK_FAILED', { error: (directError as Error).message }, 'error');
+      }
+    }
+
+    this.logDiagnostic('OAUTH_AUTH_COMPLETE_FAILURE', {
+      message: 'No valid OAuth tokens, authorization codes, or direct login fallback available'
+    }, 'error');
+    
+    throw new Error('OAuth 2.0 authentication failed: No valid tokens or authorization code available. Verifique se o OpenAPI está habilitado no portal Sungrow e as credenciais OAuth estão configuradas corretamente.');
   }
 
   private async refreshAccessToken(): Promise<any> {

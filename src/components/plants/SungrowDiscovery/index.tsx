@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { Search, RefreshCw, InfoIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -17,6 +18,7 @@ import { ProfileSelector } from './ProfileSelector';
 import { ErrorDisplay } from './ErrorDisplay';
 import { StatisticsCard } from './StatisticsCard';
 import { PlantList } from './PlantList';
+import { SungrowConnectionDiagnostics } from '../SungrowConnectionDiagnostics';
 
 interface SungrowPlantDiscoveryProps {
   onPlantsSelected?: (plants: EnrichedPlant[]) => void;
@@ -178,152 +180,165 @@ export const SungrowPlantDiscovery: React.FC<SungrowPlantDiscoveryProps> = ({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Profile Selection or Guide */}
-        {hasProfiles ? (
-          <ProfileSelector
-            profiles={profiles}
-            selectedProfile={selectedProfile}
-            loading={loadingProfiles}
-            onProfileSelect={selectProfile}
-            onResetError={resetErrorState}
-          />
-        ) : (
-          <div className="space-y-4">
-            <Alert>
-              <InfoIcon className="h-4 w-4" />
-              <AlertDescription>
-                <div className="flex items-center justify-between">
-                  <span>Nenhum perfil encontrado. Crie um perfil primeiro.</span>
-                  <Button 
-                    size="sm" 
-                    onClick={() => window.location.href = '/plants?tab=profiles'}
-                    variant="outline"
-                  >
-                    Gerenciar Perfis
-                  </Button>
-                </div>
-              </AlertDescription>
-            </Alert>
-          </div>
-        )}
-
-        {/* Error Display */}
-        <ErrorDisplay
-          error={lastError}
-          errorCooldown={errorCooldown}
-          onReset={resetErrorState}
-        />
-
-        {/* Statistics Summary */}
-        {statistics && <StatisticsCard statistics={statistics} />}
-
-        {discoveredPlants.length === 0 ? (
-          <div className="text-center py-8">
-            {!hasAttemptedDiscovery && (
-              <p className="text-sm text-muted-foreground mb-4">
-                {selectedProfile ? 
-                  `Pronto para descobrir plantas usando o perfil "${selectedProfile.name}"` :
-                  'Selecione um perfil para descobrir plantas'
-                }
-              </p>
-            )}
-            <Button 
-              onClick={discoverPlants} 
-              disabled={!canDiscover} 
-              size="lg"
-            >
-              {discovering ? (
-                <div className="flex flex-col items-center gap-2">
-                  <LoadingSpinner size="sm" message="Descobrindo plantas..." />
-                  {discoveryProgress > 0 && (
-                    <div className="w-32">
-                      <Progress value={discoveryProgress} className="h-2" />
-                      <p className="text-xs text-muted-foreground mt-1">{discoveryProgress}%</p>
+        <Tabs defaultValue="discovery" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="discovery">Descobrir Plantas</TabsTrigger>
+            <TabsTrigger value="diagnostics">Diagnóstico de Conexão</TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="discovery" className="space-y-4">
+            {/* Profile Selection or Guide */}
+            {hasProfiles ? (
+              <ProfileSelector
+                profiles={profiles}
+                selectedProfile={selectedProfile}
+                loading={loadingProfiles}
+                onProfileSelect={selectProfile}
+                onResetError={resetErrorState}
+              />
+            ) : (
+              <div className="space-y-4">
+                <Alert>
+                  <InfoIcon className="h-4 w-4" />
+                  <AlertDescription>
+                    <div className="flex items-center justify-between">
+                      <span>Nenhum perfil encontrado. Crie um perfil primeiro.</span>
+                      <Button 
+                        size="sm" 
+                        onClick={() => window.location.href = '/plants?tab=profiles'}
+                        variant="outline"
+                      >
+                        Gerenciar Perfis
+                      </Button>
                     </div>
-                  )}
-                </div>
-              ) : (
-                <>
-                  <Search className="w-4 h-4 mr-2" />
-                  {hasAttemptedDiscovery ? 'Tentar Novamente' : 'Descobrir Plantas'}
-                </>
-              )}
-            </Button>
-            <p className="text-sm text-muted-foreground mt-2">
-              {errorCooldown ? 
-                'Aguarde antes de tentar novamente' : 
-                'Clique para buscar plantas com validação completa de conectividade'
-              }
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <h4 className="font-medium">
-                {discoveredPlants.length} plantas encontradas
-                {selectedPlants.length > 0 && (
-                  <span className="text-sm text-muted-foreground ml-2">
-                    ({selectedPlants.length} selecionadas)
-                  </span>
-                )}
-              </h4>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={selectOnlyOnlinePlants}
-                  disabled={!discoveredPlants.some(p => p.connectivity === 'online')}
-                >
-                  Apenas Online
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={selectAllPlants}
-                  disabled={selectedPlants.length === discoveredPlants.length}
-                >
-                  Todas
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={clearSelection}
-                  disabled={selectedPlants.length === 0}
-                >
-                  Limpar
-                </Button>
+                  </AlertDescription>
+                </Alert>
               </div>
-            </div>
+            )}
 
-            <PlantList
-              plants={discoveredPlants}
-              selectedPlants={selectedPlants}
-              onPlantToggle={handlePlantToggle}
+            {/* Error Display */}
+            <ErrorDisplay
+              error={lastError}
+              errorCooldown={errorCooldown}
+              onReset={resetErrorState}
             />
 
-            <div className="flex gap-2 pt-4">
-              <Button 
-                onClick={handlePlantsSelected} 
-                disabled={selectedPlants.length === 0}
-                className="flex-1"
-              >
-                Usar {selectedPlants.length} Plantas Selecionadas
-              </Button>
-              <Button 
-                variant="outline" 
-                onClick={discoverPlants}
-                disabled={!canDiscover}
-              >
-                {discovering ? (
-                  <LoadingSpinner size="sm" />
-                ) : (
-                  <RefreshCw className="w-4 h-4 mr-2" />
+            {/* Statistics Summary */}
+            {statistics && <StatisticsCard statistics={statistics} />}
+
+            {discoveredPlants.length === 0 ? (
+              <div className="text-center py-8">
+                {!hasAttemptedDiscovery && (
+                  <p className="text-sm text-muted-foreground mb-4">
+                    {selectedProfile ? 
+                      `Pronto para descobrir plantas usando o perfil "${selectedProfile.name}"` :
+                      'Selecione um perfil para descobrir plantas'
+                    }
+                  </p>
                 )}
-                Atualizar
-              </Button>
-            </div>
-          </div>
-        )}
+                <Button 
+                  onClick={discoverPlants} 
+                  disabled={!canDiscover} 
+                  size="lg"
+                >
+                  {discovering ? (
+                    <div className="flex flex-col items-center gap-2">
+                      <LoadingSpinner size="sm" message="Descobrindo plantas..." />
+                      {discoveryProgress > 0 && (
+                        <div className="w-32">
+                          <Progress value={discoveryProgress} className="h-2" />
+                          <p className="text-xs text-muted-foreground mt-1">{discoveryProgress}%</p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <>
+                      <Search className="w-4 h-4 mr-2" />
+                      {hasAttemptedDiscovery ? 'Tentar Novamente' : 'Descobrir Plantas'}
+                    </>
+                  )}
+                </Button>
+                <p className="text-sm text-muted-foreground mt-2">
+                  {errorCooldown ? 
+                    'Aguarde antes de tentar novamente' : 
+                    'Clique para buscar plantas com validação completa de conectividade'
+                  }
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <h4 className="font-medium">
+                    {discoveredPlants.length} plantas encontradas
+                    {selectedPlants.length > 0 && (
+                      <span className="text-sm text-muted-foreground ml-2">
+                        ({selectedPlants.length} selecionadas)
+                      </span>
+                    )}
+                  </h4>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={selectOnlyOnlinePlants}
+                      disabled={!discoveredPlants.some(p => p.connectivity === 'online')}
+                    >
+                      Apenas Online
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={selectAllPlants}
+                      disabled={selectedPlants.length === discoveredPlants.length}
+                    >
+                      Todas
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={clearSelection}
+                      disabled={selectedPlants.length === 0}
+                    >
+                      Limpar
+                    </Button>
+                  </div>
+                </div>
+
+                <PlantList
+                  plants={discoveredPlants}
+                  selectedPlants={selectedPlants}
+                  onPlantToggle={handlePlantToggle}
+                />
+
+                <div className="flex gap-2 pt-4">
+                  <Button 
+                    onClick={handlePlantsSelected} 
+                    disabled={selectedPlants.length === 0}
+                    className="flex-1"
+                  >
+                    Usar {selectedPlants.length} Plantas Selecionadas
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={discoverPlants}
+                    disabled={!canDiscover}
+                  >
+                    {discovering ? (
+                      <LoadingSpinner size="sm" />
+                    ) : (
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                    )}
+                    Atualizar
+                  </Button>
+                </div>
+              </div>
+            )}
+          </TabsContent>
+          
+          <TabsContent value="diagnostics" className="space-y-4">
+            <SungrowConnectionDiagnostics />
+          </TabsContent>
+        </Tabs>
       </CardContent>
     </Card>
   );
