@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
+import { validateInput, rateLimit, logSecurityEvent, securityHeaders, SecurityError } from '../_shared/security.ts'
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL') ?? '',
@@ -21,14 +22,28 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Rate limiting
+    const clientIp = req.headers.get('cf-connecting-ip') || req.headers.get('x-forwarded-for') || 'unknown';
+    if (!rateLimit(clientIp, 50, 15 * 60 * 1000)) {
+      await logSecurityEvent(supabase, null, 'RATE_LIMIT_EXCEEDED', { ip: clientIp }, req);
+      return new Response(
+        JSON.stringify({ error: 'Rate limit exceeded' }),
+        { 
+          status: 429, 
+          headers: { ...corsHeaders, ...securityHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
     // Verify user authentication
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
+      await logSecurityEvent(supabase, null, 'UNAUTHORIZED_ACCESS', { reason: 'No auth header' }, req);
       return new Response(
         JSON.stringify({ error: 'Authorization header required' }),
         { 
           status: 401, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          headers: { ...corsHeaders, ...securityHeaders, 'Content-Type': 'application/json' } 
         }
       );
     }
@@ -42,16 +57,34 @@ Deno.serve(async (req) => {
 
     const { data: { user }, error: userError } = await userSupabase.auth.getUser();
     if (userError || !user) {
+      await logSecurityEvent(supabase, null, 'INVALID_AUTHENTICATION', { error: userError?.message }, req);
       return new Response(
         JSON.stringify({ error: 'Invalid authentication' }),
         { 
           status: 401, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          headers: { ...corsHeaders, ...securityHeaders, 'Content-Type': 'application/json' } 
         }
       );
     }
 
     const body = await req.json();
+    
+    // Input validation
+    validateInput(body, {
+      action: { required: true, type: 'string', enum: ['get', 'upsert'] },
+      plantId: { required: true, type: 'string', minLength: 1, maxLength: 100 }
+    });
+    
+    if (body.action === 'upsert') {
+      validateInput(body, {
+        username: { type: 'string', maxLength: 100 },
+        password: { type: 'string', maxLength: 200 },
+        appkey: { type: 'string', maxLength: 200 },
+        accessKey: { type: 'string', maxLength: 500 },
+        baseUrl: { type: 'string', maxLength: 200, pattern: /^https?:\/\// }
+      });
+    }
+    
     const { action, plantId, ...credentialData } = body;
 
     if (action === 'get' && plantId) {
@@ -74,11 +107,13 @@ Deno.serve(async (req) => {
         );
       }
 
+      await logSecurityEvent(supabase, user.id, 'CREDENTIALS_ACCESSED', { plantId, action }, req);
+      
       return new Response(
         JSON.stringify({ data }),
         { 
           status: 200, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          headers: { ...corsHeaders, ...securityHeaders, 'Content-Type': 'application/json' } 
         }
       );
     }
@@ -112,11 +147,13 @@ Deno.serve(async (req) => {
         );
       }
 
+      await logSecurityEvent(supabase, user.id, 'CREDENTIALS_UPDATED', { plantId, action }, req);
+      
       return new Response(
         JSON.stringify({ data }),
         { 
           status: 200, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          headers: { ...corsHeaders, ...securityHeaders, 'Content-Type': 'application/json' } 
         }
       );
     }
@@ -131,11 +168,22 @@ Deno.serve(async (req) => {
 
   } catch (error) {
     console.error('Secure credentials function error:', error);
+    
+    if (error instanceof SecurityError) {
+      return new Response(
+        JSON.stringify({ error: error.message, code: error.code }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, ...securityHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+    
     return new Response(
       JSON.stringify({ error: 'Internal server error' }),
       { 
         status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        headers: { ...corsHeaders, ...securityHeaders, 'Content-Type': 'application/json' } 
       }
     );
   }
