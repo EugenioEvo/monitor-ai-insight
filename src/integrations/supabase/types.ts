@@ -1383,6 +1383,16 @@ export type Database = {
         Args: { user_id: string }
         Returns: string
       }
+      log_sensitive_access: {
+        Args: {
+          p_action: string
+          p_record_id?: string
+          p_success?: boolean
+          p_table_name: string
+          p_user_id: string
+        }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
