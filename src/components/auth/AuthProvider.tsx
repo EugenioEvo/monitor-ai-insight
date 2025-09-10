@@ -29,8 +29,54 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Security audit logging
+  const logSecurityEvent = async (action: string, details: any, success: boolean = true) => {
+    try {
+      await supabase.functions.invoke('security-monitor', {
+        body: {
+          action: 'create_alert',
+          alert: {
+            alert_type: action,
+            severity: success ? 'info' : 'warning',
+            message: `Authentication event: ${action}`,
+            conditions: details
+          }
+        }
+      });
+    } catch (error) {
+      console.warn('Failed to log security event:', error);
+    }
+  };
+
+  // Suspicious activity detection
+  const detectSuspiciousActivity = async (userId: string): Promise<boolean> => {
+    try {
+      // Check for multiple failed login attempts in the last 15 minutes
+      const { data, error } = await supabase
+        .from('security_audit_logs')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('success', false)
+        .gte('created_at', new Date(Date.now() - 15 * 60 * 1000).toISOString())
+        .limit(5);
+        
+      if (error) {
+        console.warn('Failed to check suspicious activity:', error);
+        return false;
+      }
+      
+      return (data?.length || 0) >= 5;
+    } catch (error) {
+      console.warn('Failed to detect suspicious activity:', error);
+      return false;
+    }
+  };
+
   const fetchUserProfile = async (userId: string) => {
     try {
+      // Log profile access for security monitoring
+      await logSecurityEvent('PROFILE_ACCESS', { userId });
+
       const { data, error } = await supabase
         .from('profiles')
         .select('id, email, full_name, role')
@@ -39,12 +85,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (error) {
         console.error('Error fetching profile:', error);
+        await logSecurityEvent('PROFILE_ACCESS_FAILED', { userId, error: error.message }, false);
         return null;
       }
 
       return data;
     } catch (error) {
       console.error('Error in fetchUserProfile:', error);
+      await logSecurityEvent('PROFILE_ACCESS_ERROR', { userId, error: (error as Error).message }, false);
       return null;
     }
   };
@@ -109,19 +157,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = async (email: string, password: string) => {
     try {
       setLoading(true);
-      const { error } = await supabase.auth.signInWithPassword({
+      
+      // Input validation
+      if (!email?.trim() || !password) {
+        throw new Error('Email and password are required');
+      }
+      
+      const { data, error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
       });
       
       if (error) {
         console.error('Sign in error:', error);
+        await logSecurityEvent('SIGN_IN_FAILED', { 
+          email: email.trim(), 
+          error: error.message 
+        }, false);
         toast.error(getAuthErrorMessage(error));
+        return { error };
+      }
+
+      if (data.user) {
+        // Check for suspicious activity
+        const isSuspicious = await detectSuspiciousActivity(data.user.id);
+        if (isSuspicious) {
+          await logSecurityEvent('SUSPICIOUS_LOGIN_ATTEMPT', { 
+            userId: data.user.id, 
+            email: email.trim() 
+          }, false);
+          await supabase.auth.signOut();
+          toast.error('Account temporarily locked due to suspicious activity. Please contact support.');
+          return { error: new Error('Account locked') };
+        }
+
+        await logSecurityEvent('SIGN_IN_SUCCESS', { 
+          userId: data.user.id, 
+          email: email.trim() 
+        });
       }
       
       return { error };
     } catch (error) {
       console.error('Unexpected sign in error:', error);
+      await logSecurityEvent('SIGN_IN_ERROR', { 
+        email: email.trim(), 
+        error: (error as Error).message 
+      }, false);
       toast.error('Unexpected error during sign in');
       return { error };
     } finally {
@@ -133,9 +215,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setLoading(true);
       
+      // Input validation and security checks
+      if (!email?.trim() || !password) {
+        throw new Error('Email and password are required');
+      }
+      
+      if (password.length < 8) {
+        throw new Error('Password must be at least 8 characters long');
+      }
+      
       const redirectUrl = `${window.location.origin}/`;
       
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
         password,
         options: {
@@ -148,15 +239,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       if (error) {
         console.error('Sign up error:', error);
+        await logSecurityEvent('SIGN_UP_FAILED', { 
+          email: email.trim(), 
+          error: error.message 
+        }, false);
         toast.error(getAuthErrorMessage(error));
-      } else {
-        toast.success('Check your email for the confirmation link!');
+        return { error };
+      }
+
+      if (data.user) {
+        await logSecurityEvent('SIGN_UP_SUCCESS', { 
+          userId: data.user.id, 
+          email: email.trim() 
+        });
       }
       
+      toast.success('Check your email for the confirmation link!');
       return { error };
     } catch (error) {
       console.error('Unexpected sign up error:', error);
-      toast.error('Unexpected error during sign up');
+      await logSecurityEvent('SIGN_UP_ERROR', { 
+        email: email.trim(), 
+        error: (error as Error).message 
+      }, false);
+      toast.error(getAuthErrorMessage(error));
       return { error };
     } finally {
       setLoading(false);
@@ -166,13 +272,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     try {
       setLoading(true);
+      const currentUserId = user?.id;
+      
       await supabase.auth.signOut();
       setUser(null);
       setProfile(null);
       setSession(null);
+      
+      if (currentUserId) {
+        await logSecurityEvent('SIGN_OUT_SUCCESS', { userId: currentUserId });
+      }
+      
       toast.success('Signed out successfully');
     } catch (error) {
       console.error('Sign out error:', error);
+      await logSecurityEvent('SIGN_OUT_ERROR', { 
+        userId: user?.id, 
+        error: (error as Error).message 
+      }, false);
       toast.error('Error signing out');
     } finally {
       setLoading(false);

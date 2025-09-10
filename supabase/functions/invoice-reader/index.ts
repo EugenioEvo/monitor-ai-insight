@@ -2,10 +2,14 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { corsHeaders } from '../_shared/cors.ts';
+import { validateInput, rateLimit, sanitizeString, logSecurityEvent, securityHeaders, SecurityError } from '../_shared/security.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Max-Age': '86400'
 };
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -13,15 +17,70 @@ const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const openAIApiKey = Deno.env.get('OPENAI_API_KEY')!;
 
 serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const { filePath, fileName } = await req.json();
+    // Rate limiting
+    const clientIp = req.headers.get('cf-connecting-ip') || req.headers.get('x-forwarded-for') || 'unknown';
+    if (!rateLimit(clientIp, 10, 5 * 60 * 1000)) { // 10 requests per 5 minutes for heavy OCR processing
+      return new Response(
+        JSON.stringify({ error: 'Rate limit exceeded' }),
+        { 
+          status: 429, 
+          headers: { ...corsHeaders, ...securityHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
 
-    console.log(`Processing invoice with expanded data model: ${fileName}`);
+    // Verify authentication
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Authorization header required' }),
+        { 
+          status: 401, 
+          headers: { ...corsHeaders, ...securityHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    
+    // Create authenticated client for user verification
+    const userSupabase = createClient(
+      supabaseUrl,
+      Deno.env.get('SUPABASE_ANON_KEY')!,
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    const { data: { user }, error: userError } = await userSupabase.auth.getUser();
+    if (userError || !user) {
+      await logSecurityEvent(supabase, null, 'UNAUTHORIZED_INVOICE_ACCESS', { error: userError?.message }, req);
+      return new Response(
+        JSON.stringify({ error: 'Invalid authentication' }),
+        { 
+          status: 401, 
+          headers: { ...corsHeaders, ...securityHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    const body = await req.json();
+    
+    // Input validation
+    validateInput(body, {
+      filePath: { required: true, type: 'string', minLength: 1, maxLength: 500 },
+      fileName: { required: true, type: 'string', minLength: 1, maxLength: 200 }
+    });
+
+    const { filePath, fileName } = body;
+    const sanitizedFileName = sanitizeString(fileName, 200);
+
+    console.log(`Processing invoice with expanded data model: ${sanitizedFileName}`);
+    await logSecurityEvent(supabase, user.id, 'INVOICE_PROCESSING_START', { filePath: sanitizeString(filePath, 100), fileName: sanitizedFileName }, req);
 
     // Download the file from Supabase Storage
     const { data: fileData, error: downloadError } = await supabase.storage
@@ -190,6 +249,7 @@ serve(async (req) => {
     }
 
     console.log(`Invoice processed successfully with expanded data model: ${invoice.id}`);
+    await logSecurityEvent(supabase, user.id, 'INVOICE_PROCESSING_SUCCESS', { invoiceId: invoice.id, fieldsExtracted: Object.keys(extractedData).length }, req);
 
     return new Response(JSON.stringify({
       success: true,
@@ -199,17 +259,29 @@ serve(async (req) => {
       confidence_score: confidenceScore,
       requires_review: requiresReview
     }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, ...securityHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error) {
     console.error('Error in expanded invoice-reader:', error);
+    
+    if (error instanceof SecurityError) {
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: error.message,
+        code: error.code
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, ...securityHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    
     return new Response(JSON.stringify({ 
       success: false, 
-      error: error.message 
+      error: 'Internal server error'
     }), {
       status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, ...securityHeaders, 'Content-Type': 'application/json' },
     });
   }
 });
