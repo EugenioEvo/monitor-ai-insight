@@ -1379,6 +1379,25 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      detect_suspicious_activity: {
+        Args: {
+          p_max_failed_attempts?: number
+          p_time_window_minutes?: number
+          p_user_id: string
+        }
+        Returns: boolean
+      }
+      get_recent_security_events: {
+        Args: { p_hours?: number }
+        Returns: {
+          action: string
+          created_at: string
+          ip_address: unknown
+          success: boolean
+          table_name: string
+          user_id: string
+        }[]
+      }
       get_user_role: {
         Args: { user_id: string }
         Returns: string

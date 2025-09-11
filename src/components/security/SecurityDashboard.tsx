@@ -1,215 +1,305 @@
-import { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Shield, AlertTriangle, Lock, Eye } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/hooks/useAuth';
-
-interface SecurityEvent {
-  id: string;
-  action: string;
-  user_id: string;
-  ip_address: string | null;
-  success: boolean;
-  created_at: string;
-  error_message?: string | null;
-  record_id?: string;
-  table_name?: string;
-  user_agent?: string;
-}
+import { useState, useEffect } from 'react'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { AlertTriangle, Shield, Activity, Users, Eye, RefreshCw } from 'lucide-react'
+import { supabase } from '@/integrations/supabase/client'
+import { toast } from 'sonner'
 
 interface SecuritySummary {
-  total_events: number;
-  failed_attempts: number;
-  unique_ips: number;
-  event_types: Record<string, number>;
+  total_events: number
+  failed_logins: number
+  successful_logins: number
+  suspicious_activities: number
+  unique_users: number
+  recent_events: any[]
+}
+
+interface SecurityThreat {
+  user_id: string
+  failed_attempts: number
+  latest_attempt: string
 }
 
 export const SecurityDashboard = () => {
-  const { isAdmin } = useAuth();
-  const [events, setEvents] = useState<SecurityEvent[]>([]);
-  const [summary, setSummary] = useState<SecuritySummary | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [timeRange, setTimeRange] = useState('24h');
-
-  useEffect(() => {
-    if (isAdmin) {
-      fetchSecurityData();
-    }
-  }, [timeRange, isAdmin]);
+  const [securitySummary, setSecuritySummary] = useState<SecuritySummary | null>(null)
+  const [threats, setThreats] = useState<SecurityThreat[]>([])
+  const [alerts, setAlerts] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
 
   const fetchSecurityData = async () => {
     try {
-      setLoading(true);
+      setRefreshing(true)
 
-      // Fetch recent security events
-      const { data: eventsData } = await supabase
-        .from('security_audit_logs')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(50);
+      // Fetch security summary
+      const { data: summaryData, error: summaryError } = await supabase.functions.invoke('security-monitor', {
+        body: { action: 'get_security_summary' }
+      })
 
-      if (eventsData) {
-        // Type assertion to handle Supabase type mismatch
-        const typedEvents = eventsData as SecurityEvent[];
-        setEvents(typedEvents);
+      if (summaryError) throw summaryError
+      setSecuritySummary(summaryData.data.summary)
 
-        // Calculate summary
-        const now = new Date();
-        const cutoff = new Date(now.getTime() - (timeRange === '24h' ? 24 : 168) * 60 * 60 * 1000);
-        const recentEvents = typedEvents.filter(e => new Date(e.created_at) > cutoff);
+      // Fetch threats
+      const { data: threatsData, error: threatsError } = await supabase.functions.invoke('security-monitor', {
+        body: { action: 'check_threats' }
+      })
 
-        const summaryData: SecuritySummary = {
-          total_events: recentEvents.length,
-          failed_attempts: recentEvents.filter(e => !e.success).length,
-          unique_ips: new Set(recentEvents.map(e => e.ip_address || 'unknown')).size,
-          event_types: recentEvents.reduce((acc, e) => {
-            acc[e.action] = (acc[e.action] || 0) + 1;
-            return acc;
-          }, {} as Record<string, number>)
-        };
+      if (threatsError) throw threatsError
+      setThreats(threatsData.data.threats)
 
-        setSummary(summaryData);
-      }
+      // Fetch recent alerts
+      const { data: alertsData, error: alertsError } = await supabase.functions.invoke('security-monitor', {
+        body: { action: 'get_recent_alerts' }
+      })
+
+      if (alertsError) throw alertsError
+      setAlerts(alertsData.data.alerts)
+
     } catch (error) {
-      console.error('Error fetching security data:', error);
+      console.error('Error fetching security data:', error)
+      toast.error('Failed to load security data')
     } finally {
-      setLoading(false);
+      setLoading(false)
+      setRefreshing(false)
     }
-  };
+  }
 
-  const getSeverityBadge = (action: string, success: boolean) => {
-    if (!success) {
-      if (action.includes('AUTH')) return <Badge variant="destructive">High Risk</Badge>;
-      if (action.includes('CREDENTIALS')) return <Badge variant="destructive">Critical</Badge>;
-      return <Badge variant="secondary">Medium</Badge>;
+  useEffect(() => {
+    fetchSecurityData()
+
+    // Auto-refresh every 5 minutes
+    const interval = setInterval(fetchSecurityData, 300000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const getSeverityColor = (severity: string) => {
+    switch (severity) {
+      case 'critical': return 'destructive'
+      case 'high': return 'destructive'
+      case 'medium': return 'secondary'
+      case 'low': return 'outline'
+      default: return 'outline'
     }
-    return <Badge variant="outline">Normal</Badge>;
-  };
+  }
 
-  const getActionIcon = (action: string) => {
-    if (action.includes('AUTH')) return <Lock className="h-4 w-4" />;
-    if (action.includes('CREDENTIALS')) return <Shield className="h-4 w-4" />;
-    if (action.includes('ACCESS')) return <Eye className="h-4 w-4" />;
-    return <AlertTriangle className="h-4 w-4" />;
-  };
-
-  if (!isAdmin) {
+  if (loading) {
     return (
-      <Alert>
-        <AlertTriangle className="h-4 w-4" />
-        <AlertDescription>
-          Acesso negado. Apenas administradores podem visualizar o dashboard de segurança.
-        </AlertDescription>
-      </Alert>
-    );
+      <div className="p-6 space-y-4">
+        <div className="flex items-center gap-2">
+          <Shield className="w-6 h-6" />
+          <h2 className="text-2xl font-bold">Security Dashboard</h2>
+        </div>
+        <div className="text-center py-8">Loading security data...</div>
+      </div>
+    )
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Security Dashboard</h2>
-        <select
-          value={timeRange}
-          onChange={(e) => setTimeRange(e.target.value)}
-          className="px-3 py-1 border rounded-md"
+    <div className="p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Shield className="w-6 h-6 text-blue-600" />
+          <h2 className="text-2xl font-bold">Security Dashboard</h2>
+        </div>
+        <Button
+          onClick={fetchSecurityData}
+          variant="outline"
+          size="sm"
+          disabled={refreshing}
         >
-          <option value="24h">Últimas 24 horas</option>
-          <option value="7d">Últimos 7 dias</option>
-        </select>
+          <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+          Refresh
+        </Button>
       </div>
 
-      {loading ? (
-        <div className="text-center">Carregando dados de segurança...</div>
-      ) : (
-        <>
-          {/* Summary Cards */}
-          {summary && (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total Events</CardTitle>
-                  <Shield className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{summary.total_events}</div>
-                </CardContent>
-              </Card>
+      {/* Security Overview Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Events (24h)</CardTitle>
+            <Activity className="w-4 h-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{securitySummary?.total_events || 0}</div>
+          </CardContent>
+        </Card>
 
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Failed Attempts</CardTitle>
-                  <AlertTriangle className="h-4 w-4 text-red-500" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-red-500">{summary.failed_attempts}</div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Unique IPs</CardTitle>
-                  <Eye className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{summary.unique_ips}</div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Risk Level</CardTitle>
-                  <Shield className="h-4 w-4" />
-                </CardHeader>
-                <CardContent>
-                  <div className={`text-2xl font-bold ${
-                    summary.failed_attempts > 10 ? 'text-red-500' :
-                    summary.failed_attempts > 5 ? 'text-yellow-500' : 'text-green-500'
-                  }`}>
-                    {summary.failed_attempts > 10 ? 'HIGH' :
-                     summary.failed_attempts > 5 ? 'MEDIUM' : 'LOW'}
-                  </div>
-                </CardContent>
-              </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Failed Logins</CardTitle>
+            <AlertTriangle className="w-4 h-4 text-red-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-red-600">
+              {securitySummary?.failed_logins || 0}
             </div>
-          )}
+          </CardContent>
+        </Card>
 
-          {/* Recent Events */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Successful Logins</CardTitle>
+            <Shield className="w-4 h-4 text-green-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-600">
+              {securitySummary?.successful_logins || 0}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Active Users</CardTitle>
+            <Users className="w-4 h-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{securitySummary?.unique_users || 0}</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Security Threats Alert */}
+      {threats.length > 0 && (
+        <Alert className="border-red-200 bg-red-50">
+          <AlertTriangle className="w-4 h-4 text-red-600" />
+          <AlertDescription className="text-red-800">
+            <strong>Security Alert:</strong> {threats.length} potential threat(s) detected. 
+            Users with excessive failed login attempts require attention.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <Tabs defaultValue="overview" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="threats">Threats</TabsTrigger>
+          <TabsTrigger value="alerts">Security Alerts</TabsTrigger>
+          <TabsTrigger value="events">Recent Events</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Security Status</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span>Suspicious Activities (24h)</span>
+                  <Badge variant={securitySummary?.suspicious_activities ? 'destructive' : 'outline'}>
+                    {securitySummary?.suspicious_activities || 0}
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Security Threats</span>
+                  <Badge variant={threats.length > 0 ? 'destructive' : 'outline'}>
+                    {threats.length}
+                  </Badge>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Active Security Alerts</span>
+                  <Badge variant={alerts.length > 0 ? 'secondary' : 'outline'}>
+                    {alerts.length}
+                  </Badge>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="threats" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Security Threats</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {threats.length === 0 ? (
+                <p className="text-muted-foreground">No security threats detected.</p>
+              ) : (
+                <div className="space-y-3">
+                  {threats.map((threat, index) => (
+                    <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div>
+                        <p className="font-medium">User: {threat.user_id || 'Anonymous'}</p>
+                        <p className="text-sm text-muted-foreground">
+                          Last attempt: {new Date(threat.latest_attempt).toLocaleString()}
+                        </p>
+                      </div>
+                      <Badge variant="destructive">
+                        {threat.failed_attempts} failed attempts
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="alerts" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Security Alerts</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {alerts.length === 0 ? (
+                <p className="text-muted-foreground">No security alerts.</p>
+              ) : (
+                <div className="space-y-3">
+                  {alerts.map((alert) => (
+                    <div key={alert.id} className="flex items-start justify-between p-3 border rounded-lg">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Badge variant={getSeverityColor(alert.severity) as any}>
+                            {alert.severity}
+                          </Badge>
+                          <span className="text-sm text-muted-foreground">
+                            {new Date(alert.created_at).toLocaleString()}
+                          </span>
+                        </div>
+                        <p className="font-medium">{alert.message}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="events" className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle>Recent Security Events</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                {events.slice(0, 20).map((event) => (
-                  <div key={event.id} className="flex items-center justify-between p-3 border rounded-lg">
-                    <div className="flex items-center space-x-3">
-                      {getActionIcon(event.action)}
+              {!securitySummary?.recent_events || securitySummary.recent_events.length === 0 ? (
+                <p className="text-muted-foreground">No recent events.</p>
+              ) : (
+                <div className="space-y-3">
+                  {securitySummary.recent_events.map((event, index) => (
+                    <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
                       <div>
-                        <div className="font-medium">{event.action}</div>
-                        <div className="text-sm text-muted-foreground">
-                          IP: {event.ip_address || 'Unknown'} • {new Date(event.created_at).toLocaleString()}
-                        </div>
-                        {event.error_message && (
-                          <div className="text-sm text-red-500">{event.error_message}</div>
-                        )}
+                        <p className="font-medium">{event.action}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {new Date(event.created_at).toLocaleString()}
+                        </p>
                       </div>
+                      <Badge variant={event.success ? 'outline' : 'destructive'}>
+                        {event.success ? 'Success' : 'Failed'}
+                      </Badge>
                     </div>
-                    {getSeverityBadge(event.action, event.success)}
-                  </div>
-                ))}
-
-                {events.length === 0 && (
-                  <div className="text-center text-muted-foreground py-6">
-                    Nenhum evento de segurança encontrado
-                  </div>
-                )}
-              </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
-        </>
-      )}
+        </TabsContent>
+      </Tabs>
     </div>
-  );
-};
+  )
+}
