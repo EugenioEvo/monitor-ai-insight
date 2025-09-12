@@ -1204,52 +1204,62 @@ serve(async (req) => {
       use_saved: !!use_saved
     });
 
-    // Optionally load saved credentials from DB or profile if requested or if critical fields are missing
+    // Load credentials from config, profile, or saved plant credentials
     let mergedConfig = { ...config } as SungrowConfig;
+    
     try {
-      const needsSaved = !!use_saved || !config?.appkey || !config?.accessKey || !config?.username || !config?.password;
-      if (needsSaved) {
+      // Check if we have complete credentials in the request
+      const hasCompleteCredentials = config?.appkey && config?.accessKey && config?.username && config?.password;
+      
+      if (hasCompleteCredentials) {
+        // Use provided credentials directly
+        console.log('Using provided credentials in request');
+        mergedConfig = {
+          authMode: config.authMode || 'direct',
+          baseUrl: config.baseUrl || 'https://gateway.isolarcloud.com.hk',
+          appkey: config.appkey.trim(),
+          accessKey: config.accessKey.trim(),
+          username: config.username.trim(),
+          password: config.password.trim(),
+          plantId: effectivePlantId,
+          language: config.language
+        } as SungrowConfig;
+      } else {
+        // Need to load from saved sources
         let credentialsFound = false;
         
-        // First, try to load from user's default profile if no specific plant credentials
-        if (!effectivePlantId || use_saved) {
-          try {
-            // Get user's default profile from secure-credentials
-            const { data: userResult } = await supabase.auth.getUser();
-            if (userResult?.user) {
-              // Get default profile
-              const { data: defaultProfile, error: profileError } = await supabase
-                .from('sungrow_credential_profiles')
-                .select('*')
-                .eq('user_id', userResult.user.id)
-                .eq('is_default', true)
-                .maybeSingle();
+        // First, try to load from user's default profile
+        try {
+          // Get user's default profile directly using service role key
+          const { data: defaultProfile, error: profileError } = await supabase
+            .from('sungrow_credential_profiles')
+            .select('*')
+            .eq('is_default', true)
+            .maybeSingle();
 
-              if (defaultProfile && !profileError) {
-                console.log('Using default profile credentials:', { 
-                  profileId: defaultProfile.id, 
-                  profileName: defaultProfile.name,
-                  hasAppkey: !!defaultProfile.appkey,
-                  hasAccessKey: !!defaultProfile.access_key,
-                  authMode: defaultProfile.auth_mode
-                });
-                
-                mergedConfig = {
-                  authMode: defaultProfile.auth_mode === 'oauth' ? 'oauth2' : 'direct',
-                  baseUrl: defaultProfile.base_url || config.baseUrl,
-                  appkey: (config.appkey || defaultProfile.appkey || '').trim(),
-                  accessKey: (config.accessKey || defaultProfile.access_key || '').trim(),
-                  username: (config.username || defaultProfile.username || '').trim(),
-                  password: (config.password || defaultProfile.password || '').trim(),
-                  plantId: effectivePlantId,
-                  language: config.language
-                } as SungrowConfig;
-                credentialsFound = true;
-              }
-            }
-          } catch (profileErr) {
-            console.warn('Could not load default profile credentials:', profileErr);
+          if (defaultProfile && !profileError) {
+            console.log('Using default profile credentials:', { 
+              profileId: defaultProfile.id, 
+              profileName: defaultProfile.name,
+              hasAppkey: !!defaultProfile.appkey,
+              hasAccessKey: !!defaultProfile.access_key,
+              authMode: defaultProfile.auth_mode
+            });
+            
+            mergedConfig = {
+              authMode: defaultProfile.auth_mode === 'oauth' ? 'oauth2' : 'direct',
+              baseUrl: defaultProfile.base_url || config.baseUrl,
+              appkey: (config.appkey || defaultProfile.appkey || '').trim(),
+              accessKey: (config.accessKey || defaultProfile.access_key || '').trim(),
+              username: (config.username || defaultProfile.username || '').trim(),
+              password: (config.password || defaultProfile.password || '').trim(),
+              plantId: effectivePlantId,
+              language: config.language
+            } as SungrowConfig;
+            credentialsFound = true;
           }
+        } catch (profileErr) {
+          console.warn('Could not load default profile credentials:', profileErr);
         }
 
         // If no profile credentials found, try plant-specific credentials
@@ -1280,12 +1290,13 @@ serve(async (req) => {
           }
         }
         
-        if (!credentialsFound && needsSaved) {
+        // Only throw error if no credentials were provided AND none were found in storage
+        if (!credentialsFound) {
           throw new Error('Nenhuma credencial encontrada. Configure um perfil padrão ou forneça credenciais na requisição.');
         }
       }
     } catch (e) {
-      console.warn('Credentials loading warning:', e instanceof Error ? e.message : e);
+      console.error('Credentials loading error:', e instanceof Error ? e.message : e);
       if (e instanceof Error && e.message.includes('Nenhuma credencial encontrada')) {
         throw e; // Re-throw this specific error
       }
