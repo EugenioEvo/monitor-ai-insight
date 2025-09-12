@@ -377,6 +377,29 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ initialData, onSubmit }) => {
       </div>
 
       <div className="space-y-2">
+        <Label htmlFor="username">Usuário</Label>
+        <Input
+          id="username"
+          value={formData.username}
+          onChange={(e) => setFormData(prev => ({ ...prev, username: e.target.value }))}
+          placeholder="Seu usuário no iSolarCloud"
+          required
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="password">Senha</Label>
+        <Input
+          id="password"
+          type="password"
+          value={formData.password}
+          onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
+          placeholder="Sua senha no iSolarCloud"
+          required
+        />
+      </div>
+
+      <div className="space-y-2">
         <Label htmlFor="auth_mode">Modo de Autenticação</Label>
         <Select value={formData.auth_mode} onValueChange={(value: 'direct' | 'oauth') => 
           setFormData(prev => ({ ...prev, auth_mode: value }))
@@ -390,31 +413,6 @@ const ProfileForm: React.FC<ProfileFormProps> = ({ initialData, onSubmit }) => {
           </SelectContent>
         </Select>
       </div>
-
-      {formData.auth_mode === 'direct' && (
-        <>
-          <div className="space-y-2">
-            <Label htmlFor="username">Usuário</Label>
-            <Input
-              id="username"
-              value={formData.username}
-              onChange={(e) => setFormData(prev => ({ ...prev, username: e.target.value }))}
-              placeholder="Seu usuário no iSolarCloud"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="password">Senha</Label>
-            <Input
-              id="password"
-              type="password"
-              value={formData.password}
-              onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-              placeholder="Sua senha no iSolarCloud"
-            />
-          </div>
-        </>
-      )}
 
       <div className="space-y-2">
         <Label htmlFor="base_url">URL Base (opcional)</Label>
