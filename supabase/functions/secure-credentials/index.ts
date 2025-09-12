@@ -13,6 +13,10 @@ interface SungrowCredentialInput {
   appkey?: string;
   accessKey?: string;
   baseUrl?: string;
+  authMode?: string;
+  isDefault?: boolean;
+  profileId?: string;
+  profileName?: string;
 }
 
 Deno.serve(async (req) => {
@@ -71,7 +75,7 @@ Deno.serve(async (req) => {
     
     // Input validation
     validateInput(body, {
-      action: { required: true, type: 'string', enum: ['get', 'upsert'] },
+      action: { required: true, type: 'string', enum: ['get', 'upsert', 'delete'] },
       plantId: { required: true, type: 'string', minLength: 1, maxLength: 100 }
     });
     
@@ -81,7 +85,11 @@ Deno.serve(async (req) => {
         password: { type: 'string', maxLength: 200 },
         appkey: { type: 'string', maxLength: 200 },
         accessKey: { type: 'string', maxLength: 500 },
-        baseUrl: { type: 'string', maxLength: 200, pattern: /^https?:\/\// }
+        baseUrl: { type: 'string', maxLength: 200, pattern: /^https?:\/\// },
+        authMode: { type: 'string', maxLength: 20 },
+        isDefault: { type: 'boolean' },
+        profileId: { type: 'string', maxLength: 100 },
+        profileName: { type: 'string', maxLength: 200 }
       });
     }
     
@@ -151,6 +159,36 @@ Deno.serve(async (req) => {
       
       return new Response(
         JSON.stringify({ data }),
+        { 
+          status: 200, 
+          headers: { ...corsHeaders, ...securityHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    if (action === 'delete' && plantId) {
+      // Delete Sungrow credentials for a specific plant/profile
+      const { error } = await supabase
+        .from('plant_credentials')
+        .delete()
+        .eq('plant_id', plantId)
+        .eq('provider', 'sungrow');
+
+      if (error) {
+        console.error('Error deleting credentials:', error);
+        return new Response(
+          JSON.stringify({ error: 'Failed to delete credentials' }),
+          { 
+            status: 500, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
+
+      await logSecurityEvent(supabase, user.id, 'CREDENTIALS_DELETED', { plantId, action }, req);
+      
+      return new Response(
+        JSON.stringify({ success: true }),
         { 
           status: 200, 
           headers: { ...corsHeaders, ...securityHeaders, 'Content-Type': 'application/json' } 

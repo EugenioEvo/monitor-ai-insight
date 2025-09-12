@@ -1204,39 +1204,91 @@ serve(async (req) => {
       use_saved: !!use_saved
     });
 
-    // Optionally load saved credentials from DB if requested or if critical fields are missing
+    // Optionally load saved credentials from DB or profile if requested or if critical fields are missing
     let mergedConfig = { ...config } as SungrowConfig;
     try {
       const needsSaved = !!use_saved || !config?.appkey || !config?.accessKey || !config?.username || !config?.password;
       if (needsSaved) {
-        if (!effectivePlantId) {
-          throw new Error('plantId é obrigatório para usar credenciais salvas');
+        let credentialsFound = false;
+        
+        // First, try to load from user's default profile if no specific plant credentials
+        if (!effectivePlantId || use_saved) {
+          try {
+            // Get user's default profile from secure-credentials
+            const { data: userResult } = await supabase.auth.getUser();
+            if (userResult?.user) {
+              // Get default profile
+              const { data: defaultProfile, error: profileError } = await supabase
+                .from('sungrow_credential_profiles')
+                .select('*')
+                .eq('user_id', userResult.user.id)
+                .eq('is_default', true)
+                .maybeSingle();
+
+              if (defaultProfile && !profileError) {
+                console.log('Using default profile credentials:', { 
+                  profileId: defaultProfile.id, 
+                  profileName: defaultProfile.name,
+                  hasAppkey: !!defaultProfile.appkey,
+                  hasAccessKey: !!defaultProfile.access_key,
+                  authMode: defaultProfile.auth_mode
+                });
+                
+                mergedConfig = {
+                  authMode: defaultProfile.auth_mode === 'oauth' ? 'oauth2' : 'direct',
+                  baseUrl: defaultProfile.base_url || config.baseUrl,
+                  appkey: (config.appkey || defaultProfile.appkey || '').trim(),
+                  accessKey: (config.accessKey || defaultProfile.access_key || '').trim(),
+                  username: (config.username || defaultProfile.username || '').trim(),
+                  password: (config.password || defaultProfile.password || '').trim(),
+                  plantId: effectivePlantId,
+                  language: config.language
+                } as SungrowConfig;
+                credentialsFound = true;
+              }
+            }
+          } catch (profileErr) {
+            console.warn('Could not load default profile credentials:', profileErr);
+          }
         }
-        const { data: saved, error: savedErr } = await supabase
-          .from('plant_credentials')
-          .select('username, password, appkey, access_key, base_url')
-          .eq('plant_id', effectivePlantId)
-          .eq('provider', 'sungrow')
-          .maybeSingle();
-        if (savedErr) {
-          console.warn('Could not load saved credentials:', savedErr.message);
+
+        // If no profile credentials found, try plant-specific credentials
+        if (!credentialsFound && effectivePlantId) {
+          const { data: saved, error: savedErr } = await supabase
+            .from('plant_credentials')
+            .select('username, password, appkey, access_key, base_url')
+            .eq('plant_id', effectivePlantId)
+            .eq('provider', 'sungrow')
+            .maybeSingle();
+            
+          if (savedErr) {
+            console.warn('Could not load saved plant credentials:', savedErr.message);
+          }
+          if (saved) {
+            console.log('Using saved plant credentials for:', { plantId: effectivePlantId, hasAppkey: !!saved.appkey, hasAccessKey: !!saved.access_key });
+            mergedConfig = {
+              authMode: 'direct',
+              baseUrl: saved.base_url || config.baseUrl,
+              appkey: (config.appkey || saved.appkey || '').trim(),
+              accessKey: (config.accessKey || saved.access_key || '').trim(),
+              username: (config.username || saved.username || '').trim(),
+              password: (config.password || saved.password || '').trim(),
+              plantId: effectivePlantId,
+              language: config.language
+            } as SungrowConfig;
+            credentialsFound = true;
+          }
         }
-        if (saved) {
-          console.log('Using saved credentials for plant', { plantId: effectivePlantId, hasAppkey: !!saved.appkey, hasAccessKey: !!saved.access_key });
-          mergedConfig = {
-            authMode: 'direct',
-            baseUrl: saved.base_url || config.baseUrl,
-            appkey: (config.appkey || saved.appkey || '').trim(),
-            accessKey: (config.accessKey || saved.access_key || '').trim(),
-            username: (config.username || saved.username || '').trim(),
-            password: (config.password || saved.password || '').trim(),
-            plantId: effectivePlantId,
-            language: config.language
-          } as SungrowConfig;
+        
+        if (!credentialsFound && needsSaved) {
+          throw new Error('Nenhuma credencial encontrada. Configure um perfil padrão ou forneça credenciais na requisição.');
         }
       }
     } catch (e) {
-      console.warn('Saved credentials merging warning:', e instanceof Error ? e.message : e);
+      console.warn('Credentials loading warning:', e instanceof Error ? e.message : e);
+      if (e instanceof Error && e.message.includes('Nenhuma credencial encontrada')) {
+        throw e; // Re-throw this specific error
+      }
     }
 
     // Não usar defaults de ambiente - sempre exigir credenciais frescas
@@ -1266,18 +1318,28 @@ serve(async (req) => {
     const oauthActions = ['generate_oauth_url', 'exchange_code', 'refresh_token'];
     if (!oauthActions.includes(action)) {
       if (!mergedConfig.username || !mergedConfig.password || !mergedConfig.appkey || !mergedConfig.accessKey) {
-        throw new Error(`Credenciais obrigatórias não fornecidas. Necessário: username, password, appkey, accessKey. Recebido: ${JSON.stringify({
+        const errorMsg = `Credenciais obrigatórias não fornecidas. Necessário: username, password, appkey, accessKey. 
+        
+Para resolver este problema:
+1. Vá para a página de Plantas → aba Perfis
+2. Crie um novo perfil com todas as credenciais necessárias
+3. Defina-o como perfil padrão
+4. Ou forneça as credenciais diretamente na requisição
+
+Status atual: ${JSON.stringify({
           hasUsername: !!mergedConfig.username,
           hasPassword: !!mergedConfig.password,
           hasAppkey: !!mergedConfig.appkey,
-          hasAccessKey: !!mergedConfig.accessKey
-        })}`);
+          hasAccessKey: !!mergedConfig.accessKey,
+          authMode: mergedConfig.authMode
+        })}`;
+        throw new Error(errorMsg);
       }
     } else {
       // Requisitos mínimos para fluxos OAuth
       if (action === 'generate_oauth_url') {
         if (!mergedConfig.appkey) {
-          throw new Error('App Key (applicationId) é obrigatória para gerar a URL de autorização');
+          throw new Error('App Key (applicationId) é obrigatória para gerar a URL de autorização. Configure um perfil com App Key válida.');
         }
       }
       if (action === 'exchange_code') {

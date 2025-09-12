@@ -1,5 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import type { SungrowConfig } from '@/types/sungrow';
+import { SungrowSecretsService } from './sungrowSecretsService';
 
 export interface SungrowCredentialProfile {
   id: string;
@@ -79,7 +80,19 @@ export class SungrowProfileService {
       .single();
 
     if (error) throw error;
-    return data as SungrowCredentialProfile;
+    
+    const profile = data as SungrowCredentialProfile;
+    
+    // Automatically create secrets for this profile
+    try {
+      await SungrowSecretsService.upsertProfileSecrets(profile);
+    } catch (secretError) {
+      console.error('Erro ao criar secrets para o perfil:', secretError);
+      // Continue execution - the profile was created successfully
+      // The user can try to use it and will get appropriate error messages
+    }
+    
+    return profile;
   }
 
   static async updateProfile(id: string, input: Partial<CreateSungrowProfileInput>): Promise<SungrowCredentialProfile> {
@@ -106,10 +119,29 @@ export class SungrowProfileService {
       .single();
 
     if (error) throw error;
-    return data as SungrowCredentialProfile;
+    
+    const profile = data as SungrowCredentialProfile;
+    
+    // Update secrets for this profile
+    try {
+      await SungrowSecretsService.upsertProfileSecrets(profile);
+    } catch (secretError) {
+      console.error('Erro ao atualizar secrets para o perfil:', secretError);
+      // Continue execution - the profile was updated successfully
+    }
+    
+    return profile;
   }
 
   static async deleteProfile(id: string): Promise<void> {
+    // Delete secrets first
+    try {
+      await SungrowSecretsService.deleteProfileSecrets(id);
+    } catch (secretError) {
+      console.error('Erro ao deletar secrets do perfil:', secretError);
+      // Continue with profile deletion
+    }
+
     const { error } = await supabase
       .from('sungrow_credential_profiles')
       .delete()
