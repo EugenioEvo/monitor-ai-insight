@@ -156,17 +156,8 @@ export function AIAssistant() {
                 >
                   <div className="text-sm">
                     {message.sender === 'ai' ? (
-                      <div className="prose prose-sm max-w-none dark:prose-invert">
-                        <ReactMarkdown 
-                          components={{
-                            p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                            ul: ({ children }) => <ul className="list-disc ml-4 mb-2">{children}</ul>,
-                            li: ({ children }) => <li className="mb-1">{children}</li>,
-                            strong: ({ children }) => <strong className="font-semibold">{children}</strong>
-                          }}
-                        >
-                          {message.text}
-                        </ReactMarkdown>
+                      <div className="prose prose-sm max-w-none dark:prose-invert [&>p]:mb-2 [&>p:last-child]:mb-0 [&>ul]:list-disc [&>ul]:ml-4 [&>ul]:mb-2 [&>li]:mb-1 [&>strong]:font-semibold">
+                        <ReactMarkdown>{message.text}</ReactMarkdown>
                       </div>
                     ) : (
                       <p>{message.text}</p>
