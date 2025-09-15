@@ -20,12 +20,19 @@ export function AIAssistant() {
   const { plants } = usePlantContext();
   const [messages, setMessages] = useState<Message[]>(() => {
     const saved = localStorage.getItem('ai-chat-history');
-    return saved ? JSON.parse(saved) : [{
+    if (saved) {
+      const parsedMessages = JSON.parse(saved);
+      return parsedMessages.map((msg: any) => ({
+        ...msg,
+        timestamp: new Date(msg.timestamp)
+      }));
+    }
+    return [{
       id: '1',
       text: 'Olá! Sou seu assistente especializado em energia solar no Brasil. Posso ajudá-lo com:\n\n• **Análise de Performance** - `/performance [planta]`\n• **Explicação de Alertas** - `/alerts`\n• **Compliance Regulatório** - `/compliance [planta]`\n\nSelecione uma usina para contexto específico ou faça sua pergunta!',
       sender: 'ai',
       timestamp: new Date(),
-    }]
+    }];
   });
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -58,7 +65,7 @@ export function AIAssistant() {
       const { data, error } = await supabase.functions.invoke('solar-ai-assistant', {
         body: {
           message: inputValue,
-          plantId: selectedPlantId || undefined,
+          plantId: selectedPlantId && selectedPlantId !== 'general' ? selectedPlantId : undefined,
           conversationHistory
         }
       });
@@ -112,7 +119,7 @@ export function AIAssistant() {
                 <SelectValue placeholder="Selecionar usina" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Geral (sem usina específica)</SelectItem>
+                <SelectItem value="general">Geral (sem usina específica)</SelectItem>
                 {plants.map((plant) => (
                   <SelectItem key={plant.id} value={plant.id}>
                     {plant.name}
@@ -150,7 +157,14 @@ export function AIAssistant() {
                   <div className="text-sm">
                     {message.sender === 'ai' ? (
                       <div className="prose prose-sm max-w-none dark:prose-invert">
-                        <ReactMarkdown>
+                        <ReactMarkdown 
+                          components={{
+                            p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                            ul: ({ children }) => <ul className="list-disc ml-4 mb-2">{children}</ul>,
+                            li: ({ children }) => <li className="mb-1">{children}</li>,
+                            strong: ({ children }) => <strong className="font-semibold">{children}</strong>
+                          }}
+                        >
                           {message.text}
                         </ReactMarkdown>
                       </div>
