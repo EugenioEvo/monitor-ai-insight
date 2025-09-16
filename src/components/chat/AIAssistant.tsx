@@ -7,7 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Send, User, Bot, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { usePlantContext } from "@/contexts/PlantContext";
-import ReactMarkdown from 'react-markdown';
+import { ChatMarkdown } from "@/components/chat/ChatMarkdown";
 
 interface Message {
   id: string;
@@ -156,9 +156,7 @@ export function AIAssistant() {
                 >
                   <div className="text-sm">
                     {message.sender === 'ai' ? (
-                      <div className="prose prose-sm max-w-none dark:prose-invert [&>p]:mb-2 [&>p:last-child]:mb-0 [&>ul]:list-disc [&>ul]:ml-4 [&>ul]:mb-2 [&>li]:mb-1 [&>strong]:font-semibold">
-                        <ReactMarkdown>{message.text}</ReactMarkdown>
-                      </div>
+                      <ChatMarkdown content={message.text} />
                     ) : (
                       <p>{message.text}</p>
                     )}
