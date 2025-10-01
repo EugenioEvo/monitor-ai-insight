@@ -22,7 +22,7 @@ import Invoices from "./pages/Invoices";
 import Chat from "./pages/Chat";
 import Agents from "./pages/Agents";
 import Alerts from "./pages/Alerts";
-import AnomaliesPage from "./pages/AnomaliesPage";
+import AnomaliesPage from "./pages/AnomaliesPage"; // Dashboard de Anomalias
 import Reports from "./pages/Reports";
 import Maintenance from "./pages/Maintenance";
 import Settings from "./pages/Settings";

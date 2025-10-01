@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AnomaliesRealTimeDashboard } from '@/components/anomalies/AnomaliesRealTimeDashboard';
@@ -7,9 +7,14 @@ import { Building2 } from 'lucide-react';
 
 export default function AnomaliesPage() {
   const { plants } = usePlantContext();
-  const [selectedPlantId, setSelectedPlantId] = useState<string | null>(
-    plants && plants.length > 0 ? plants[0].id : null
-  );
+  const [selectedPlantId, setSelectedPlantId] = useState<string | null>(null);
+
+  // Auto-selecionar primeira planta quando disponível
+  useEffect(() => {
+    if (!selectedPlantId && plants && plants.length > 0) {
+      setSelectedPlantId(plants[0].id);
+    }
+  }, [plants, selectedPlantId]);
 
   if (!plants || plants.length === 0) {
     return (
