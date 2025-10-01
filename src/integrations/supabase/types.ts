@@ -112,6 +112,131 @@ export type Database = {
         }
         Relationships: []
       }
+      audit_findings: {
+        Row: {
+          audit_id: string
+          category: string
+          created_at: string
+          description: string
+          detailed_analysis: Json | null
+          estimated_impact_brl: number
+          estimated_impact_kwh: number
+          evidence: Json
+          id: string
+          probable_causes: Json
+          severity: string
+          title: string
+        }
+        Insert: {
+          audit_id: string
+          category: string
+          created_at?: string
+          description: string
+          detailed_analysis?: Json | null
+          estimated_impact_brl?: number
+          estimated_impact_kwh?: number
+          evidence?: Json
+          id?: string
+          probable_causes?: Json
+          severity: string
+          title: string
+        }
+        Update: {
+          audit_id?: string
+          category?: string
+          created_at?: string
+          description?: string
+          detailed_analysis?: Json | null
+          estimated_impact_brl?: number
+          estimated_impact_kwh?: number
+          evidence?: Json
+          id?: string
+          probable_causes?: Json
+          severity?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_findings_audit_id_fkey"
+            columns: ["audit_id"]
+            isOneToOne: false
+            referencedRelation: "plant_audits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      audit_recommendations: {
+        Row: {
+          action_description: string
+          action_title: string
+          action_type: string
+          audit_id: string
+          created_at: string
+          estimated_benefit_brl_year: number
+          estimated_benefit_kwh_year: number
+          estimated_cost_brl: number
+          finding_id: string
+          id: string
+          implementation_details: Json | null
+          payback_months: number | null
+          priority: string
+          roi_percent: number | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          action_description: string
+          action_title: string
+          action_type: string
+          audit_id: string
+          created_at?: string
+          estimated_benefit_brl_year?: number
+          estimated_benefit_kwh_year?: number
+          estimated_cost_brl?: number
+          finding_id: string
+          id?: string
+          implementation_details?: Json | null
+          payback_months?: number | null
+          priority: string
+          roi_percent?: number | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          action_description?: string
+          action_title?: string
+          action_type?: string
+          audit_id?: string
+          created_at?: string
+          estimated_benefit_brl_year?: number
+          estimated_benefit_kwh_year?: number
+          estimated_cost_brl?: number
+          finding_id?: string
+          id?: string
+          implementation_details?: Json | null
+          payback_months?: number | null
+          priority?: string
+          roi_percent?: number | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_recommendations_audit_id_fkey"
+            columns: ["audit_id"]
+            isOneToOne: false
+            referencedRelation: "plant_audits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audit_recommendations_finding_id_fkey"
+            columns: ["finding_id"]
+            isOneToOne: false
+            referencedRelation: "audit_findings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       automated_reports: {
         Row: {
           created_at: string
@@ -144,6 +269,75 @@ export type Database = {
           report_type?: string
         }
         Relationships: []
+      }
+      baseline_forecasts: {
+        Row: {
+          ambient_temp: number | null
+          cell_temp_estimated: number | null
+          confidence_lower: number
+          confidence_upper: number
+          config_id: string
+          created_at: string
+          expected_generation_kwh: number
+          id: string
+          metadata: Json | null
+          plant_id: string
+          poa_irradiance: number | null
+          shading_factor: number | null
+          soiling_factor: number | null
+          system_efficiency: number | null
+          timestamp: string
+        }
+        Insert: {
+          ambient_temp?: number | null
+          cell_temp_estimated?: number | null
+          confidence_lower: number
+          confidence_upper: number
+          config_id: string
+          created_at?: string
+          expected_generation_kwh: number
+          id?: string
+          metadata?: Json | null
+          plant_id: string
+          poa_irradiance?: number | null
+          shading_factor?: number | null
+          soiling_factor?: number | null
+          system_efficiency?: number | null
+          timestamp: string
+        }
+        Update: {
+          ambient_temp?: number | null
+          cell_temp_estimated?: number | null
+          confidence_lower?: number
+          confidence_upper?: number
+          config_id?: string
+          created_at?: string
+          expected_generation_kwh?: number
+          id?: string
+          metadata?: Json | null
+          plant_id?: string
+          poa_irradiance?: number | null
+          shading_factor?: number | null
+          soiling_factor?: number | null
+          system_efficiency?: number | null
+          timestamp?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "baseline_forecasts_config_id_fkey"
+            columns: ["config_id"]
+            isOneToOne: false
+            referencedRelation: "digital_twin_configs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "baseline_forecasts_plant_id_fkey"
+            columns: ["plant_id"]
+            isOneToOne: false
+            referencedRelation: "plants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       beneficiaries: {
         Row: {
@@ -345,6 +539,136 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      data_quality_logs: {
+        Row: {
+          accuracy_metrics: Json | null
+          accuracy_score: number
+          auto_corrections: Json
+          completeness_metrics: Json | null
+          completeness_score: number
+          consistency_metrics: Json | null
+          consistency_score: number
+          created_at: string
+          data_source: string
+          id: string
+          issues: Json
+          overall_score: number
+          period_end: string
+          period_start: string
+          plant_id: string | null
+          timeliness_metrics: Json | null
+          timeliness_score: number
+        }
+        Insert: {
+          accuracy_metrics?: Json | null
+          accuracy_score?: number
+          auto_corrections?: Json
+          completeness_metrics?: Json | null
+          completeness_score?: number
+          consistency_metrics?: Json | null
+          consistency_score?: number
+          created_at?: string
+          data_source: string
+          id?: string
+          issues?: Json
+          overall_score?: number
+          period_end: string
+          period_start: string
+          plant_id?: string | null
+          timeliness_metrics?: Json | null
+          timeliness_score?: number
+        }
+        Update: {
+          accuracy_metrics?: Json | null
+          accuracy_score?: number
+          auto_corrections?: Json
+          completeness_metrics?: Json | null
+          completeness_score?: number
+          consistency_metrics?: Json | null
+          consistency_score?: number
+          created_at?: string
+          data_source?: string
+          id?: string
+          issues?: Json
+          overall_score?: number
+          period_end?: string
+          period_start?: string
+          plant_id?: string | null
+          timeliness_metrics?: Json | null
+          timeliness_score?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "data_quality_logs_plant_id_fkey"
+            columns: ["plant_id"]
+            isOneToOne: false
+            referencedRelation: "plants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      digital_twin_configs: {
+        Row: {
+          baseline_model: Json
+          calibration_date: string | null
+          created_at: string
+          environmental_context: Json
+          id: string
+          inverters: Json
+          layout: Json
+          losses: Json
+          performance_ratio_target: number
+          plant_id: string
+          strings: Json
+          trackers: Json | null
+          updated_at: string
+          validation_metrics: Json | null
+          version: string
+        }
+        Insert: {
+          baseline_model: Json
+          calibration_date?: string | null
+          created_at?: string
+          environmental_context: Json
+          id?: string
+          inverters?: Json
+          layout: Json
+          losses: Json
+          performance_ratio_target?: number
+          plant_id: string
+          strings?: Json
+          trackers?: Json | null
+          updated_at?: string
+          validation_metrics?: Json | null
+          version?: string
+        }
+        Update: {
+          baseline_model?: Json
+          calibration_date?: string | null
+          created_at?: string
+          environmental_context?: Json
+          id?: string
+          inverters?: Json
+          layout?: Json
+          losses?: Json
+          performance_ratio_target?: number
+          plant_id?: string
+          strings?: Json
+          trackers?: Json | null
+          updated_at?: string
+          validation_metrics?: Json | null
+          version?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "digital_twin_configs_plant_id_fkey"
+            columns: ["plant_id"]
+            isOneToOne: false
+            referencedRelation: "plants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       invoice_analyses: {
         Row: {
@@ -645,6 +969,124 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "monitoring_configs_plant_id_fkey"
+            columns: ["plant_id"]
+            isOneToOne: false
+            referencedRelation: "plants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      performance_gaps: {
+        Row: {
+          actual_kwh: number
+          alert_id: string | null
+          alert_triggered: boolean
+          created_at: string
+          estimated_loss_brl: number | null
+          expected_kwh: number
+          gap_kwh: number
+          gap_percent: number
+          id: string
+          plant_id: string
+          probable_causes: Json
+          timestamp: string
+        }
+        Insert: {
+          actual_kwh: number
+          alert_id?: string | null
+          alert_triggered?: boolean
+          created_at?: string
+          estimated_loss_brl?: number | null
+          expected_kwh: number
+          gap_kwh: number
+          gap_percent: number
+          id?: string
+          plant_id: string
+          probable_causes?: Json
+          timestamp: string
+        }
+        Update: {
+          actual_kwh?: number
+          alert_id?: string | null
+          alert_triggered?: boolean
+          created_at?: string
+          estimated_loss_brl?: number | null
+          expected_kwh?: number
+          gap_kwh?: number
+          gap_percent?: number
+          id?: string
+          plant_id?: string
+          probable_causes?: Json
+          timestamp?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "performance_gaps_plant_id_fkey"
+            columns: ["plant_id"]
+            isOneToOne: false
+            referencedRelation: "plants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plant_audits: {
+        Row: {
+          actual_generation_kwh: number
+          audit_date: string
+          confidence_percent: number
+          created_at: string
+          executive_summary: Json | null
+          expected_generation_kwh: number
+          gap_kwh: number
+          gap_percent: number
+          id: string
+          period_end: string
+          period_start: string
+          plant_id: string
+          recoverable_generation_kwh: number
+          recoverable_value_brl: number
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          actual_generation_kwh: number
+          audit_date: string
+          confidence_percent?: number
+          created_at?: string
+          executive_summary?: Json | null
+          expected_generation_kwh: number
+          gap_kwh: number
+          gap_percent: number
+          id?: string
+          period_end: string
+          period_start: string
+          plant_id: string
+          recoverable_generation_kwh?: number
+          recoverable_value_brl?: number
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          actual_generation_kwh?: number
+          audit_date?: string
+          confidence_percent?: number
+          created_at?: string
+          executive_summary?: Json | null
+          expected_generation_kwh?: number
+          gap_kwh?: number
+          gap_percent?: number
+          id?: string
+          period_end?: string
+          period_start?: string
+          plant_id?: string
+          recoverable_generation_kwh?: number
+          recoverable_value_brl?: number
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plant_audits_plant_id_fkey"
             columns: ["plant_id"]
             isOneToOne: false
             referencedRelation: "plants"

@@ -8,3 +8,12 @@ verify_jwt = false
 
 [functions.solar-ai-assistant]
 verify_jwt = true
+
+[functions.digital-twin-calculator]
+verify_jwt = true
+
+[functions.data-quality-monitor]
+verify_jwt = true
+
+[functions.plant-audit-engine]
+verify_jwt = true
