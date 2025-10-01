@@ -14,6 +14,7 @@ import { EnvironmentalBenefits } from '@/components/dashboard/EnvironmentalBenef
 import { BeneficiaryManagement } from '@/components/beneficiaries/BeneficiaryManagement';
 import { PlantConfiguration } from '@/components/plants/PlantConfiguration';
 import { PlantConsumptionView } from '@/components/dashboard/PlantConsumptionView';
+import { DigitalTwinBuilder } from '@/components/digital-twin/DigitalTwinBuilder';
 import type { Plant } from '@/types';
 
 export default function PlantDashboard() {
@@ -81,7 +82,7 @@ export default function PlantDashboard() {
 
       {/* Dashboard Tabs */}
       <Tabs defaultValue="overview" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-7">
+        <TabsList className="grid w-full grid-cols-8">
           <TabsTrigger value="overview">
             <Activity className="w-4 h-4 mr-2" />
             Visão Geral
@@ -93,6 +94,10 @@ export default function PlantDashboard() {
           <TabsTrigger value="consumption">
             <Zap className="w-4 h-4 mr-2" />
             Consumo
+          </TabsTrigger>
+          <TabsTrigger value="digital-twin">
+            <Settings className="w-4 h-4 mr-2" />
+            Digital Twin
           </TabsTrigger>
           <TabsTrigger value="equipment">
             <AlertTriangle className="w-4 h-4 mr-2" />
@@ -121,6 +126,16 @@ export default function PlantDashboard() {
 
         <TabsContent value="consumption">
           <PlantConsumptionView plant={plant} />
+        </TabsContent>
+
+        <TabsContent value="digital-twin">
+          <DigitalTwinBuilder 
+            plant={plant} 
+            onSave={async (config) => {
+              console.log('Digital Twin saved:', config);
+              // TODO: Implement save to database
+            }}
+          />
         </TabsContent>
 
         <TabsContent value="equipment">
