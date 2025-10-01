@@ -6,11 +6,11 @@ export interface Anomaly {
   id: string;
   plant_id: string;
   timestamp: string;
-  anomaly_type: string;
+  anomaly_type: 'generation_drop' | 'efficiency_drop' | 'offline' | 'underperformance' | 'data_gap' | 'unexpected_spike' | 'overperformance';
   severity: 'low' | 'medium' | 'high' | 'critical';
   confidence: number;
-  detected_by: string;
-  metric_affected: string;
+  detected_by: 'statistical' | 'ml_isolation_forest' | 'ml_autoencoder' | 'digital_twin';
+  metric_affected: 'power' | 'energy' | 'pr' | 'availability';
   expected_value?: number;
   actual_value?: number;
   deviation_percent?: number;

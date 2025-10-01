@@ -60,6 +60,13 @@ const menuItems = [
     color: "text-destructive"
   },
   {
+    title: "Anomalias",
+    url: "/anomalies",
+    icon: TrendingUp,
+    badge: null,
+    color: "text-primary"
+  },
+  {
     title: "Relatórios",
     url: "/reports",
     icon: BarChart3,
