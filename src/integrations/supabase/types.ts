@@ -91,6 +91,78 @@ export type Database = {
         }
         Relationships: []
       }
+      anomalies: {
+        Row: {
+          actual_value: number | null
+          anomaly_type: string
+          confidence: number
+          created_at: string
+          detected_by: string
+          deviation_percent: number | null
+          expected_value: number | null
+          id: string
+          metadata: Json | null
+          metric_affected: string
+          plant_id: string
+          resolved_at: string | null
+          root_cause_id: string | null
+          severity: string
+          status: string
+          timestamp: string
+        }
+        Insert: {
+          actual_value?: number | null
+          anomaly_type: string
+          confidence?: number
+          created_at?: string
+          detected_by: string
+          deviation_percent?: number | null
+          expected_value?: number | null
+          id?: string
+          metadata?: Json | null
+          metric_affected: string
+          plant_id: string
+          resolved_at?: string | null
+          root_cause_id?: string | null
+          severity: string
+          status?: string
+          timestamp: string
+        }
+        Update: {
+          actual_value?: number | null
+          anomaly_type?: string
+          confidence?: number
+          created_at?: string
+          detected_by?: string
+          deviation_percent?: number | null
+          expected_value?: number | null
+          id?: string
+          metadata?: Json | null
+          metric_affected?: string
+          plant_id?: string
+          resolved_at?: string | null
+          root_cause_id?: string | null
+          severity?: string
+          status?: string
+          timestamp?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "anomalies_plant_id_fkey"
+            columns: ["plant_id"]
+            isOneToOne: false
+            referencedRelation: "plants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "anomalies_root_cause_id_fkey"
+            columns: ["root_cause_id"]
+            isOneToOne: false
+            referencedRelation: "root_cause_analysis"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       app_config: {
         Row: {
           created_at: string
@@ -1303,6 +1375,66 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "readings_plant_id_fkey"
+            columns: ["plant_id"]
+            isOneToOne: false
+            referencedRelation: "plants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      root_cause_analysis: {
+        Row: {
+          actual_cause: string | null
+          anomaly_id: string | null
+          completed_at: string | null
+          created_at: string
+          dependency_graph: Json | null
+          id: string
+          investigation_status: string
+          lessons_learned: string | null
+          plant_id: string
+          probable_causes: Json
+          recommended_actions: Json
+          resolution_summary: string | null
+        }
+        Insert: {
+          actual_cause?: string | null
+          anomaly_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          dependency_graph?: Json | null
+          id?: string
+          investigation_status?: string
+          lessons_learned?: string | null
+          plant_id: string
+          probable_causes?: Json
+          recommended_actions?: Json
+          resolution_summary?: string | null
+        }
+        Update: {
+          actual_cause?: string | null
+          anomaly_id?: string | null
+          completed_at?: string | null
+          created_at?: string
+          dependency_graph?: Json | null
+          id?: string
+          investigation_status?: string
+          lessons_learned?: string | null
+          plant_id?: string
+          probable_causes?: Json
+          recommended_actions?: Json
+          resolution_summary?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "root_cause_analysis_anomaly_id_fkey"
+            columns: ["anomaly_id"]
+            isOneToOne: false
+            referencedRelation: "anomalies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "root_cause_analysis_plant_id_fkey"
             columns: ["plant_id"]
             isOneToOne: false
             referencedRelation: "plants"
