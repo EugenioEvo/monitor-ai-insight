@@ -20,8 +20,15 @@ function OMDashboardContent() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const { toast } = useToast();
 
-  const { data: metrics, isLoading: metricsLoading, refetch: refetchMetrics } = useOMMetrics(selectedPeriod);
+  const { data: metrics, isLoading: metricsLoading, refetch: refetchMetrics, error: metricsError } = useOMMetrics(selectedPeriod);
   const { data: predictions, isLoading: predictionsLoading } = useFailurePredictions();
+  
+  console.log('[OMDashboard] Component loaded', { 
+    metricsLoading, 
+    metrics, 
+    metricsError,
+    selectedPeriod 
+  });
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -57,6 +64,34 @@ function OMDashboardContent() {
       default: return 'bg-success text-success-foreground';
     }
   };
+
+  // Loading state
+  if (metricsLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="text-muted-foreground">Carregando Dashboard de O&M...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (metricsError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center space-y-4 max-w-md">
+          <Wrench className="w-12 h-12 text-destructive mx-auto" />
+          <h2 className="text-xl font-semibold">Erro ao carregar Dashboard</h2>
+          <p className="text-muted-foreground">{(metricsError as Error).message}</p>
+          <Button onClick={handleRefresh} disabled={isRefreshing}>
+            Tentar novamente
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto p-6 space-y-8">

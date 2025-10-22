@@ -13,6 +13,7 @@ export const useOMMetrics = (period: 'today' | 'week' | 'month' = 'today') => {
   return useQuery({
     queryKey: ['om-metrics', period, session?.user?.id],
     queryFn: async (): Promise<OMMetrics> => {
+      console.log('[useOMMetrics] Fetching metrics for period:', period);
       // TODO: Implementar edge function para calcular métricas de O&M
       // Por enquanto, retornar dados simulados
       
@@ -22,6 +23,12 @@ export const useOMMetrics = (period: 'today' | 'week' | 'month' = 'today') => {
         supabase.from('alerts').select('*', { count: 'exact' }).eq('status', 'open'),
         supabase.from('plants').select('*', { count: 'exact' })
       ]);
+      
+      console.log('[useOMMetrics] Data fetched:', {
+        tickets: ticketsResult.data?.length,
+        alerts: alertsResult.data?.length,
+        plants: plantsResult.count
+      });
 
       const openTickets = ticketsResult.data?.filter(t => t.status === 'open').length || 0;
       const closedTickets = ticketsResult.data?.filter(t => t.status === 'closed').length || 0;
