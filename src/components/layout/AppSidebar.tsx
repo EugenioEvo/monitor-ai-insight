@@ -46,10 +46,17 @@ const menuItems = [
     color: "text-accent"
   },
   {
-    title: "O&M",
-    url: "/maintenance",
+    title: "O&M Dashboard",
+    url: "/om-dashboard",
     icon: Wrench,
     badge: "2",
+    color: "text-warning"
+  },
+  {
+    title: "Manutenção",
+    url: "/maintenance",
+    icon: Wrench,
+    badge: null,
     color: "text-warning"
   },
   {

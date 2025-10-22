@@ -25,6 +25,7 @@ import Alerts from "./pages/Alerts";
 import AnomaliesPage from "./pages/AnomaliesPage"; // Dashboard de Anomalias
 import Reports from "./pages/Reports";
 import Maintenance from "./pages/Maintenance";
+import OMDashboard from "./pages/OMDashboard"; // Dashboard de O&M
 import Settings from "./pages/Settings";
 import SystemDashboard from "./pages/SystemDashboard";
 import NotFound from "./pages/NotFound";
@@ -75,6 +76,7 @@ const App = () => (
                             <Route path="/anomalies" element={<AnomaliesPage />} />
                             <Route path="/reports" element={<Reports />} />
                             <Route path="/maintenance" element={<Maintenance />} />
+                            <Route path="/om-dashboard" element={<OMDashboard />} />
                             <Route path="/settings" element={
                               <ProtectedRoute requireAdmin={true}>
                                 <Settings />
