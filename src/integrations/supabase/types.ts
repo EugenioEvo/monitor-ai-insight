@@ -742,6 +742,78 @@ export type Database = {
           },
         ]
       }
+      equipment_maintenance_history: {
+        Row: {
+          cost_brl: number | null
+          created_at: string | null
+          duration_hours: number | null
+          equipment_id: string
+          equipment_name: string | null
+          equipment_type: string
+          id: string
+          maintenance_type: string
+          notes: string | null
+          parts_used: Json | null
+          performed_at: string
+          performed_by: string | null
+          photos: Json | null
+          plant_id: string | null
+          ticket_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          cost_brl?: number | null
+          created_at?: string | null
+          duration_hours?: number | null
+          equipment_id: string
+          equipment_name?: string | null
+          equipment_type: string
+          id?: string
+          maintenance_type: string
+          notes?: string | null
+          parts_used?: Json | null
+          performed_at: string
+          performed_by?: string | null
+          photos?: Json | null
+          plant_id?: string | null
+          ticket_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          cost_brl?: number | null
+          created_at?: string | null
+          duration_hours?: number | null
+          equipment_id?: string
+          equipment_name?: string | null
+          equipment_type?: string
+          id?: string
+          maintenance_type?: string
+          notes?: string | null
+          parts_used?: Json | null
+          performed_at?: string
+          performed_by?: string | null
+          photos?: Json | null
+          plant_id?: string | null
+          ticket_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "equipment_maintenance_history_plant_id_fkey"
+            columns: ["plant_id"]
+            isOneToOne: false
+            referencedRelation: "plants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_maintenance_history_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invoice_analyses: {
         Row: {
           ai_insights: Json | null
@@ -1316,6 +1388,62 @@ export type Database = {
             columns: ["customer_id"]
             isOneToOne: false
             referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      predictive_maintenance_scores: {
+        Row: {
+          confidence_percent: number | null
+          created_at: string | null
+          equipment_id: string
+          equipment_name: string | null
+          equipment_type: string
+          factors: Json | null
+          failure_probability: number | null
+          id: string
+          plant_id: string | null
+          predicted_failure_date: string | null
+          prediction_date: string
+          recommended_action: string | null
+          risk_level: string | null
+        }
+        Insert: {
+          confidence_percent?: number | null
+          created_at?: string | null
+          equipment_id: string
+          equipment_name?: string | null
+          equipment_type: string
+          factors?: Json | null
+          failure_probability?: number | null
+          id?: string
+          plant_id?: string | null
+          predicted_failure_date?: string | null
+          prediction_date: string
+          recommended_action?: string | null
+          risk_level?: string | null
+        }
+        Update: {
+          confidence_percent?: number | null
+          created_at?: string | null
+          equipment_id?: string
+          equipment_name?: string | null
+          equipment_type?: string
+          factors?: Json | null
+          failure_probability?: number | null
+          id?: string
+          plant_id?: string | null
+          predicted_failure_date?: string | null
+          prediction_date?: string
+          recommended_action?: string | null
+          risk_level?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "predictive_maintenance_scores_plant_id_fkey"
+            columns: ["plant_id"]
+            isOneToOne: false
+            referencedRelation: "plants"
             referencedColumns: ["id"]
           },
         ]

@@ -253,31 +253,31 @@ export const useFailurePredictions = () => {
   return useQuery({
     queryKey: ['failure-predictions', session?.user?.id],
     queryFn: async (): Promise<FailurePrediction[]> => {
-      // TODO: Implementar edge function de ML para predição
-      return [
-        {
-          equipment_id: 'inv-001',
-          equipment_type: 'Inversor',
-          plant_id: 'plant-1',
-          plant_name: 'Planta Solar Norte',
-          failure_probability: 0.72,
-          risk_level: 'high',
-          predicted_failure_date: '2025-02-05',
-          recommended_action: 'Agendar inspeção preventiva e ter peça de reposição em estoque',
-          confidence_percent: 85,
-        },
-        {
-          equipment_id: 'str-005',
-          equipment_type: 'String Box',
-          plant_id: 'plant-2',
-          plant_name: 'Planta Solar Sul',
-          failure_probability: 0.45,
-          risk_level: 'medium',
-          predicted_failure_date: '2025-02-20',
-          recommended_action: 'Monitorar performance e agendar verificação',
-          confidence_percent: 78,
-        },
-      ];
+      // Buscar previsões mais recentes do banco
+      const { data, error } = await supabase
+        .from('predictive_maintenance_scores')
+        .select('*')
+        .gte('failure_probability', 0.3) // Somente riscos médios ou altos
+        .order('failure_probability', { ascending: false })
+        .limit(10);
+
+      if (error) {
+        console.error('Error fetching predictions:', error);
+        throw error;
+      }
+
+      // Transformar para o formato esperado
+      return (data || []).map(score => ({
+        equipment_id: score.equipment_id,
+        equipment_type: score.equipment_type,
+        plant_id: score.plant_id,
+        plant_name: 'Planta', // TODO: Join com plants table
+        failure_probability: score.failure_probability,
+        risk_level: score.risk_level as 'low' | 'medium' | 'high' | 'critical',
+        predicted_failure_date: score.predicted_failure_date || '',
+        recommended_action: score.recommended_action,
+        confidence_percent: score.confidence_percent
+      }));
     },
     enabled: !!session?.user?.id,
     staleTime: 10 * 60 * 1000,

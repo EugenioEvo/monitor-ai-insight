@@ -23,7 +23,9 @@ import {
   Activity,
   Database,
   Zap,
-  Shield
+  Shield,
+  Lightbulb,
+  History
 } from "lucide-react";
 import { useAlerts } from "@/hooks/useAlerts";
 import { useTickets } from "@/hooks/useTickets";
@@ -36,6 +38,8 @@ import { MetricsCacheManager } from "@/components/performance/MetricsCacheManage
 import { AutomatedReportsPanel } from "@/components/reports/AutomatedReportsPanel";
 import { TestDataManager } from "@/components/maintenance/TestDataManager";
 import { TicketForm } from "@/components/tickets/TicketForm";
+import { MaintenanceRecommendations } from "@/components/om/MaintenanceRecommendations";
+import { EquipmentHistoryViewer } from "@/components/maintenance/EquipmentHistoryViewer";
 
 const statusColors = {
   open: 'bg-red-100 text-red-800',
@@ -156,8 +160,16 @@ export default function Maintenance() {
         </Card>
       </div>
 
-      <Tabs defaultValue="test-data" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-10">
+      <Tabs defaultValue="predictive" className="space-y-4">
+        <TabsList className="grid w-full grid-cols-12">
+          <TabsTrigger value="predictive">
+            <Lightbulb className="h-4 w-4 mr-1" />
+            Predição IA
+          </TabsTrigger>
+          <TabsTrigger value="history">
+            <History className="h-4 w-4 mr-1" />
+            Histórico
+          </TabsTrigger>
           <TabsTrigger value="test-data">
             <Shield className="h-4 w-4 mr-1" />
             Dados Teste
@@ -182,8 +194,12 @@ export default function Maintenance() {
           <TabsTrigger value="reports">Relatórios</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="test-data">
-          <TestDataManager />
+        <TabsContent value="predictive">
+          <MaintenanceRecommendations />
+        </TabsContent>
+
+        <TabsContent value="history">
+          <EquipmentHistoryViewer />
         </TabsContent>
 
         <TabsContent value="tickets" className="space-y-4">
