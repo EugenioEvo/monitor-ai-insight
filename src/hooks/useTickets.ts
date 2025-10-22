@@ -65,8 +65,9 @@ export const useTickets = (plantId?: string, status?: string) => {
 
   // Subscrição em tempo real
   useEffect(() => {
+    const channelName = `tickets-realtime-${plantId ?? 'all'}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const channel = supabase
-      .channel('tickets-realtime')
+      .channel(channelName)
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
