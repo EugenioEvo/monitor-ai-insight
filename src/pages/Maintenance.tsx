@@ -1,382 +1,159 @@
-import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
-} from "@/components/ui/table";
-import { 
-  AlertTriangle, 
-  Clock, 
-  CheckCircle, 
-  XCircle, 
-  Plus,
-  Search,
-  Filter,
-  Activity,
-  Database,
-  Zap,
-  Shield,
-  Lightbulb,
-  History
-} from "lucide-react";
 import { useAlerts } from "@/hooks/useAlerts";
 import { useTickets } from "@/hooks/useTickets";
-import RealTimeSystemMonitor from "@/components/monitoring/RealTimeSystemMonitor";
-import BackupManager from "@/components/backup/BackupManager";
-import DataOptimizer from "@/components/optimization/DataOptimizer";
-import { AdvancedAnalytics } from "@/components/analytics/AdvancedAnalytics";
-import { SmartAlertsManager } from "@/components/alerts/SmartAlertsManager";
-import { MetricsCacheManager } from "@/components/performance/MetricsCacheManager";
-import { AutomatedReportsPanel } from "@/components/reports/AutomatedReportsPanel";
-import { TestDataManager } from "@/components/maintenance/TestDataManager";
-import { TicketForm } from "@/components/tickets/TicketForm";
+import { useState } from "react";
+import { ModernKPICard } from "@/components/om/ModernKPICard";
+import { MaintenanceKanbanBoard } from "@/components/om/MaintenanceKanbanBoard";
+import { MaintenanceTimeline } from "@/components/om/MaintenanceTimeline";
+import { AlertsListView } from "@/components/om/AlertsListView";
 import { MaintenanceRecommendations } from "@/components/om/MaintenanceRecommendations";
 import { EquipmentHistoryViewer } from "@/components/maintenance/EquipmentHistoryViewer";
-
-const statusColors = {
-  open: 'bg-red-100 text-red-800',
-  in_progress: 'bg-yellow-100 text-yellow-800',
-  waiting_parts: 'bg-blue-100 text-blue-800',
-  completed: 'bg-green-100 text-green-800',
-  cancelled: 'bg-gray-100 text-gray-800'
-};
-
-const priorityColors = {
-  low: 'bg-blue-100 text-blue-800',
-  medium: 'bg-yellow-100 text-yellow-800',
-  high: 'bg-orange-100 text-orange-800',
-  critical: 'bg-red-100 text-red-800'
-};
-
-const severityColors = {
-  low: 'bg-blue-100 text-blue-800',
-  medium: 'bg-yellow-100 text-yellow-800',
-  high: 'bg-orange-100 text-orange-800',
-  critical: 'bg-red-100 text-red-800'
-};
+import { UpcomingMaintenanceWidget } from "@/components/om/UpcomingMaintenanceWidget";
+import { OMMetricsChart } from "@/components/om/OMMetricsChart";
+import { TicketForm } from "@/components/tickets/TicketForm";
+import {
+  AlertTriangle,
+  Clock,
+  TrendingUp,
+  Activity,
+  CheckCircle2,
+  Plus,
+} from "lucide-react";
 
 export default function Maintenance() {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  
-  const { data: alerts, isLoading: alertsLoading } = useAlerts();
-  const { data: tickets, isLoading: ticketsLoading } = useTickets();
+  const [showTicketForm, setShowTicketForm] = useState(false);
+  const { data: alerts } = useAlerts();
+  const { data: tickets } = useTickets();
 
-  const filteredTickets = tickets?.filter(ticket => {
-    const matchesSearch = ticket.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         ticket.description.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === "all" || ticket.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  }) || [];
-
-  const openAlerts = alerts?.filter(alert => alert.status === 'open') || [];
-  const openTickets = tickets?.filter(ticket => ['open', 'in_progress'].includes(ticket.status)) || [];
+  const activeAlerts = alerts?.filter(a => a.status === 'open').length || 0;
+  const openTickets = tickets?.filter(t => t.status === 'open').length || 0;
+  const todayCompleted = tickets?.filter(t => 
+    t.status === 'completed' && 
+    t.closed_at &&
+    new Date(t.closed_at).toDateString() === new Date().toDateString()
+  ).length || 0;
+  const avgResponseTime = tickets?.length ? 
+    Math.round(tickets.reduce((acc: number, t: any) => acc + (t.actual_hours || 0), 0) / tickets.length) : 0;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="container mx-auto p-4 md:p-6 space-y-6">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Operação & Manutenção</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Manutenção</h1>
           <p className="text-muted-foreground">
-            Gerencie alertas e tickets de manutenção das usinas
+            Gestão inteligente de O&M com IA e automação
           </p>
         </div>
-        <TicketForm onSuccess={() => {
-          // Recarregar dados se necessário
-        }} />
+        <Button size="lg" onClick={() => setShowTicketForm(true)}>
+          <Plus className="h-4 w-4 mr-2" />
+          Novo Ticket
+        </Button>
       </div>
 
-      {/* Cards de Resumo */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Alertas Ativos</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-orange-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{openAlerts.length}</div>
-            <p className="text-xs text-muted-foreground">
-              Requerem atenção
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Tickets Abertos</CardTitle>
-            <Clock className="h-4 w-4 text-blue-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{openTickets.length}</div>
-            <p className="text-xs text-muted-foreground">
-              Em andamento
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Concluídos Hoje</CardTitle>
-            <CheckCircle className="h-4 w-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {tickets?.filter(t => 
-                t.status === 'completed' && 
-                t.closed_at && 
-                new Date(t.closed_at).toDateString() === new Date().toDateString()
-              ).length || 0}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Tickets finalizados
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">SLA Crítico</CardTitle>
-            <XCircle className="h-4 w-4 text-red-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {tickets?.filter(t => 
-                t.priority === 'critical' && 
-                ['open', 'in_progress'].includes(t.status)
-              ).length || 0}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Atenção urgente
-            </p>
-          </CardContent>
-        </Card>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <ModernKPICard
+          title="Alertas Ativos"
+          value={activeAlerts}
+          subtitle="Requerem atenção"
+          trend={activeAlerts > 5 ? "up" : "down"}
+          trendValue={activeAlerts > 5 ? "+12%" : "-8%"}
+          icon={<AlertTriangle className="h-6 w-6" />}
+          variant={activeAlerts > 10 ? "danger" : "default"}
+          sparklineData={[3, 5, 4, 8, 6, 9, activeAlerts]}
+        />
+        
+        <ModernKPICard
+          title="Tickets Abertos"
+          value={openTickets}
+          subtitle="Em andamento"
+          trend="stable"
+          icon={<Activity className="h-6 w-6" />}
+          sparklineData={[12, 15, 13, 14, 16, 15, openTickets]}
+        />
+        
+        <ModernKPICard
+          title="Concluídos Hoje"
+          value={todayCompleted}
+          subtitle="Últimas 24h"
+          trend="up"
+          trendValue="+15%"
+          icon={<CheckCircle2 className="h-6 w-6" />}
+          variant="success"
+          sparklineData={[2, 3, 4, 3, 5, 4, todayCompleted]}
+        />
+        
+        <ModernKPICard
+          title="Tempo Médio"
+          value={`${avgResponseTime}h`}
+          subtitle="Resolução de tickets"
+          trend="down"
+          trendValue="-20%"
+          icon={<Clock className="h-6 w-6" />}
+          sparklineData={[6, 5, 7, 5, 4, 5, avgResponseTime]}
+        />
       </div>
 
-      <Tabs defaultValue="predictive" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-12">
-          <TabsTrigger value="predictive">
-            <Lightbulb className="h-4 w-4 mr-1" />
-            Predição IA
+      <Tabs defaultValue="overview" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4">
+          <TabsTrigger value="overview" className="gap-2">
+            <TrendingUp className="h-4 w-4" />
+            Visão Geral
           </TabsTrigger>
-          <TabsTrigger value="history">
-            <History className="h-4 w-4 mr-1" />
-            Histórico
+          <TabsTrigger value="intelligence" className="gap-2">
+            <Activity className="h-4 w-4" />
+            Manutenção Inteligente
           </TabsTrigger>
-          <TabsTrigger value="test-data">
-            <Shield className="h-4 w-4 mr-1" />
-            Dados Teste
+          <TabsTrigger value="tickets" className="gap-2">
+            <AlertTriangle className="h-4 w-4" />
+            Tickets & Alertas
           </TabsTrigger>
-          <TabsTrigger value="tickets">Tickets</TabsTrigger>
-          <TabsTrigger value="alerts">Alertas</TabsTrigger>
-          <TabsTrigger value="monitor">
-            <Activity className="h-4 w-4 mr-1" />
-            Monitor
+          <TabsTrigger value="reports" className="gap-2">
+            <CheckCircle2 className="h-4 w-4" />
+            Relatórios
           </TabsTrigger>
-          <TabsTrigger value="backup">
-            <Database className="h-4 w-4 mr-1" />
-            Backup
-          </TabsTrigger>
-          <TabsTrigger value="optimizer">
-            <Zap className="h-4 w-4 mr-1" />
-            Otimizar
-          </TabsTrigger>
-          <TabsTrigger value="analytics">Analytics</TabsTrigger>
-          <TabsTrigger value="smart-alerts">Alertas IA</TabsTrigger>
-          <TabsTrigger value="cache">Cache</TabsTrigger>
-          <TabsTrigger value="reports">Relatórios</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="predictive">
-          <MaintenanceRecommendations />
+        <TabsContent value="overview" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2">
+              <MaintenanceTimeline />
+            </div>
+            <div>
+              <UpcomingMaintenanceWidget />
+            </div>
+          </div>
         </TabsContent>
 
-        <TabsContent value="history">
+        <TabsContent value="intelligence" className="space-y-6">
+          <MaintenanceRecommendations />
           <EquipmentHistoryViewer />
         </TabsContent>
 
-        <TabsContent value="tickets" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Tickets de Manutenção</CardTitle>
-                <div className="flex items-center space-x-2">
-                  <div className="relative">
-                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Buscar tickets..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-8 w-[250px]"
-                    />
-                  </div>
-                  <select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
-                    className="px-3 py-2 border rounded-md text-sm"
-                  >
-                    <option value="all">Todos os Status</option>
-                    <option value="open">Aberto</option>
-                    <option value="in_progress">Em Progresso</option>
-                    <option value="waiting_parts">Aguardando Peças</option>
-                    <option value="completed">Concluído</option>
-                  </select>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {ticketsLoading ? (
-                <div className="text-center py-8">Carregando tickets...</div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>ID</TableHead>
-                      <TableHead>Título</TableHead>
-                      <TableHead>Usina</TableHead>
-                      <TableHead>Prioridade</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Responsável</TableHead>
-                      <TableHead>Criado em</TableHead>
-                      <TableHead>Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredTickets.map((ticket) => (
-                      <TableRow key={ticket.id}>
-                        <TableCell className="font-mono text-xs">
-                          {ticket.id.slice(0, 8)}
-                        </TableCell>
-                        <TableCell>
-                          <div className="font-medium">{ticket.title}</div>
-                          <div className="text-sm text-muted-foreground">
-                            {ticket.description.slice(0, 50)}...
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {ticket.plants?.name || 'N/A'}
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={priorityColors[ticket.priority as keyof typeof priorityColors]}>
-                            {ticket.priority}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={statusColors[ticket.status as keyof typeof statusColors]}>
-                            {ticket.status.replace('_', ' ')}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {ticket.assigned_to || 'Não atribuído'}
-                        </TableCell>
-                        <TableCell>
-                          {new Date(ticket.created_at).toLocaleDateString('pt-BR')}
-                        </TableCell>
-                        <TableCell>
-                          <Button variant="outline" size="sm">
-                            Ver Detalhes
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
+        <TabsContent value="tickets" className="space-y-6">
+          <MaintenanceKanbanBoard />
+          <AlertsListView />
         </TabsContent>
 
-        <TabsContent value="alerts" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Alertas Ativos</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {alertsLoading ? (
-                <div className="text-center py-8">Carregando alertas...</div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Severidade</TableHead>
-                      <TableHead>Tipo</TableHead>
-                      <TableHead>Mensagem</TableHead>
-                      <TableHead>Usina</TableHead>
-                      <TableHead>Data</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {alerts?.map((alert) => (
-                      <TableRow key={alert.id}>
-                        <TableCell>
-                          <Badge className={severityColors[alert.severity as keyof typeof severityColors]}>
-                            {alert.severity}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{alert.type}</TableCell>
-                        <TableCell>{alert.message}</TableCell>
-                        <TableCell>
-                          {alert.plants?.name || 'N/A'}
-                        </TableCell>
-                        <TableCell>
-                          {new Date(alert.timestamp).toLocaleString('pt-BR')}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={alert.status === 'open' ? 'destructive' : 'default'}>
-                            {alert.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Button variant="outline" size="sm">
-                            Reconhecer
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="monitor">
-          <RealTimeSystemMonitor />
-        </TabsContent>
-
-        <TabsContent value="backup">
-          <BackupManager />
-        </TabsContent>
-
-        <TabsContent value="optimizer">
-          <DataOptimizer />
-        </TabsContent>
-
-        <TabsContent value="analytics">
-          <AdvancedAnalytics />
-        </TabsContent>
-
-        <TabsContent value="smart-alerts">
-          <SmartAlertsManager />
-        </TabsContent>
-
-        <TabsContent value="cache">
-          <MetricsCacheManager />
-        </TabsContent>
-
-        <TabsContent value="reports">
-          <AutomatedReportsPanel />
+        <TabsContent value="reports" className="space-y-6">
+          <OMMetricsChart />
         </TabsContent>
       </Tabs>
+
+      {showTicketForm && (
+        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm">
+          <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl">
+            <TicketForm onSuccess={() => setShowTicketForm(false)} />
+            <Button
+              variant="ghost"
+              className="absolute right-4 top-4"
+              onClick={() => setShowTicketForm(false)}
+            >
+              ✕
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
