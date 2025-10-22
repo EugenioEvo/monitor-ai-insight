@@ -152,7 +152,7 @@ function OMDashboardContent() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <OMMetricsCard
           title="MTBF (Tempo Médio Entre Falhas)"
-          value={metrics?.mtbf_hours.toFixed(1) || '0'}
+          value={metrics ? metrics.mtbf_hours.toFixed(1) : '0'}
           unit="horas"
           trend={metrics?.trend_mtbf}
           trendLabel="vs. mês anterior"
@@ -163,7 +163,7 @@ function OMDashboardContent() {
 
         <OMMetricsCard
           title="MTTR (Tempo Médio de Reparo)"
-          value={metrics?.mttr_hours.toFixed(1) || '0'}
+          value={metrics ? metrics.mttr_hours.toFixed(1) : '0'}
           unit="horas"
           trend={metrics?.trend_mtbf}
           trendLabel="vs. mês anterior"
@@ -174,7 +174,7 @@ function OMDashboardContent() {
 
         <OMMetricsCard
           title="Disponibilidade"
-          value={metrics?.availability_percent.toFixed(1) || '0'}
+          value={metrics ? metrics.availability_percent.toFixed(1) : '0'}
           unit="%"
           trend={metrics?.trend_availability}
           trendLabel="vs. mês anterior"
@@ -185,7 +185,7 @@ function OMDashboardContent() {
 
         <OMMetricsCard
           title="Compliance SLA"
-          value={metrics?.sla_compliance_percent.toFixed(1) || '0'}
+          value={metrics ? metrics.sla_compliance_percent.toFixed(1) : '0'}
           unit="%"
           trend={metrics?.trend_availability}
           trendLabel="vs. mês anterior"
@@ -203,7 +203,7 @@ function OMDashboardContent() {
           trend={metrics?.trend_cost}
           trendLabel="vs. mês anterior"
           icon={DollarSign}
-          description={`${metrics?.cost_per_kwh.toFixed(4) || '0'} R$/kWh`}
+          description={`${metrics ? metrics.cost_per_kwh.toFixed(4) : '0'} R$/kWh`}
         />
 
         <OMMetricsCard
